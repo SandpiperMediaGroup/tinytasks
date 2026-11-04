@@ -102,7 +102,9 @@ function row(t) {
     pill.textContent = `P${t.priority}`;
   }
   const due = li.querySelector(".due");
-  if (t.due && !done && by !== "due") {
+  // Grouped by due date, only the Today and Tomorrow headers name the day; other rows keep it.
+  const headerSaysDay = by === "due" && t.due && [0, 1].includes(daysUntil(t.due));
+  if (t.due && !done && !headerSaysDay) {
     due.hidden = false;
     due.lastChild.textContent = dueText(t.due);
     const n = daysUntil(t.due);

@@ -89,19 +89,20 @@ function row(t) {
   li.classList.toggle("open", expanded.has(t.id));
   li.querySelector(".title").textContent = t.title;
 
-  // What the second line shows depends on what the group header already says.
-  const showIcon = done || (groupBy !== "chat" && groupBy !== "agent");
-  const showChat = done || groupBy !== "chat";
+  // A row leaves out whatever its group header already says (Completed has no headers).
+  const by = view === "done" ? "" : groupBy;
+  const showIcon = done || (by !== "chat" && by !== "agent");
+  const showChat = done || by !== "chat";
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
-  if (t.priority != null && groupBy !== "priority") {
+  if (t.priority != null && by !== "priority") {
     pill.hidden = false;
     pill.dataset.p = t.priority;
     pill.textContent = `P${t.priority}`;
   }
   const due = li.querySelector(".due");
-  if (t.due && !done) {
+  if (t.due && !done && by !== "due") {
     due.hidden = false;
     due.lastChild.textContent = dueText(t.due);
     const n = daysUntil(t.due);
@@ -225,6 +226,8 @@ function render() {
         } else if (groupBy === "chat" || groupBy === "agent") {
           h.appendChild(agentIcon(g.sample.agent));
         }
+        // Overdue and Today read in the same red and orange as the due dates on rows.
+        if (groupBy === "due" && g.k <= 1) h.dataset.when = g.k === 0 ? "late" : "today";
         const text = groupBy === "priority" && g.k !== 9 ? "" : g.label; // the pill already says P1
         h.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
         sec.appendChild(h);

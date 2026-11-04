@@ -148,6 +148,8 @@ section:first-child > .group-head { padding-top: 16px; }
 .group-head .n { font-weight: 500; opacity: .8; }
 .group-head .agent-badge { width: 13px; height: 13px; }
 .group-head .prio { margin: 0 2px 0 0; }
+.group-head[data-when="today"] { color: var(--p1); }
+.group-head[data-when="late"] { color: var(--danger); }
 
 /* Task rows */
 .task { border-bottom: 1px solid var(--line); }

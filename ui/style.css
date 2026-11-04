@@ -1,0 +1,177 @@
+:root {
+  --bg: #fff8e2;
+  --bg-hover: #fbefcc;
+  --bg-menu: #fffdf5;
+  --ink: #2a2620;
+  --muted: #8b8170;
+  --line: #efe2bd;
+  --accent: #e0a52a;
+  --danger: #c2492f;
+  --shadow: 0 6px 24px rgba(60, 45, 10, .16), 0 1px 3px rgba(60, 45, 10, .12);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1f1d19;
+    --bg-hover: #2a2721;
+    --bg-menu: #2b2823;
+    --ink: #ece5d5;
+    --muted: #8f8676;
+    --line: #34302a;
+    --accent: #f2c14e;
+    --danger: #e77a5f;
+    --shadow: 0 6px 24px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 10px 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+#count { color: var(--muted); font-weight: 500; margin-left: 4px; }
+.tools { display: flex; gap: 2px; }
+
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button svg {
+  width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.icon {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 7px;
+  color: var(--muted);
+}
+.icon:hover, .icon[aria-expanded="true"] { background: var(--bg-hover); color: var(--ink); }
+.icon[aria-pressed="true"] { color: var(--accent); }
+.icon.delete:hover, .icon.failed { color: var(--danger); }
+
+/* Group-by menu */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: 34px; z-index: 10;
+  min-width: 150px; padding: 4px;
+  background: var(--bg-menu); border: 1px solid var(--line); border-radius: 9px;
+  box-shadow: var(--shadow);
+}
+.menu-label { font-size: 11px; color: var(--muted); padding: 4px 8px 2px; }
+.menu button {
+  display: flex; align-items: center; width: 100%;
+  padding: 6px 8px; border-radius: 6px; text-align: left;
+}
+.menu button:hover { background: var(--bg-hover); }
+.menu button::after { content: ""; margin-left: auto; }
+.menu button[aria-checked="true"]::after { content: "✓"; color: var(--accent); font-weight: 700; }
+
+main { flex: 1; overflow-y: auto; padding: 0 0 16px; }
+ul { list-style: none; margin: 0; padding: 0; }
+
+.group-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); margin: 0; padding: 16px 16px 6px;
+}
+.group-head .n { font-weight: 500; opacity: .8; }
+.group-head .agent-badge { width: 13px; height: 13px; }
+
+/* Task rows */
+.task { border-bottom: 1px solid var(--line); }
+.line {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; cursor: pointer;
+}
+.line:hover { background: var(--bg-hover); }
+
+.check {
+  flex: none; width: 20px; height: 20px; margin-top: 1px;
+  border-radius: 50%; border: 1.8px solid var(--muted);
+  display: grid; place-items: center;
+  transition: background .15s, border-color .15s;
+}
+.check svg { width: 13px; height: 13px; stroke-width: 2.6; opacity: 0; color: var(--bg); }
+.check:hover { border-color: var(--accent); }
+.check:hover svg { opacity: .5; color: var(--accent); }
+.task.done .check, .task.checking .check { background: var(--accent); border-color: var(--accent); }
+.task.done .check svg, .task.checking .check svg { opacity: 1; color: var(--bg); }
+
+.text { min-width: 0; flex: 1; }
+.title { overflow-wrap: anywhere; }
+.sub {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  color: var(--muted); font-size: 12px; margin-top: 2px;
+}
+.src { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.src:empty { display: none; }
+.src .chat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.agent-badge { flex: none; display: inline-grid; width: 14px; height: 14px; color: var(--muted); }
+.agent-badge svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
+
+.time {
+  flex: none; margin-top: 2px;
+  color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.time-sub { display: none; }
+.time-sub:empty { display: none; }
+@media (max-width: 300px) {
+  .time { display: none; }
+  .time-sub { display: inline; }
+  .src:not(:empty) + .time-sub::before { content: "–"; margin-right: 6px; }
+}
+
+.task.done .title, .task.checking .title { text-decoration: line-through; color: var(--muted); }
+.task.checking { transition: opacity .3s .25s; opacity: 0; }
+
+/* Details slide open under the row. */
+.details {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .16s ease-out;
+}
+.details-inner {
+  overflow: hidden; min-height: 0; opacity: 0; visibility: hidden;
+  transition: opacity .16s ease-out, visibility 0s .16s;
+}
+.task.open .details { grid-template-rows: 1fr; }
+.task.open .details-inner { opacity: 1; visibility: visible; transition-delay: 0s; }
+.details-pad { padding: 0 14px 8px 44px; }
+.body {
+  margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: 13px; user-select: text; -webkit-user-select: text;
+}
+.body:empty { display: none; }
+.meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+.actions { display: flex; gap: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .details, .details-inner, .task.checking { transition: none; }
+}
+
+#empty { text-align: center; color: var(--muted); margin-top: 48px; }
+
+/* The line you type a new task into. */
+#new-task {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+#new-task[hidden] { display: none; }
+#new-task .check { cursor: default; border-style: dashed; }
+#new-title {
+  flex: 1; min-width: 0; border: 0; outline: 0; padding: 0;
+  background: none; color: var(--ink); font: inherit;
+}
+#new-title::placeholder { color: var(--muted); }
+#done-section .task { opacity: .75; }

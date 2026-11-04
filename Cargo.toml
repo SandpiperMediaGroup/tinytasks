@@ -1,0 +1,38 @@
+[package]
+name = "tinytasks"
+version = "0.1.0"
+edition = "2021"
+description = "A sticky-note task list your AI agents can write to (via MCP)."
+license = "MIT"
+repository = "https://github.com/SandpiperMediaGroup/tinytasks"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "custom-protocol"] }
+tauri-plugin-single-instance = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+open = "5"
+
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.8"
+winreg = "0.56"
+windows = { version = "0.62", features = [
+  "Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage", "Win32_System_Variant",
+  "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem",
+] }
+
+[target.'cfg(not(windows))'.dependencies]
+tauri-plugin-notification = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyTasks</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Tasks <span id="count"></span></h1>
+    <div class="tools">
+      <button id="add" class="icon" title="Add a task">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <div class="menu-wrap">
+        <button id="group" class="icon" title="Group by" aria-haspopup="menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5"/></svg>
+        </button>
+        <div id="group-menu" class="menu" role="menu" hidden>
+          <div class="menu-label">Group by</div>
+          <button role="menuitemradio" data-group="time">Time added</button>
+          <button role="menuitemradio" data-group="chat">Chat</button>
+          <button role="menuitemradio" data-group="agent">Agent</button>
+        </div>
+      </div>
+      <button id="pin" class="icon" title="Keep on top" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4-1-6z"/></svg>
+      </button>
+      <button id="toggle-done" class="icon" title="Show completed" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <form id="new-task" hidden autocomplete="off">
+      <span class="check"></span>
+      <input id="new-title" maxlength="300" placeholder="Add a task" aria-label="New task">
+    </form>
+    <div id="open"></div>
+    <p id="empty" hidden>All clear.</p>
+    <section id="done-section" hidden>
+      <h2 class="group-head">Done</h2>
+      <ul id="done"></ul>
+    </section>
+  </main>
+
+  <template id="row">
+    <li class="task">
+      <div class="line">
+        <button class="check" title="Mark done"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg></button>
+        <div class="text">
+          <div class="title"></div>
+          <div class="sub"><span class="src"></span><span class="time-sub"></span></div>
+        </div>
+        <span class="time"></span>
+      </div>
+      <div class="details">
+        <div class="details-inner">
+          <div class="details-pad">
+            <p class="body"></p>
+            <div class="meta">
+              <span class="stamp"></span>
+              <span class="actions">
+                <button class="icon open-link" title="Back to the conversation">
+                  <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+                </button>
+                <button class="icon delete" title="Delete task">
+                  <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script src="agents.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

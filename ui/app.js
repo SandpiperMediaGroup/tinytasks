@@ -121,14 +121,13 @@ function row(t) {
 }
 
 // ---- groups ----
-const PRIORITY_NAMES = ["Drop everything", "Today", "Soon", "Whenever"];
-
 function groupsOf(open) {
   const key = {
     time: (t) => timeBucket(t.created_at),
     chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : t.agent ? ["a:" + agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
     agent: (t) => (t.agent ? [agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
-    priority: (t) => (t.priority == null ? [9, "No priority"] : [t.priority, PRIORITY_NAMES[t.priority]]),
+    // Headers show just the pill (the hint names like "Today" read as dates up here).
+    priority: (t) => (t.priority == null ? [9, "No priority"] : [t.priority, `P${t.priority}`]),
   }[groupBy] || ((t) => [0, ""]);
 
   const map = new Map();
@@ -166,7 +165,8 @@ function render() {
         } else if (groupBy === "chat" || groupBy === "agent") {
           h.appendChild(agentIcon(g.sample.agent));
         }
-        h.append(g.label, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
+        const text = groupBy === "priority" && g.k !== 9 ? "" : g.label; // the pill already says P1
+        h.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
         sec.appendChild(h);
       }
       const ul = document.createElement("ul");

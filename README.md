@@ -4,15 +4,25 @@ A sticky note for the things your AI agents tell **you** to do.
 
 When an agent hands you a to-do ("add the API key in Vercel", "approve the PR"), it drops it on
 TinyTasks over MCP. You get a desktop notification, the tray icon shows how many are open, and you
-check them off. The agent can see what you finished. That's it: no due dates, no projects.
-
-You can add your own with **+** too, and agents see those as well. Tasks can have a priority
-(P0 to P3) and a due date, set by you or the agent. Ask an agent what to focus on and it puts a
-few things on your **desk** for the day. Click the title to switch between Tasks, My desk and Completed.
+check them off. The agent can see what you finished. No projects, no subtasks, no snoozing.
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 
-Windows and macOS. Built with Rust + [Tauri](https://tauri.app).
+Built with Rust + [Tauri](https://tauri.app). Tested on Windows; macOS builds from the same code
+but hasn't been tried yet.
+
+## Using it
+
+- **Click a task** to see its details and a link back to the chat it came from. The pencil edits
+  the title and details.
+- **+** adds your own task. Agents see those too.
+- **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the details)
+  or by the agent.
+- **Your desk** is what you're focusing on today. Ask an agent "what should I focus on?" and it
+  puts a few tasks there, or use the lamp in a task's details. The desk clears overnight.
+- **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
+  is kept.
+- **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
 
 ## Build
 
@@ -47,32 +57,47 @@ Anything else that takes an MCP config:
 { "mcpServers": { "tinytasks": { "command": "/path/to/tinytasks", "args": ["mcp"] } } }
 ```
 
-Then tell your agent to use it, e.g. in `CLAUDE.md` or `AGENTS.md`:
+Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_tasks` and
+`set_desk`. Then tell your agent to use them, e.g. in `CLAUDE.md` or `AGENTS.md`:
 
 > When you give me something I have to do myself, add it to TinyTasks with `add_tasks` (name
 > this chat in `chat`, add a link back if you have one). When resuming, check `list_tasks` for
-> what I've finished.
+> what I've finished. When I ask what to focus on, put a few tasks on my desk with `set_desk`.
+
+A chat that was already open when you added TinyTasks won't see the tools; start a new one.
 
 ## Your list is a markdown file
 
-Tasks live in `~/.tinytasks/tasks.md`. Click the title, then **Change folder…** under Task
-location to keep it somewhere else, like a Google Drive folder: your list moves there, or, if that
-folder already has one (from your other computer), TinyTasks uses it. Then agents that can read
-your Drive (but can't run the MCP server) can read and update it too. The file starts with a short
-comment explaining the format to them. If the folder goes missing (the sync app isn't running),
-TinyTasks says so rather than starting a new list.
+Tasks live in `~/.tinytasks/tasks.md`. To keep them somewhere else, like a Google Drive folder,
+click the title and choose **Change folder…**. Your list moves there, or, if that folder already
+has one (from your other computer, say), TinyTasks uses it. Each computer notifies you once per
+new task.
+
+Agents that can read your Drive but can't run the MCP server can then read and update the list
+too: the file starts with a short comment explaining the format to them. If the folder goes
+missing (the sync app isn't running), TinyTasks says so rather than starting a new list.
 
 ```markdown
 ## Stripe billing setup
 
-- [ ] Add the STRIPE_KEY secret in Vercel @priority(1) @due(2026-11-06) @mydesk(today) @from(claude-code) @added(2026-11-04 10:12) @id(7)
+- [ ] Add the STRIPE_KEY secret in Vercel @priority(1) @due(2026-11-06) @mydesk(2026-11-04) @from(claude-code) @added(2026-11-04 10:12) @id(7)
   Details go on indented lines under the task.
 - [x] Approve the PR @from(codex) @added(2026-11-04 09:49) @done(2026-11-04 10:12) @id(4)
 ```
 
-A `## heading` is the chat the tasks came from. TinyTasks fills in `@id` and `@added` for
-tasks you type yourself, and keeps anything it doesn't use (other `@tags`, notes) as you wrote it.
-Grouping and sorting in the window never reorder the file.
+| In the file | Means |
+|---|---|
+| `## Heading` | The chat the tasks under it came from |
+| `@priority(0-3)` | 0 is most urgent |
+| `@due(YYYY-MM-DD)` | Due date |
+| `@mydesk(YYYY-MM-DD)` | On your desk that day only; `@mydesk(today)` gets the date filled in |
+| `@from(agent)` | Who added it; none means you did |
+| `@link(url)` | Back to the chat |
+| `@added`, `@done` | When, as `YYYY-MM-DD HH:MM` |
+| `@id(n)` | Unique; filled in for tasks you type yourself |
+
+TinyTasks keeps anything it doesn't use (other `@tags`, notes) exactly as you wrote it, and
+grouping and sorting in the window never reorder the file.
 
 ## Contributing
 

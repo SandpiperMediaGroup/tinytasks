@@ -8,13 +8,25 @@
 </head>
 <body>
   <header>
-    <h1><span id="heading">Tasks</span> <span id="count"></span></h1>
+    <div class="menu-wrap">
+      <h1><button id="view" class="view-btn" title="Choose what to show" aria-haspopup="menu" aria-expanded="false">
+        <span id="heading">Tasks</span><span id="count"></span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
+      </button></h1>
+      <div id="view-menu" class="menu" role="menu" hidden>
+        <button role="menuitemradio" data-view="all">Tasks <span class="n"></span></button>
+        <button role="menuitemradio" data-view="desk">My desk <span class="n"></span></button>
+        <button role="menuitemradio" data-view="done">Completed <span class="n"></span></button>
+        <div class="menu-sep"></div>
+        <div class="menu-label">Task location</div>
+        <div id="where"></div>
+        <button id="change-folder" role="menuitem">Change folder…</button>
+        <button id="open-file" role="menuitem">Open tasks.md</button>
+      </div>
+    </div>
     <div class="tools">
       <button id="add" class="icon" title="Add a task">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
-      <button id="desk" class="icon" title="My desk" aria-pressed="false">
-        <svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>
       </button>
       <div class="menu-wrap">
         <button id="group" class="icon" title="Group by" aria-haspopup="menu" aria-expanded="false">
@@ -32,12 +44,10 @@
       <button id="pin" class="icon" title="Keep on top" aria-pressed="false">
         <svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4-1-6z"/></svg>
       </button>
-      <button id="toggle-done" class="icon" title="Show completed" aria-pressed="false">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
-      </button>
     </div>
   </header>
 
+  <p id="notice" hidden></p>
   <main id="main">
     <form id="new-task" hidden autocomplete="off">
       <span class="check"></span>
@@ -45,10 +55,10 @@
     </form>
     <div id="open"></div>
     <p id="empty" hidden>All clear.</p>
-    <section id="done-section" hidden>
-      <h2 class="group-head">Done</h2>
-      <ul id="done"></ul>
-    </section>
+    <div id="problem" hidden>
+      <p></p>
+      <button class="pick-folder">Choose a folder…</button>
+    </div>
   </main>
 
   <div id="prio-menu" class="menu floating" role="menu" hidden>

@@ -48,6 +48,36 @@ header {
 }
 h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
 #count { color: var(--muted); font-weight: 500; margin-left: 4px; }
+
+/* The header is the view menu. */
+header > .menu-wrap { min-width: 0; }
+.view-btn {
+  display: flex; align-items: center; gap: 4px;
+  margin: -4px 0 -4px -8px; padding: 4px 6px 4px 8px; border-radius: 7px;
+}
+.view-btn:hover, .view-btn[aria-expanded="true"] { background: var(--bg-hover); }
+.view-btn .chev { width: 16px; height: 16px; color: var(--muted); }
+#view-menu { left: -8px; right: auto; min-width: 200px; }
+#view-menu .n { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
+.menu-sep { height: 1px; background: var(--line); margin: 4px 2px; }
+#where {
+  padding: 0 8px 4px; font-size: 12.5px; color: var(--soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;
+}
+#change-folder, #open-file { color: var(--soft); }
+
+#notice {
+  margin: 0; padding: 8px 16px; font-size: 12.5px; color: var(--soft);
+  background: var(--bg-hover); border-bottom: 1px solid var(--line);
+}
+#notice[hidden] { display: none; }
+#problem { margin: 40px 24px; text-align: center; color: var(--soft); font-size: 13px; }
+#problem[hidden] { display: none; }
+#problem p { margin: 0 0 12px; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+#problem button {
+  padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line); color: var(--ink);
+}
+#problem button:hover { background: var(--bg-hover); }
 .tools { display: flex; gap: 2px; }
 
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
@@ -229,4 +259,4 @@ section:first-child > .group-head { padding-top: 16px; }
   background: none; color: var(--ink); font: inherit;
 }
 #new-title::placeholder { color: var(--muted); }
-#done-section .task { opacity: .75; }
+

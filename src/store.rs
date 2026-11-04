@@ -65,53 +65,98 @@ fn setting_file() -> PathBuf {
     data_dir().join("file")
 }
 
-/// Where the list lives.
-pub fn path() -> PathBuf {
+/// Where the list lives, and whether the user chose that folder (rather than the default).
+pub fn location() -> (PathBuf, bool) {
     if let Ok(p) = std::env::var("TINYTASKS_FILE") {
-        return PathBuf::from(p);
+        return (PathBuf::from(p), false);
     }
     match fs::read_to_string(setting_file()) {
-        Ok(s) if !s.trim().is_empty() => PathBuf::from(s.trim()),
-        _ => data_dir().join("tasks.md"),
+        Ok(s) if !s.trim().is_empty() => (PathBuf::from(s.trim()), true),
+        _ => (data_dir().join("tasks.md"), false),
     }
 }
 
-/// Point TinyTasks at another file. If that file has no tasks yet, the current list is
-/// copied into it, so picking an empty file in Google Drive just moves your list there.
-pub fn use_file(new: &Path) -> Result<(), String> {
+pub fn path() -> PathBuf {
+    location().0
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b || matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+fn open_count_in(text: &str) -> usize {
+    parse(text).open_count()
+}
+
+/// Keep the list in `tasks.md` in another folder (say, one Google Drive syncs). If that folder
+/// has no list yet, yours moves there (the old file stays put, as a backup). If it already has
+/// one, from another computer say, TinyTasks switches to it; lists are never merged.
+/// Returns a sentence saying which happened.
+pub fn use_folder(dir: &Path) -> Result<String, String> {
     let _lock = lock()?;
+    let new = dir.join("tasks.md");
     let old = path();
-    if old == new {
-        return Ok(());
+    if same_file(&old, &new) {
+        return Ok("Your tasks are already kept there.".into());
     }
-    let existing = read(new)?;
-    if parse(&existing).tasks().next().is_none() {
-        let current = read(&old)?;
-        if !current.trim().is_empty() {
-            let merged = if existing.trim().is_empty() {
-                current
-            } else {
-                format!("{}\n\n{}", existing.trim_end(), current)
-            };
-            write(new, &merged)?;
+    let existing = read(&new)?;
+    let msg = if parse(&existing).tasks().next().is_some() {
+        let theirs = open_count_in(&existing);
+        let ours = fs::read_to_string(&old).map(|t| open_count_in(&t)).unwrap_or(0);
+        let mut m = format!("Using the list already in that folder ({theirs} open).");
+        if ours > 0 {
+            m += &format!(" The {ours} open tasks you had stay in the old file.");
         }
-    }
-    fs::write(setting_file(), new.to_string_lossy().as_bytes()).map_err(|e| write_error(e, &setting_file()))
+        m
+    } else {
+        let current = fs::read_to_string(&old).unwrap_or_default();
+        let mut text = match (existing.trim().is_empty(), current.trim().is_empty()) {
+            (true, _) => current,
+            (false, true) => existing,
+            (false, false) => format!("{}\n\n{}", existing.trim_end(), current),
+        };
+        if text.trim().is_empty() {
+            // Create the file now, so a missing file later means something's wrong.
+            text = format!("{HEADER}\n");
+        }
+        write(&new, &text)?;
+        match parse(&text).tasks().count() {
+            0 => "Your tasks will be kept there.".to_string(),
+            n => format!("Moved your {n} tasks there. The old file stays where it was, as a backup."),
+        }
+    };
+    fs::write(setting_file(), new.to_string_lossy().as_bytes()).map_err(|e| write_error(e, &setting_file()))?;
+    Ok(msg)
 }
 
 // ---- reading and writing ----
 
+/// The list file's text. The default file may not exist yet (it's created on the first task),
+/// but one in a folder the user chose always does: if it's gone, the drive or sync app is
+/// probably offline, and starting a fresh file would fork the list.
+fn read_list(p: &Path, chosen: bool) -> Result<String, String> {
+    if chosen && !p.exists() {
+        return Err(format!(
+            "Can't find the task list at {}. If that folder is synced (Google Drive, Dropbox, ...), \
+             check that the sync app is running, or choose another folder in TinyTasks.",
+            p.display()
+        ));
+    }
+    read(p)
+}
+
 /// The list as it is now (no lock: writes replace the file in one step).
 pub fn load() -> Result<List, String> {
-    Ok(parse(&read(&path())?))
+    let (p, chosen) = location();
+    Ok(parse(&read_list(&p, chosen)?))
 }
 
 /// Read, change and write back the list, holding the lock so two writers can't interleave.
 /// Writes only if something changed (including ids and dates stamped onto hand-typed tasks).
 pub fn change<R>(f: impl FnOnce(&mut List) -> Result<R, String>) -> Result<R, String> {
     let _lock = lock()?;
-    let p = path();
-    let text = read(&p)?;
+    let (p, chosen) = location();
+    let text = read_list(&p, chosen)?;
     let mut list = parse(&text);
     let r = f(&mut list)?;
     let out = list.render();

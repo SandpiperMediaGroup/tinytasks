@@ -8,10 +8,10 @@ const store = {
   get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
-let showDone = store.get("showDone", "0") === "1";
 let groupBy = store.get("groupBy", "time");
 let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 first instead of P0
-let deskOnly = store.get("deskOnly", "0") === "1"; // only what's on my desk
+let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
+if (!["all", "desk", "done"].includes(view)) view = "all";
 let pinned = false;
 let tasks = [];
 let lastJson = "";
@@ -116,7 +116,7 @@ function row(t) {
   const deskBtn = li.querySelector(".set-desk");
   deskBtn.setAttribute("aria-pressed", t.mydesk);
   deskBtn.title = t.mydesk ? "Take off my desk" : "Put on my desk";
-  deskBtn.onclick = async () => update(await invoke("set_desk", { id: t.id, on: !t.mydesk }));
+  deskBtn.onclick = async () => act("set_desk", { id: t.id, on: !t.mydesk });
 
   const prioBtn = li.querySelector(".set-prio");
   if (t.priority != null) prioBtn.dataset.p = t.priority;
@@ -140,7 +140,7 @@ function row(t) {
       li.classList.add("checking");
       await new Promise((r) => setTimeout(r, 550));
     }
-    update(await invoke("set_done", { id: t.id, done: !done }));
+    act("set_done", { id: t.id, done: !done });
   };
 
   li.querySelector(".line").onclick = () => {
@@ -163,7 +163,7 @@ function row(t) {
   } else {
     link.remove();
   }
-  li.querySelector(".delete").onclick = async () => update(await invoke("delete_task", { id: t.id }));
+  li.querySelector(".delete").onclick = async () => act("delete_task", { id: t.id });
   return li;
 }
 
@@ -199,11 +199,17 @@ function groupsOf(open) {
   return groups;
 }
 
+const VIEWS = {
+  all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
+  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
+  done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
+};
+
 function render() {
-  const shown = (t) => !deskOnly || t.mydesk;
-  const open = tasks.filter((t) => t.done_at == null && shown(t));
-  const done = tasks.filter((t) => t.done_at != null && shown(t));
-  const groups = groupsOf(open);
+  const v = VIEWS[view];
+  const open = tasks.filter(v.show);
+  // Completed is one list, most recently finished first; the others use the group-by choice.
+  const groups = view === "done" ? [{ label: "", items: open }] : groupsOf(open);
   const headers = groupBy !== "time" || groups.length > 1;
 
   $("open").replaceChildren(
@@ -228,31 +234,51 @@ function render() {
       return sec;
     })
   );
-  $("done").replaceChildren(...done.map(row));
   $("count").textContent = open.length || "";
-  $("empty").hidden = open.length > 0 || !form.hidden;
-  $("empty").textContent = deskOnly ? "Nothing on your desk." : "All clear.";
-  $("heading").textContent = deskOnly ? "My desk" : "Tasks";
-  $("desk").setAttribute("aria-pressed", deskOnly);
-  $("desk").title = deskOnly ? "Show all tasks" : "My desk";
-  input.placeholder = deskOnly ? "Add to your desk" : "Add a task";
-  $("done-section").hidden = !showDone || done.length === 0;
-  $("toggle-done").setAttribute("aria-pressed", showDone);
-  $("toggle-done").title = showDone ? "Hide completed" : "Show completed";
+  $("problem").hidden = !problem;
+  $("problem").querySelector("p").textContent = problem;
+  $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
+  $("empty").textContent = v.empty;
+  $("heading").textContent = v.name;
+  input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
+  for (const b of viewMenu.querySelectorAll("[data-view]")) {
+    b.setAttribute("aria-checked", b.dataset.view === view);
+    b.querySelector(".n").textContent = tasks.filter(VIEWS[b.dataset.view].show).length || "";
+  }
   for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
   document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
   $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority", due: "due date" }[groupBy]}`;
 }
 
+// Set when the list can't be read (say, its synced folder is offline). Shown instead of the list.
+let problem = "";
+
 function update(list) {
   tasks = list;
   lastJson = JSON.stringify(list);
+  problem = "";
   render();
 }
 
 async function refresh() {
-  const list = await invoke("list");
-  if (JSON.stringify(list) !== lastJson) update(list);
+  try {
+    const list = await invoke("list");
+    if (problem || JSON.stringify(list) !== lastJson) update(list);
+  } catch (e) {
+    problem = String(e);
+    tasks = [];
+    lastJson = "";
+    render();
+  }
+}
+
+// Changes go through here so a failure (the file went missing mid-way) shows up too.
+async function act(cmd, args) {
+  try {
+    update(await invoke(cmd, args));
+  } catch {
+    refresh();
+  }
 }
 
 // ---- adding your own task ----
@@ -260,6 +286,7 @@ const form = $("new-task");
 const input = $("new-title");
 const closeNew = () => { input.value = ""; form.hidden = true; };
 $("add").onclick = () => {
+  if (view === "done") { view = "all"; store.set("view", view); render(); }
   form.hidden = false;
   $("empty").hidden = true;
   $("main").scrollTop = 0;
@@ -270,21 +297,58 @@ form.onsubmit = async (e) => {
   const title = input.value.trim();
   if (!title) return closeNew();
   input.value = ""; // stay open for the next one
-  update(await invoke("add_task", { title, mydesk: deskOnly }));
+  act("add_task", { title, mydesk: view === "desk" });
 };
 input.onkeydown = (e) => { if (e.key === "Escape") { closeNew(); render(); } };
 input.onblur = () => { if (input.value.trim()) form.requestSubmit(); closeNew(); render(); };
 
 // ---- header tools ----
-$("toggle-done").onclick = () => {
-  showDone = !showDone;
-  store.set("showDone", showDone ? "1" : "0");
-  render();
+// ---- the view menu (the header): what to show, and where the list lives ----
+const viewMenu = $("view-menu");
+const setViewMenu = (open) => {
+  viewMenu.hidden = !open;
+  $("view").setAttribute("aria-expanded", open);
 };
-$("desk").onclick = () => {
-  deskOnly = !deskOnly;
-  store.set("deskOnly", deskOnly ? "1" : "0");
+$("view").onclick = async (e) => {
+  e.stopPropagation();
+  setMenu(false);
+  if (!viewMenu.hidden) return setViewMenu(false);
+  const loc = await invoke("location");
+  $("where").textContent = loc.short;
+  $("where").title = loc.folder;
+  setViewMenu(true);
+};
+viewMenu.onclick = (e) => {
+  const b = e.target.closest("[data-view]");
+  if (!b) return;
+  view = b.dataset.view;
+  store.set("view", view);
+  setViewMenu(false);
   render();
+  $("main").scrollTop = 0;
+};
+let noticeTimer;
+function notice(text) {
+  $("notice").textContent = text;
+  $("notice").hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => ($("notice").hidden = true), 6000);
+}
+async function pickFolder() {
+  setViewMenu(false);
+  try {
+    const msg = await invoke("pick_folder");
+    if (msg) notice(msg);
+  } catch (e) {
+    notice(String(e));
+  }
+  refresh();
+}
+$("change-folder").onclick = pickFolder;
+document.querySelector("#problem .pick-folder").onclick = pickFolder;
+$("open-file").onclick = () => {
+  setViewMenu(false);
+  invoke("open_file").catch((e) => notice(String(e)));
 };
 $("pin").onclick = async () => {
   pinned = !pinned;
@@ -298,7 +362,7 @@ const setMenu = (open) => {
   menu.hidden = !open;
   $("group").setAttribute("aria-expanded", open);
 };
-$("group").onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
+$("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setMenu(menu.hidden); };
 menu.onclick = (e) => {
   const b = e.target.closest("[data-group]");
   if (!b) return;
@@ -338,7 +402,7 @@ prioMenu.onclick = async (e) => {
   if (!b || !prioTask) return;
   prioMenu.hidden = true;
   const priority = b.dataset.p === "" ? null : Number(b.dataset.p);
-  update(await invoke("set_priority", { id: prioTask.id, priority }));
+  act("set_priority", { id: prioTask.id, priority });
 };
 
 // ---- due date picker ----
@@ -393,16 +457,17 @@ dueMenu.onclick = async (e) => {
   const q = b.dataset.quick;
   const due = b.dataset.date || (q === "clear" ? null : daysFrom(Number(q)));
   dueMenu.hidden = true;
-  update(await invoke("set_due", { id: dueTask.id, due }));
+  act("set_due", { id: dueTask.id, due });
 };
 
 document.addEventListener("click", (e) => {
   if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
+  if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);
   if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
   if (!dueMenu.hidden && !dueMenu.contains(e.target)) dueMenu.hidden = true;
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setMenu(false); closeFloating(); }
+  if (e.key === "Escape") { setMenu(false); setViewMenu(false); closeFloating(); }
 });
 $("main").addEventListener("scroll", closeFloating);
 

@@ -8,7 +8,7 @@ check them off. The agent can see what you finished. That's it: no due dates, no
 
 You can add your own with **+** too, and agents see those as well. Tasks can have a priority
 (P0 to P3) and a due date, set by you or the agent. Ask an agent what to focus on and it puts a
-few things on your **desk** (the lamp icon), which shows just those.
+few things on your **desk**. Click the title to switch between Tasks, My desk and Completed.
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 
@@ -55,10 +55,12 @@ Then tell your agent to use it, e.g. in `CLAUDE.md` or `AGENTS.md`:
 
 ## Your list is a markdown file
 
-Tasks live in `~/.tinytasks/tasks.md`. Open it from the tray menu, edit it by hand, or pick
-**Use a different file…** to keep it somewhere else, like a Google Drive folder. Then agents that
-can read your Drive (but can't run the MCP server) can read and update it too. The file
-starts with a short comment explaining the format to them.
+Tasks live in `~/.tinytasks/tasks.md`. Click the title, then **Change folder…** under Task
+location to keep it somewhere else, like a Google Drive folder: your list moves there, or, if that
+folder already has one (from your other computer), TinyTasks uses it. Then agents that can read
+your Drive (but can't run the MCP server) can read and update it too. The file starts with a short
+comment explaining the format to them. If the folder goes missing (the sync app isn't running),
+TinyTasks says so rather than starting a new list.
 
 ```markdown
 ## Stripe billing setup

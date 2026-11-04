@@ -6,7 +6,7 @@ use crate::{launch, notify, trayicon};
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
@@ -33,7 +33,8 @@ pub fn run(background: bool) {
 
     builder
         .invoke_handler(tauri::generate_handler![
-            list, add_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, set_pinned
+            list, add_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, set_pinned,
+            location, pick_folder, open_file
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -43,10 +44,6 @@ pub fn run(background: bool) {
                 app,
                 &[
                     &MenuItem::with_id(app, "show", "Show TinyTasks", true, None::<&str>)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "open-file", "Open the task file", true, None::<&str>)?,
-                    &MenuItem::with_id(app, "pick-file", "Use a different file…", true, None::<&str>)?,
-                    &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "quit", "Quit TinyTasks", true, None::<&str>)?,
                 ],
             )?;
@@ -57,10 +54,6 @@ pub fn run(background: bool) {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "show" => show(app),
-                    "open-file" => {
-                        let _ = open::that_detached(store::path());
-                    }
-                    "pick-file" => pick_file(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -101,22 +94,6 @@ pub fn show(app: &AppHandle) {
         let _ = w.show();
         let _ = w.set_focus();
     }
-}
-
-/// Pick another markdown file (say, in a Google Drive folder). An empty one gets your list.
-fn pick_file(app: &AppHandle) {
-    let app = app.clone();
-    app.dialog()
-        .file()
-        .set_title("Keep your tasks in…")
-        .add_filter("Markdown", &["md", "markdown", "txt"])
-        .pick_file(move |picked| {
-            let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return };
-            if let Err(e) = store::use_file(&path) {
-                app.dialog().message(e).title("TinyTasks").show(|_| {});
-            }
-            // The watcher notices the new path on its next tick.
-        });
 }
 
 fn badge(count: usize) -> Image<'static> {
@@ -278,6 +255,53 @@ fn open_link(id: i64) -> Res<()> {
         return Err(format!("Won't open {scheme}: links"));
     }
     open::that_detached(link).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+struct Location {
+    /// The folder, in full.
+    folder: String,
+    /// The last couple of folder names, or "This computer" for the default.
+    short: String,
+}
+
+#[tauri::command]
+fn location() -> Location {
+    let (file, chosen) = store::location();
+    let folder = file.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let short = if chosen {
+        let names: Vec<String> = folder
+            .components()
+            .rev()
+            .take(2)
+            .map(|c| c.as_os_str().to_string_lossy().trim_end_matches(['\\', '/']).to_string())
+            .collect();
+        names.into_iter().rev().collect::<Vec<_>>().join(" › ")
+    } else {
+        "This computer".to_string()
+    };
+    Location { folder: folder.display().to_string(), short }
+}
+
+/// Asks for a folder and keeps the list there. `None` if the user cancelled.
+#[tauri::command]
+async fn pick_folder(app: AppHandle) -> Res<Option<String>> {
+    let start = store::path().parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let picked = app.dialog().file().set_title("Where should TinyTasks keep your list?").set_directory(start).blocking_pick_folder();
+    let Some(dir) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let msg = store::use_folder(&dir)?;
+    let _ = app.emit("tasks-changed", ());
+    Ok(Some(msg))
+}
+
+/// Opens tasks.md in the user's markdown editor.
+#[tauri::command]
+fn open_file() -> Res<()> {
+    let p = store::path();
+    if !p.exists() {
+        return Err("There's no file yet. It's created with your first task.".into());
+    }
+    open::that_detached(p).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

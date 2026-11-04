@@ -2,7 +2,7 @@
 name = "tinytasks"
 version = "0.1.0"
 edition = "2021"
-description = "A sticky-note task list your AI agents can write to (via MCP)."
+description = "A sticky-note task list your AI agents can write to (via MCP), kept in a markdown file."
 license = "MIT"
 repository = "https://github.com/SandpiperMediaGroup/tinytasks"
 
@@ -12,7 +12,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "custom-protocol"] }
 tauri-plugin-single-instance = "2"
-rusqlite = { version = "0.32", features = ["bundled"] }
+tauri-plugin-dialog = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"

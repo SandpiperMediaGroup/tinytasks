@@ -130,6 +130,16 @@ section:first-child > .group-head { padding-top: 16px; }
 .agent-badge { flex: none; display: inline-grid; width: 14px; height: 14px; color: var(--muted); }
 .agent-badge svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
 
+.due { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.due[hidden] { display: none; }
+.due svg {
+  width: 12px; height: 12px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.due[data-when="today"] { color: var(--p1); }
+.due[data-when="late"] { color: var(--danger); }
+.icon.set-due.on { color: var(--soft); }
+
 .time {
   flex: none; margin-top: 2px;
   color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
@@ -139,7 +149,7 @@ section:first-child > .group-head { padding-top: 16px; }
 @media (max-width: 300px) {
   .time { display: none; }
   .time-sub { display: inline; }
-  .src:not(:empty) + .time-sub::before { content: "–"; margin-right: 6px; }
+  .src:not(:empty) ~ .time-sub::before, .due:not([hidden]) ~ .time-sub::before { content: "–"; margin-right: 6px; }
 }
 
 .prio {
@@ -156,6 +166,24 @@ section:first-child > .group-head { padding-top: 16px; }
 .menu.floating { position: fixed; top: 0; right: 8px; min-width: 170px; }
 #prio-menu button { gap: 8px; }
 #prio-menu .prio { min-width: 26px; text-align: center; }
+
+/* Due date picker */
+#due-menu { min-width: 0; width: 236px; padding: 8px; }
+#due-menu button::after { display: none; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.menu .cal-head .icon { width: 28px; height: 28px; padding: 0; justify-content: center; }
+#cal-title { font-size: 13px; font-weight: 600; }
+#cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+#cal-grid .dow { font-size: 11px; color: var(--muted); text-align: center; padding: 2px 0 4px; }
+.menu #cal-grid button {
+  justify-content: center; height: 28px; padding: 0; border-radius: 7px;
+  font-size: 12.5px; font-variant-numeric: tabular-nums;
+}
+#cal-grid button.past { color: var(--muted); }
+#cal-grid button.today { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.menu #cal-grid button[aria-checked="true"] { background: var(--accent); color: #2a2620; font-weight: 650; }
+.cal-quick { display: flex; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.menu .cal-quick button { justify-content: center; padding: 5px 0; font-size: 12px; color: var(--soft); }
 
 .task.done .title, .task.checking .title { text-decoration: line-through; color: var(--muted); }
 .task.checking { transition: opacity .3s .25s; opacity: 0; }
@@ -178,8 +206,10 @@ section:first-child > .group-head { padding-top: 16px; }
   user-select: text; -webkit-user-select: text;
 }
 .body:empty { display: none; }
-.meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
-.actions { display: flex; gap: 2px; }
+/* The stamp gets the full width; the icons drop to their own line when both don't fit. */
+.meta { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; color: var(--muted); font-size: 12px; }
+.stamp { flex: 1 0 auto; max-width: 100%; }
+.actions { display: flex; gap: 2px; margin-left: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   .details, .details-inner, .task.checking { transition: none; }

@@ -5,7 +5,7 @@
 //! "TinyTasks" in the Start menu on launch, which also makes it searchable and pinnable.
 //! Clicking a toast opens the window. Elsewhere we use the notification plugin.
 
-use crate::db::Task;
+use crate::store::Task;
 use tauri::AppHandle;
 
 #[cfg(windows)]
@@ -74,7 +74,7 @@ fn start_menu_shortcut() -> windows::core::Result<bool> {
     let exe = std::env::current_exe().map_err(|e| windows::core::Error::new(windows::core::HRESULT(-1), e.to_string()))?;
     let Some(programs) = dirs::data_dir().map(|d| d.join(r"Microsoft\Windows\Start Menu\Programs")) else { return Ok(false) };
     let lnk = programs.join("TinyTasks.lnk");
-    let stamp_file = crate::db::data_dir().join("shortcut");
+    let stamp_file = crate::store::data_dir().join("shortcut");
     let stamp = format!("{}\n{AUMID}", exe.display());
     if lnk.exists() && std::fs::read_to_string(&stamp_file).is_ok_and(|s| s == stamp) {
         return Ok(false);
@@ -107,7 +107,7 @@ fn start_menu_shortcut() -> windows::core::Result<bool> {
 #[cfg(windows)]
 fn register_aumid() -> std::io::Result<()> {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-    let icon = crate::db::data_dir().join("icon.png");
+    let icon = crate::store::data_dir().join("icon.png");
     std::fs::write(&icon, include_bytes!("../icons/128x128@2x.png"))?;
     let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
         .create_subkey(format!(r"Software\Classes\AppUserModelId\{AUMID}"))?;

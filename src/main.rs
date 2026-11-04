@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-mod db;
+mod store;
 mod launch;
 mod mcp;
 mod notify;

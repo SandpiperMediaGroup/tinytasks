@@ -6,29 +6,29 @@
 //! launch and terminate it when they close. explorer.exe can't pass arguments, so "start
 //! quietly in the tray" is passed along as a marker file instead of `--background`.
 
-use crate::db;
+use crate::store;
 use std::path::PathBuf;
 
 const FRESH_SECS: i64 = 20;
 
 fn alive_file() -> PathBuf {
-    db::data_dir().join("app.alive")
+    store::data_dir().join("app.alive")
 }
 
 fn quiet_file() -> PathBuf {
-    db::data_dir().join("launch-quietly")
+    store::data_dir().join("launch-quietly")
 }
 
 fn fresh(path: PathBuf) -> bool {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|s| s.trim().parse::<i64>().ok())
-        .is_some_and(|t| (db::now() - t).abs() < FRESH_SECS)
+        .is_some_and(|t| (store::now() - t).abs() < FRESH_SECS)
 }
 
 /// Called by the app's watcher thread.
 pub fn heartbeat() {
-    let _ = std::fs::write(alive_file(), db::now().to_string());
+    let _ = std::fs::write(alive_file(), store::now().to_string());
 }
 
 pub fn stopped() {
@@ -75,7 +75,7 @@ pub fn ensure_app_running() {
             unsafe { SetHandleInformation(GetStdHandle(which as u32), 1, 0) };
         }
 
-        let _ = std::fs::write(quiet_file(), db::now().to_string());
+        let _ = std::fs::write(quiet_file(), store::now().to_string());
         let windir = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
         let mut via_shell = std::process::Command::new(format!(r"{windir}\explorer.exe"));
         via_shell.arg(&exe).creation_flags(DETACHED_PROCESS);

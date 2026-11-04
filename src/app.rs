@@ -1,25 +1,19 @@
-//! The desktop window + tray icon. Watches the database for tasks added by agents,
-//! pops a notification, and keeps the tray badge current.
+//! The desktop window + tray icon. Watches the task file for changes (from agents, or from
+//! another computer through a synced folder), pops a notification, keeps the tray badge current.
 
-use crate::{db, launch, notify, trayicon};
-use rusqlite::Connection;
-use std::sync::Mutex;
-use std::time::Duration;
+use crate::store::{self, Task};
+use crate::{launch, notify, trayicon};
+use std::collections::HashSet;
+use std::time::{Duration, SystemTime};
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
-
-struct Db(Mutex<Connection>);
+use tauri_plugin_dialog::DialogExt;
 
 type Res<T> = Result<T, String>;
 
-fn err(e: impl std::fmt::Display) -> String {
-    e.to_string()
-}
-
 pub fn run(background: bool) {
-    let conn = db::open().expect("could not open the TinyTasks database");
     notify::init_process();
 
     let builder = tauri::Builder::default()
@@ -32,20 +26,30 @@ pub fn run(background: bool) {
             } else if !args.iter().any(|a| a == "--background") {
                 show(app);
             }
-        }));
+        }))
+        .plugin(tauri_plugin_dialog::init());
     #[cfg(not(windows))]
     let builder = builder.plugin(tauri_plugin_notification::init());
 
     builder
-        .manage(Db(Mutex::new(conn)))
-        .invoke_handler(tauri::generate_handler![list, add_task, set_done, set_priority, delete_task, open_link, set_pinned])
+        .invoke_handler(tauri::generate_handler![
+            list, add_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, set_pinned
+        ])
         .setup(move |app| {
             launch::clear_quiet_request();
             launch::heartbeat();
             let identity_just_registered = notify::init(app.handle());
-            let show_item = MenuItem::with_id(app, "show", "Show TinyTasks", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit TinyTasks", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &MenuItem::with_id(app, "show", "Show TinyTasks", true, None::<&str>)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "open-file", "Open the task file", true, None::<&str>)?,
+                    &MenuItem::with_id(app, "pick-file", "Use a different file…", true, None::<&str>)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "quit", "Quit TinyTasks", true, None::<&str>)?,
+                ],
+            )?;
             TrayIconBuilder::with_id("main")
                 .icon(badge(0))
                 .tooltip("TinyTasks")
@@ -53,6 +57,10 @@ pub fn run(background: bool) {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "show" => show(app),
+                    "open-file" => {
+                        let _ = open::that_detached(store::path());
+                    }
+                    "pick-file" => pick_file(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -95,14 +103,30 @@ pub fn show(app: &AppHandle) {
     }
 }
 
-fn badge(count: i64) -> Image<'static> {
-    let (rgba, w, h) = trayicon::render(count);
+/// Pick another markdown file (say, in a Google Drive folder). An empty one gets your list.
+fn pick_file(app: &AppHandle) {
+    let app = app.clone();
+    app.dialog()
+        .file()
+        .set_title("Keep your tasks in…")
+        .add_filter("Markdown", &["md", "markdown", "txt"])
+        .pick_file(move |picked| {
+            let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return };
+            if let Err(e) = store::use_file(&path) {
+                app.dialog().message(e).title("TinyTasks").show(|_| {});
+            }
+            // The watcher notices the new path on its next tick.
+        });
+}
+
+fn badge(count: usize) -> Image<'static> {
+    let (rgba, w, h) = trayicon::render(count as i64);
     Image::new_owned(rgba, w, h)
 }
 
 /// Refresh the tray icon, tooltip and window title with the open count.
-fn update_badge(app: &AppHandle, conn: &Connection) {
-    let n = db::open_count(conn).unwrap_or(0);
+fn update_badge(app: &AppHandle, list: &store::List) {
+    let n = list.open_count();
     if let Some(tray) = app.tray_by_id("main") {
         let _ = tray.set_icon(Some(badge(n)));
         let tip = match n {
@@ -117,83 +141,125 @@ fn update_badge(app: &AppHandle, conn: &Connection) {
     }
 }
 
-/// Background thread: notices writes from agents (via the MCP server) and reacts.
-/// Uses the window's connection: PRAGMA data_version only moves for *other* connections'
-/// commits, so the window's own changes (already handled by the commands) don't echo here.
+/// Background thread: polls the file's size and modified time (cheap, and works for synced
+/// and network drives where change notifications don't), and reacts when they move.
 fn watch(app: AppHandle, identity_just_registered: bool) {
     std::thread::spawn(move || {
         if identity_just_registered {
             std::thread::sleep(Duration::from_secs(4)); // let Windows index the new shortcut
         }
-        let mut last = -1;
+        let mut last: Option<(std::path::PathBuf, Option<(Option<SystemTime>, u64)>)> = None;
         let mut ticks = 0u32;
         loop {
             ticks += 1;
             if ticks % 7 == 0 {
                 launch::heartbeat(); // ~every 5s; lets agents know we're running
             }
-            let state = app.state::<Db>();
-            if let Ok(conn) = state.0.lock() {
-                let v = db::data_version(&conn).unwrap_or(0);
-                if v != last {
-                    last = v;
-                    if let Ok(new) = db::take_unnotified(&conn) {
-                        notify::new_tasks(&app, &new);
-                    }
-                    update_badge(&app, &conn);
-                    let _ = app.emit("tasks-changed", ());
+            let path = store::path();
+            let stamp = std::fs::metadata(&path).ok().map(|m| (m.modified().ok(), m.len()));
+            let now = Some((path, stamp));
+            if now != last {
+                last = now;
+                // Give tasks typed straight into the file their ids and dates (writes only if needed).
+                let _ = store::change(|_| Ok(()));
+                if let Ok(list) = store::load() {
+                    notify::new_tasks(&app, &unseen(&list));
+                    update_badge(&app, &list);
                 }
+                let _ = app.emit("tasks-changed", ());
             }
             std::thread::sleep(Duration::from_millis(700));
         }
     });
 }
 
+/// Agents' tasks this computer hasn't announced yet. Remembered per computer (in
+/// `~/.tinytasks/notified`), so with a synced file each machine notifies once.
+fn unseen(list: &store::List) -> Vec<Task> {
+    let state = store::data_dir().join("notified");
+    let file = store::path().to_string_lossy().into_owned();
+    let key = |t: &Task| format!("{}:{}", t.id, t.created_at);
+    let saved = std::fs::read_to_string(&state).unwrap_or_default();
+    let mut lines = saved.lines();
+    let from_agents: Vec<&Task> = list.tasks().filter(|t| !t.agent.is_empty()).collect();
+    let seen: HashSet<String> = if lines.next() == Some(file.as_str()) {
+        lines.map(String::from).collect()
+    } else {
+        // A new file: don't announce its whole history, only what just arrived.
+        let recent = store::now() - 120;
+        from_agents.iter().filter(|t| t.created_at < recent).map(|t| key(t)).collect()
+    };
+    let new: Vec<Task> =
+        from_agents.iter().filter(|t| t.done_at.is_none() && !seen.contains(&key(t))).map(|t| (*t).clone()).collect();
+    let all: Vec<String> = from_agents.iter().map(|t| key(t)).collect();
+    let out = std::iter::once(file).chain(all).collect::<Vec<_>>().join("\n");
+    if out != saved {
+        let _ = std::fs::write(&state, out);
+    }
+    new
+}
+
 // ---- commands the window calls ----
 
-#[tauri::command]
-fn list(db: tauri::State<Db>) -> Res<Vec<db::Task>> {
-    let conn = db.0.lock().map_err(err)?;
-    db::for_ui(&conn).map_err(err)
+/// Reloads after a change so the window, badge and file agree.
+fn reply(app: &AppHandle) -> Res<Vec<Task>> {
+    let list = store::load()?;
+    update_badge(app, &list);
+    Ok(store::for_ui(&list))
 }
 
-/// The user typing in their own task: no agent, no chat, no notification.
 #[tauri::command]
-fn add_task(app: AppHandle, db: tauri::State<Db>, title: String) -> Res<Vec<db::Task>> {
+fn list() -> Res<Vec<Task>> {
+    Ok(store::for_ui(&store::load()?))
+}
+
+/// The user typing in their own task: no agent, no chat (so no notification).
+#[tauri::command]
+fn add_task(app: AppHandle, title: String, mydesk: bool) -> Res<Vec<Task>> {
     let title = title.trim();
-    let conn = db.0.lock().map_err(err)?;
     if !title.is_empty() {
-        let t = db::NewTask { title, details: "", agent: "", chat: "", link: "", priority: None, notify: false };
-        db::add(&conn, t).map_err(err)?;
-        update_badge(&app, &conn);
+        store::change(|l| {
+            let t = store::NewTask { title, details: "", agent: "", chat: "", link: "", priority: None, due: None, mydesk };
+            Ok(l.add(t))
+        })?;
     }
-    db::for_ui(&conn).map_err(err)
+    reply(&app)
 }
 
 #[tauri::command]
-fn set_done(app: AppHandle, db: tauri::State<Db>, id: i64, done: bool) -> Res<Vec<db::Task>> {
-    let conn = db.0.lock().map_err(err)?;
-    db::set_done(&conn, id, done).map_err(err)?;
-    update_badge(&app, &conn);
-    db::for_ui(&conn).map_err(err)
+fn set_done(app: AppHandle, id: i64, done: bool) -> Res<Vec<Task>> {
+    store::change(|l| Ok(l.set_done(id, done)))?;
+    reply(&app)
 }
 
 #[tauri::command]
-fn set_priority(db: tauri::State<Db>, id: i64, priority: Option<i64>) -> Res<Vec<db::Task>> {
-    if priority.is_some_and(|p| !db::valid_priority(p)) {
+fn set_priority(app: AppHandle, id: i64, priority: Option<i64>) -> Res<Vec<Task>> {
+    if priority.is_some_and(|p| !store::valid_priority(p)) {
         return Err("priority must be 0-3".into());
     }
-    let conn = db.0.lock().map_err(err)?;
-    db::update(&conn, id, db::Changes { priority: Some(priority), ..Default::default() }).map_err(err)?;
-    db::for_ui(&conn).map_err(err)
+    store::change(|l| Ok(l.update(id, store::Changes { priority: Some(priority), ..Default::default() })))?;
+    reply(&app)
 }
 
 #[tauri::command]
-fn delete_task(app: AppHandle, db: tauri::State<Db>, id: i64) -> Res<Vec<db::Task>> {
-    let conn = db.0.lock().map_err(err)?;
-    db::delete(&conn, id).map_err(err)?;
-    update_badge(&app, &conn);
-    db::for_ui(&conn).map_err(err)
+fn set_due(app: AppHandle, id: i64, due: Option<String>) -> Res<Vec<Task>> {
+    if due.as_deref().is_some_and(|d| !store::valid_due(d)) {
+        return Err("due must be YYYY-MM-DD".into());
+    }
+    store::change(|l| Ok(l.update(id, store::Changes { due: Some(due.as_deref()), ..Default::default() })))?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn set_desk(app: AppHandle, id: i64, on: bool) -> Res<Vec<Task>> {
+    store::change(|l| Ok(l.update(id, store::Changes { mydesk: Some(on), ..Default::default() })))?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn delete_task(app: AppHandle, id: i64) -> Res<Vec<Task>> {
+    store::change(|l| Ok(l.delete(id)))?;
+    reply(&app)
 }
 
 /// Links come from agents, which may have read untrusted content, so only web links and
@@ -204,17 +270,17 @@ const LINK_SCHEMES: &[&str] = &[
 ];
 
 #[tauri::command]
-fn open_link(db: tauri::State<Db>, id: i64) -> Res<()> {
-    let task = db::get(&*db.0.lock().map_err(err)?, id).map_err(err)?;
+fn open_link(id: i64) -> Res<()> {
+    let task = store::load()?.get(id).ok_or("That task is gone.")?;
     let link = task.link.trim();
     let scheme = link.split_once(':').map(|(s, _)| s.to_ascii_lowercase()).unwrap_or_default();
     if !LINK_SCHEMES.contains(&scheme.as_str()) {
         return Err(format!("Won't open {scheme}: links"));
     }
-    open::that_detached(link).map_err(err)
+    open::that_detached(link).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn set_pinned(window: tauri::WebviewWindow, pinned: bool) -> Res<()> {
-    window.set_always_on_top(pinned).map_err(err)
+    window.set_always_on_top(pinned).map_err(|e| e.to_string())
 }

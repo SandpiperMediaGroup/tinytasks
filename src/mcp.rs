@@ -1,19 +1,12 @@
 //! `tinytasks mcp` — a tiny stdio MCP server agents use to put tasks on the user's list
-//! and to see which ones the user has checked off. Writes go straight into the shared
-//! SQLite file; the desktop app watches it and notifies the user.
+//! and to see which ones the user has checked off. Writes go straight into the markdown
+//! file; the desktop app watches it and notifies the user.
 
-use crate::db;
+use crate::store;
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 
 pub fn run() {
-    let conn = match db::open() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("tinytasks: cannot open database {}: {e}", db::path().display());
-            std::process::exit(1);
-        }
-    };
     let mut client = String::from("agent");
     let stdin = std::io::stdin();
     let mut out = std::io::stdout().lock();
@@ -45,12 +38,13 @@ pub fn run() {
                     "serverInfo": { "name": "tinytasks", "version": env!("CARGO_PKG_VERSION") },
                     "instructions": "TinyTasks is the user's desktop to-do list for things THEY must do. \
                         Whenever you ask the user to do something you cannot do yourself, add it with add_tasks. \
-                        Use list_tasks to see what they have checked off before relying on it."
+                        Use list_tasks to see what they have checked off before relying on it. \
+                        When the user asks what to focus on, pick a few open tasks and put them on their desk with set_desk."
                 }))
             }
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
-            "tools/call" => Ok(call(&conn, &client, params)),
+            "tools/call" => Ok(call(&client, params)),
             _ => Err(json!({"code": -32601, "message": format!("method not found: {method}")})),
         };
         let resp = match result {
@@ -86,7 +80,9 @@ fn tools() -> Value {
                                 "title": { "type": "string", "description": "Short imperative action, under ~80 chars." },
                                 "details": { "type": "string", "description": "Optional context: why, exact steps, commands, values. Shown when the user opens the task." },
                                 "link": { "type": "string", "description": "Optional URL back to where this came up (conversation, thread, PR, ticket). Overrides the top-level link." },
-                                "priority": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Optional urgency: 0 = drop everything, 1 = today, 2 = soon, 3 = whenever. Leave out if unsure." }
+                                "priority": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Optional urgency: 0 = drop everything, 1 = today, 2 = soon, 3 = whenever. Leave out if unsure." },
+                                "due": { "type": "string", "description": "Optional due date, YYYY-MM-DD. Only when there's a real deadline." },
+                                "mydesk": { "type": "boolean", "description": "Optional. Put it straight on the user's desk (what they focus on now)." }
                             },
                             "required": ["title"]
                         }
@@ -101,22 +97,24 @@ fn tools() -> Value {
         {
             "name": "list_tasks",
             "description": "List tasks on the user's TinyTasks list and whether they've checked them off \
-                (finished tasks from the last two weeks). Call this when resuming work or before relying on \
-                the user having done something. Tasks with an empty `agent` are ones the user added themselves.",
+                (finished tasks from the last two weeks), most urgent first. Call this when resuming work or before \
+                relying on the user having done something. Tasks with an empty `agent` are ones the user added \
+                themselves; `mydesk` means it's on their desk (what they're focusing on now).",
             "annotations": { "readOnlyHint": true },
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "status": { "type": "string", "enum": ["open", "done", "all"], "description": "Default: all." },
-                    "chat": { "type": "string", "description": "Only tasks whose chat name contains this text (case-insensitive)." }
+                    "chat": { "type": "string", "description": "Only tasks whose chat name contains this text (case-insensitive)." },
+                    "desk": { "type": "boolean", "description": "Only tasks on the user's desk." }
                 }
             }
         },
         {
             "name": "update_task",
             "description": "Edit a task on the user's list (any task, including ones the user added): \
-                reword the title, add details or a link, set the chat, or set the priority. Only the fields \
-                you pass change.",
+                reword the title, add details or a link, set the chat, priority or due date, or put it on or take \
+                it off the user's desk. Only the fields you pass change.",
             "annotations": { "idempotentHint": true },
             "inputSchema": {
                 "type": "object",
@@ -126,9 +124,23 @@ fn tools() -> Value {
                     "details": { "type": "string" },
                     "link": { "type": "string" },
                     "chat": { "type": "string" },
-                    "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0 = most urgent ... 3 = whenever; null clears it." }
+                    "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0 = most urgent ... 3 = whenever; null clears it." },
+                    "due": { "type": ["string", "null"], "description": "YYYY-MM-DD; null clears it." },
+                    "mydesk": { "type": "boolean", "description": "On the user's desk or not." }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "set_desk",
+            "description": "Decide what's on the user's desk: the few open tasks they should focus on now. \
+                Replaces whatever was there. Use it when the user asks what to focus on or what's next; \
+                usually 1-5 tasks. An empty list clears the desk.",
+            "annotations": { "idempotentHint": true },
+            "inputSchema": {
+                "type": "object",
+                "properties": { "ids": { "type": "array", "items": { "type": "integer" } } },
+                "required": ["ids"]
             }
         },
         {
@@ -158,51 +170,36 @@ fn text(s: impl Into<String>, is_error: bool) -> Value {
     json!({ "content": [{ "type": "text", "text": s.into() }], "isError": is_error })
 }
 
-fn call(conn: &rusqlite::Connection, client: &str, params: &Value) -> Value {
+fn call(client: &str, params: &Value) -> Value {
     let args = &params["arguments"];
-    let name = params["name"].as_str().unwrap_or("");
-    // SQLite quietly opens the file read-only when this process may not write it, which
-    // happens when an agent runs `tinytasks mcp` from inside its own shell sandbox.
-    if name != "list_tasks" && conn.is_readonly(rusqlite::DatabaseName::Main).unwrap_or(false) {
-        return text(
-            format!(
-                "TinyTasks can read but not save here: this process isn't allowed to write {}. \
-                 That usually means it was started from a sandboxed shell instead of as an MCP server. \
-                 Use the tinytasks MCP tools (if this chat started before TinyTasks was set up, the user \
-                 needs to start a new chat), or ask the user to add the task themselves.",
-                db::path().display()
-            ),
-            true,
-        );
-    }
-    let res: Result<String, String> = match name {
-        "add_tasks" => add_tasks(conn, client, args),
-        "list_tasks" => {
+    let res: Result<String, String> = match params["name"].as_str().unwrap_or("") {
+        "add_tasks" => add_tasks(client, args),
+        "list_tasks" => store::load().map(|list| {
             let status = args["status"].as_str().unwrap_or("all");
-            db::list(conn, status, args["chat"].as_str())
-                .map_err(|e| e.to_string())
-                .map(|tasks| {
-                    let items: Vec<Value> = tasks
-                        .iter()
-                        .map(|t| {
-                            json!({
-                                "id": t.id,
-                                "title": t.title,
-                                "status": if t.done_at.is_some() { "done" } else { "open" },
-                                "priority": t.priority,
-                                "chat": t.chat,
-                                "agent": t.agent,
-                                "details": t.details,
-                                "link": t.link,
-                            })
-                        })
-                        .collect();
-                    serde_json::to_string_pretty(&items).unwrap_or_default()
+            let desk = args["desk"].as_bool().unwrap_or(false);
+            let items: Vec<Value> = store::for_agents(&list, status, args["chat"].as_str(), desk)
+                .iter()
+                .map(|t| {
+                    json!({
+                        "id": t.id,
+                        "title": t.title,
+                        "status": if t.done_at.is_some() { "done" } else { "open" },
+                        "priority": t.priority,
+                        "due": t.due,
+                        "mydesk": t.mydesk,
+                        "chat": t.chat,
+                        "agent": t.agent,
+                        "details": t.details,
+                        "link": t.link,
+                    })
                 })
-        }
-        "update_task" => update_task(conn, args),
-        "complete_tasks" => for_ids(args, |id| db::set_done(conn, id, true), "Checked off"),
-        "remove_tasks" => for_ids(args, |id| db::delete(conn, id), "Removed"),
+                .collect();
+            serde_json::to_string_pretty(&items).unwrap_or_default()
+        }),
+        "update_task" => update_task(args),
+        "set_desk" => set_desk(args),
+        "complete_tasks" => for_ids(args, |l, id| l.set_done(id, true), "Checked off"),
+        "remove_tasks" => for_ids(args, |l, id| l.delete(id), "Removed"),
         other => Err(format!("unknown tool: {other}")),
     };
     match res {
@@ -211,7 +208,7 @@ fn call(conn: &rusqlite::Connection, client: &str, params: &Value) -> Value {
     }
 }
 
-fn add_tasks(conn: &rusqlite::Connection, client: &str, args: &Value) -> Result<String, String> {
+fn add_tasks(client: &str, args: &Value) -> Result<String, String> {
     let tasks = args["tasks"].as_array().filter(|a| !a.is_empty()).ok_or("`tasks` must be a non-empty array")?;
     let agent = args["agent"].as_str().map(str::trim).filter(|s| !s.is_empty()).unwrap_or(client);
     let chat = args["chat"].as_str().map(str::trim).unwrap_or("");
@@ -223,18 +220,26 @@ fn add_tasks(conn: &rusqlite::Connection, client: &str, args: &Value) -> Result<
         let title = t["title"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or("every task needs a `title`")?;
         let priority = match &t["priority"] {
             Value::Null => None,
-            v => Some(v.as_i64().filter(|p| db::valid_priority(*p)).ok_or("`priority` must be 0, 1, 2 or 3")?),
+            v => Some(v.as_i64().filter(|p| store::valid_priority(*p)).ok_or("`priority` must be 0, 1, 2 or 3")?),
+        };
+        let due = match &t["due"] {
+            Value::Null => None,
+            v => Some(v.as_str().filter(|d| store::valid_due(d)).ok_or("`due` must be a date like 2026-11-06")?),
         };
         let link = t["link"].as_str().unwrap_or(default_link);
         let details = t["details"].as_str().unwrap_or("");
-        batch.push(db::NewTask { title, details, agent, chat, link, priority, notify: true });
+        let mydesk = t["mydesk"].as_bool().unwrap_or(false);
+        batch.push(store::NewTask { title, details, agent, chat, link, priority, due, mydesk });
     }
-    let mut added = Vec::new();
-    for new in batch {
-        let title = new.title;
-        let id = db::add(conn, new).map_err(|e| e.to_string())?;
-        added.push(format!("#{id} {title}"));
-    }
+    let added = store::change(|list| {
+        Ok(batch
+            .into_iter()
+            .map(|new| {
+                let title = new.title;
+                format!("#{} {title}", list.add(new))
+            })
+            .collect::<Vec<_>>())
+    })?;
     crate::launch::ensure_app_running();
     Ok(format!(
         "Added {} task(s) to the user's list:\n{}\nUse list_tasks later to see which ones they've checked off.",
@@ -243,7 +248,7 @@ fn add_tasks(conn: &rusqlite::Connection, client: &str, args: &Value) -> Result<
     ))
 }
 
-fn update_task(conn: &rusqlite::Connection, args: &Value) -> Result<String, String> {
+fn update_task(args: &Value) -> Result<String, String> {
     let id = id_of(&args["id"]).ok_or("`id` must be a task id")?;
     let field = |k: &str| args[k].as_str().map(str::trim);
     if field("title") == Some("") {
@@ -252,20 +257,40 @@ fn update_task(conn: &rusqlite::Connection, args: &Value) -> Result<String, Stri
     let priority = match args.get("priority") {
         None => None,
         Some(Value::Null) => Some(None),
-        Some(v) => Some(Some(v.as_i64().filter(|p| db::valid_priority(*p)).ok_or("`priority` must be 0-3 or null")?)),
+        Some(v) => Some(Some(v.as_i64().filter(|p| store::valid_priority(*p)).ok_or("`priority` must be 0-3 or null")?)),
     };
-    let changes = db::Changes {
+    let due = match args.get("due") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(v) => Some(Some(v.as_str().filter(|d| store::valid_due(d)).ok_or("`due` must be a date like 2026-11-06, or null")?)),
+    };
+    let changes = store::Changes {
         title: field("title"),
         details: field("details"),
         link: field("link"),
         chat: field("chat"),
         priority,
+        due,
+        mydesk: args["mydesk"].as_bool(),
     };
-    match db::update(conn, id, changes) {
-        Ok(0) => Err(format!("No task #{id}.")),
-        Ok(_) => Ok(format!("Updated #{id}.")),
-        Err(e) => Err(e.to_string()),
+    if store::change(|list| Ok(list.update(id, changes)))? {
+        Ok(format!("Updated #{id}."))
+    } else {
+        Err(format!("No task #{id}."))
     }
+}
+
+fn set_desk(args: &Value) -> Result<String, String> {
+    let ids: Vec<i64> = args["ids"].as_array().ok_or("`ids` must be an array")?.iter().filter_map(id_of).collect();
+    let on_desk = store::change(|list| {
+        let open: Vec<i64> = ids.iter().copied().filter(|id| list.get(*id).is_some_and(|t| t.done_at.is_none())).collect();
+        list.set_desk(&open);
+        Ok(open)
+    })?;
+    Ok(match on_desk.len() {
+        0 => "The desk is clear.".into(),
+        _ => format!("On the desk: {}", on_desk.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(", ")),
+    })
 }
 
 /// Accepts 12, "12" and "#12" (add_tasks reports ids as "#12").
@@ -273,13 +298,8 @@ fn id_of(v: &Value) -> Option<i64> {
     v.as_i64().or_else(|| v.as_str()?.trim().trim_start_matches('#').parse().ok())
 }
 
-fn for_ids(args: &Value, f: impl Fn(i64) -> rusqlite::Result<usize>, verb: &str) -> Result<String, String> {
+fn for_ids(args: &Value, f: impl Fn(&mut store::List, i64) -> bool, verb: &str) -> Result<String, String> {
     let ids: Vec<i64> = args["ids"].as_array().ok_or("`ids` must be an array")?.iter().filter_map(id_of).collect();
-    let mut hit = Vec::new();
-    for id in ids {
-        if f(id).map_err(|e| e.to_string())? > 0 {
-            hit.push(format!("#{id}"));
-        }
-    }
+    let hit = store::change(|list| Ok(ids.iter().filter(|id| f(list, **id)).map(|id| format!("#{id}")).collect::<Vec<_>>()))?;
     Ok(if hit.is_empty() { "No matching tasks.".into() } else { format!("{verb}: {}", hit.join(", ")) })
 }

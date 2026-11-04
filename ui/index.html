@@ -22,6 +22,7 @@
           <button role="menuitemradio" data-group="time">Time added</button>
           <button role="menuitemradio" data-group="chat">Chat</button>
           <button role="menuitemradio" data-group="agent">Agent</button>
+          <button role="menuitemradio" data-group="priority">Priority</button>
         </div>
       </div>
       <button id="pin" class="icon" title="Keep on top" aria-pressed="false">
@@ -46,6 +47,15 @@
     </section>
   </main>
 
+  <div id="prio-menu" class="menu floating" role="menu" hidden>
+    <div class="menu-label">Priority</div>
+    <button role="menuitemradio" data-p="0"><span class="prio" data-p="0">P0</span>Drop everything</button>
+    <button role="menuitemradio" data-p="1"><span class="prio" data-p="1">P1</span>Today</button>
+    <button role="menuitemradio" data-p="2"><span class="prio" data-p="2">P2</span>Soon</button>
+    <button role="menuitemradio" data-p="3"><span class="prio" data-p="3">P3</span>Whenever</button>
+    <button role="menuitemradio" data-p="">None</button>
+  </div>
+
   <template id="row">
     <li class="task">
       <div class="line">
@@ -54,6 +64,7 @@
           <div class="title"></div>
           <div class="sub"><span class="src"></span><span class="time-sub"></span></div>
         </div>
+        <span class="prio" hidden></span>
         <span class="time"></span>
       </div>
       <div class="details">
@@ -63,6 +74,9 @@
             <div class="meta">
               <span class="stamp"></span>
               <span class="actions">
+                <button class="icon set-prio" title="Priority" aria-haspopup="menu">
+                  <svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>
+                </button>
                 <button class="icon open-link" title="Back to the conversation">
                   <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
                 </button>

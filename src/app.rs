@@ -38,7 +38,7 @@ pub fn run(background: bool) {
 
     builder
         .manage(Db(Mutex::new(conn)))
-        .invoke_handler(tauri::generate_handler![list, add_task, set_done, delete_task, open_link, set_pinned])
+        .invoke_handler(tauri::generate_handler![list, add_task, set_done, set_priority, delete_task, open_link, set_pinned])
         .setup(move |app| {
             launch::clear_quiet_request();
             launch::heartbeat();
@@ -163,7 +163,7 @@ fn add_task(app: AppHandle, db: tauri::State<Db>, title: String) -> Res<Vec<db::
     let title = title.trim();
     let conn = db.0.lock().map_err(err)?;
     if !title.is_empty() {
-        let t = db::NewTask { title, details: "", agent: "", chat: "", link: "", notify: false };
+        let t = db::NewTask { title, details: "", agent: "", chat: "", link: "", priority: None, notify: false };
         db::add(&conn, t).map_err(err)?;
         update_badge(&app, &conn);
     }
@@ -175,6 +175,16 @@ fn set_done(app: AppHandle, db: tauri::State<Db>, id: i64, done: bool) -> Res<Ve
     let conn = db.0.lock().map_err(err)?;
     db::set_done(&conn, id, done).map_err(err)?;
     update_badge(&app, &conn);
+    db::for_ui(&conn).map_err(err)
+}
+
+#[tauri::command]
+fn set_priority(db: tauri::State<Db>, id: i64, priority: Option<i64>) -> Res<Vec<db::Task>> {
+    if priority.is_some_and(|p| !db::valid_priority(p)) {
+        return Err("priority must be 0-3".into());
+    }
+    let conn = db.0.lock().map_err(err)?;
+    db::update(&conn, id, db::Changes { priority: Some(priority), ..Default::default() }).map_err(err)?;
     db::for_ui(&conn).map_err(err)
 }
 

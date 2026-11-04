@@ -85,7 +85,8 @@ fn tools() -> Value {
                             "properties": {
                                 "title": { "type": "string", "description": "Short imperative action, under ~80 chars." },
                                 "details": { "type": "string", "description": "Optional context: why, exact steps, commands, values. Shown when the user opens the task." },
-                                "link": { "type": "string", "description": "Optional URL back to where this came up (conversation, thread, PR, ticket). Overrides the top-level link." }
+                                "link": { "type": "string", "description": "Optional URL back to where this came up (conversation, thread, PR, ticket). Overrides the top-level link." },
+                                "priority": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Optional urgency: 0 = drop everything, 1 = today, 2 = soon, 3 = whenever. Leave out if unsure." }
                             },
                             "required": ["title"]
                         }
@@ -114,7 +115,8 @@ fn tools() -> Value {
         {
             "name": "update_task",
             "description": "Edit a task on the user's list (any task, including ones the user added): \
-                reword the title, add details or a link, or set the chat. Only the fields you pass change.",
+                reword the title, add details or a link, set the chat, or set the priority. Only the fields \
+                you pass change.",
             "annotations": { "idempotentHint": true },
             "inputSchema": {
                 "type": "object",
@@ -123,7 +125,8 @@ fn tools() -> Value {
                     "title": { "type": "string" },
                     "details": { "type": "string" },
                     "link": { "type": "string" },
-                    "chat": { "type": "string" }
+                    "chat": { "type": "string" },
+                    "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0 = most urgent ... 3 = whenever; null clears it." }
                 },
                 "required": ["id"]
             }
@@ -171,6 +174,7 @@ fn call(conn: &rusqlite::Connection, client: &str, params: &Value) -> Value {
                                 "id": t.id,
                                 "title": t.title,
                                 "status": if t.done_at.is_some() { "done" } else { "open" },
+                                "priority": t.priority,
                                 "chat": t.chat,
                                 "agent": t.agent,
                                 "details": t.details,
@@ -197,12 +201,23 @@ fn add_tasks(conn: &rusqlite::Connection, client: &str, args: &Value) -> Result<
     let agent = args["agent"].as_str().map(str::trim).filter(|s| !s.is_empty()).unwrap_or(client);
     let chat = args["chat"].as_str().map(str::trim).unwrap_or("");
     let default_link = args["link"].as_str().unwrap_or("");
-    let mut added = Vec::new();
+    // Validate the whole batch first, so a bad item doesn't leave half of it saved
+    // (and duplicated when the agent retries).
+    let mut batch = Vec::new();
     for t in tasks {
         let title = t["title"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or("every task needs a `title`")?;
+        let priority = match &t["priority"] {
+            Value::Null => None,
+            v => Some(v.as_i64().filter(|p| db::valid_priority(*p)).ok_or("`priority` must be 0, 1, 2 or 3")?),
+        };
         let link = t["link"].as_str().unwrap_or(default_link);
         let details = t["details"].as_str().unwrap_or("");
-        let id = db::add(conn, db::NewTask { title, details, agent, chat, link, notify: true }).map_err(|e| e.to_string())?;
+        batch.push(db::NewTask { title, details, agent, chat, link, priority, notify: true });
+    }
+    let mut added = Vec::new();
+    for new in batch {
+        let title = new.title;
+        let id = db::add(conn, new).map_err(|e| e.to_string())?;
         added.push(format!("#{id} {title}"));
     }
     crate::launch::ensure_app_running();
@@ -219,7 +234,19 @@ fn update_task(conn: &rusqlite::Connection, args: &Value) -> Result<String, Stri
     if field("title") == Some("") {
         return Err("`title` can't be empty".into());
     }
-    match db::update(conn, id, field("title"), field("details"), field("link"), field("chat")) {
+    let priority = match args.get("priority") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(v) => Some(Some(v.as_i64().filter(|p| db::valid_priority(*p)).ok_or("`priority` must be 0-3 or null")?)),
+    };
+    let changes = db::Changes {
+        title: field("title"),
+        details: field("details"),
+        link: field("link"),
+        chat: field("chat"),
+        priority,
+    };
+    match db::update(conn, id, changes) {
         Ok(0) => Err(format!("No task #{id}.")),
         Ok(_) => Ok(format!("Updated #{id}.")),
         Err(e) => Err(e.to_string()),

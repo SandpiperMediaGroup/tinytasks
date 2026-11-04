@@ -6,7 +6,8 @@ When an agent hands you a to-do ("add the API key in Vercel", "approve the PR"),
 TinyTasks over MCP. You get a desktop notification, the tray icon shows how many are open, and you
 check them off. The agent can see what you finished. That's it: no due dates, no projects.
 
-You can add your own with **+** too, and agents see those as well.
+You can add your own with **+** too, and agents see those as well. Tasks can have a priority
+(P0 to P3), set by you or the agent, and you can group by it.
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 

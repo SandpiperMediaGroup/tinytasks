@@ -17,6 +17,12 @@ pub struct Task {
     pub link: String,
     pub created_at: i64,
     pub done_at: Option<i64>,
+    /// 0 (most urgent) to 3, or none.
+    pub priority: Option<i64>,
+}
+
+pub fn valid_priority(p: i64) -> bool {
+    (0..=3).contains(&p)
 }
 
 /// `~/.tinytasks`. Deliberately not AppData: on Windows, apps from the Microsoft Store
@@ -51,14 +57,17 @@ pub fn open() -> rusqlite::Result<Connection> {
              link       TEXT    NOT NULL DEFAULT '',
              created_at INTEGER NOT NULL,
              done_at    INTEGER,
-             notified   INTEGER NOT NULL DEFAULT 0
+             notified   INTEGER NOT NULL DEFAULT 0,
+             priority   INTEGER
          );",
     )?;
-    // Databases from v0.1 lack `chat`. Another process may add it at the same moment,
+    // Older databases lack later columns. Another process may add one at the same moment,
     // so a "duplicate column" error just means it's already there.
-    if let Err(e) = conn.execute_batch("ALTER TABLE tasks ADD COLUMN chat TEXT NOT NULL DEFAULT ''") {
-        if !e.to_string().contains("duplicate column") {
-            return Err(e);
+    for column in ["chat TEXT NOT NULL DEFAULT ''", "priority INTEGER"] {
+        if let Err(e) = conn.execute_batch(&format!("ALTER TABLE tasks ADD COLUMN {column}")) {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e);
+            }
         }
     }
     Ok(conn)
@@ -71,7 +80,7 @@ pub fn now() -> i64 {
         .unwrap_or(0)
 }
 
-const COLS: &str = "id, title, details, agent, chat, link, created_at, done_at";
+const COLS: &str = "id, title, details, agent, chat, link, created_at, done_at, priority";
 
 fn row(r: &Row) -> rusqlite::Result<Task> {
     Ok(Task {
@@ -83,6 +92,7 @@ fn row(r: &Row) -> rusqlite::Result<Task> {
         link: r.get(5)?,
         created_at: r.get(6)?,
         done_at: r.get(7)?,
+        priority: r.get(8)?,
     })
 }
 
@@ -92,32 +102,38 @@ pub struct NewTask<'a> {
     pub agent: &'a str,
     pub chat: &'a str,
     pub link: &'a str,
+    pub priority: Option<i64>,
     /// Pop a desktop notification for it (agents' tasks yes, the user's own no).
     pub notify: bool,
 }
 
 pub fn add(conn: &Connection, t: NewTask) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO tasks (title, details, agent, chat, link, created_at, notified)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![t.title, t.details, t.agent, t.chat, t.link, now(), !t.notify],
+        "INSERT INTO tasks (title, details, agent, chat, link, created_at, notified, priority)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![t.title, t.details, t.agent, t.chat, t.link, now(), !t.notify, t.priority],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
-/// Change any of a task's text fields; `None` leaves a field as it is.
-pub fn update(
-    conn: &Connection,
-    id: i64,
-    title: Option<&str>,
-    details: Option<&str>,
-    link: Option<&str>,
-    chat: Option<&str>,
-) -> rusqlite::Result<usize> {
+/// What to change on a task; `None` leaves a field as it is.
+#[derive(Default)]
+pub struct Changes<'a> {
+    pub title: Option<&'a str>,
+    pub details: Option<&'a str>,
+    pub link: Option<&'a str>,
+    pub chat: Option<&'a str>,
+    /// `Some(None)` clears the priority.
+    pub priority: Option<Option<i64>>,
+}
+
+pub fn update(conn: &Connection, id: i64, c: Changes) -> rusqlite::Result<usize> {
     conn.execute(
         "UPDATE tasks SET title = COALESCE(?2, title), details = COALESCE(?3, details),
-             link = COALESCE(?4, link), chat = COALESCE(?5, chat) WHERE id = ?1",
-        params![id, title, details, link, chat],
+             link = COALESCE(?4, link), chat = COALESCE(?5, chat),
+             priority = CASE WHEN ?6 THEN ?7 ELSE priority END
+         WHERE id = ?1",
+        params![id, c.title, c.details, c.link, c.chat, c.priority.is_some(), c.priority.flatten()],
     )
 }
 
@@ -132,7 +148,8 @@ pub fn list(conn: &Connection, status: &str, chat: Option<&str>) -> rusqlite::Re
     let sql = format!(
         "SELECT {COLS} FROM tasks WHERE {where_status} AND (done_at IS NULL OR done_at > ?2)
            AND (?1 IS NULL OR chat LIKE '%' || ?1 || '%')
-         ORDER BY done_at IS NOT NULL, COALESCE(done_at, created_at) DESC LIMIT 200"
+         ORDER BY done_at IS NOT NULL, priority IS NULL, priority, COALESCE(done_at, created_at) DESC
+         LIMIT 200"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![chat, now() - 14 * 24 * 3600], row)?;

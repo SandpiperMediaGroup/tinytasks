@@ -10,6 +10,7 @@ const store = {
 };
 let showDone = store.get("showDone", "0") === "1";
 let groupBy = store.get("groupBy", "time");
+let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 first instead of P0
 let pinned = false;
 let tasks = [];
 let lastJson = "";
@@ -60,9 +61,20 @@ function row(t) {
   li.querySelector(".title").textContent = t.title;
 
   // What the second line shows depends on what the group header already says.
-  const showIcon = done || groupBy === "time";
+  const showIcon = done || groupBy === "time" || groupBy === "priority";
   const showChat = done || groupBy !== "chat";
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
+
+  const pill = li.querySelector(".prio");
+  if (t.priority != null && groupBy !== "priority") {
+    pill.hidden = false;
+    pill.dataset.p = t.priority;
+    pill.textContent = `P${t.priority}`;
+  }
+  const prioBtn = li.querySelector(".set-prio");
+  if (t.priority != null) prioBtn.dataset.p = t.priority;
+  prioBtn.title = t.priority != null ? `Priority: P${t.priority}` : "Set priority";
+  prioBtn.onclick = (e) => { e.stopPropagation(); openPrioMenu(prioBtn, t); };
 
   const when = done ? t.done_at : t.created_at;
   const time = li.querySelector(".time");
@@ -109,11 +121,14 @@ function row(t) {
 }
 
 // ---- groups ----
+const PRIORITY_NAMES = ["Drop everything", "Today", "Soon", "Whenever"];
+
 function groupsOf(open) {
   const key = {
     time: (t) => timeBucket(t.created_at),
     chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : t.agent ? ["a:" + agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
     agent: (t) => (t.agent ? [agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
+    priority: (t) => (t.priority == null ? [9, "No priority"] : [t.priority, PRIORITY_NAMES[t.priority]]),
   }[groupBy] || ((t) => [0, ""]);
 
   const map = new Map();
@@ -125,6 +140,10 @@ function groupsOf(open) {
   const groups = [...map.values()];
   // Time groups in calendar order; others by their newest task (tasks arrive newest-first).
   if (groupBy === "time") groups.sort((a, b) => a.k - b.k);
+  else if (groupBy === "priority") {
+    // "No priority" (k = 9) stays last either way.
+    groups.sort((a, b) => (a.k === 9) - (b.k === 9) || (lowFirst ? b.k - a.k : a.k - b.k));
+  }
   else groups.sort((a, b) => (a.label ? 1 : 0) - (b.label ? 1 : 0)); // unlabeled (yours) first
   return groups;
 }
@@ -141,7 +160,12 @@ function render() {
       if (headers && g.label) {
         const h = document.createElement("h2");
         h.className = "group-head";
-        if (groupBy !== "time") h.appendChild(agentIcon(g.sample.agent));
+        if (groupBy === "priority" && g.k !== 9) {
+          h.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
+          h.lastChild.dataset.p = g.k;
+        } else if (groupBy === "chat" || groupBy === "agent") {
+          h.appendChild(agentIcon(g.sample.agent));
+        }
         h.append(g.label, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
         sec.appendChild(h);
       }
@@ -158,7 +182,8 @@ function render() {
   $("toggle-done").setAttribute("aria-pressed", showDone);
   $("toggle-done").title = showDone ? "Hide completed" : "Show completed";
   for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
-  $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent" }[groupBy]}`;
+  document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
+  $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority" }[groupBy]}`;
 }
 
 function update(list) {
@@ -214,13 +239,45 @@ $("group").onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
 menu.onclick = (e) => {
   const b = e.target.closest("[data-group]");
   if (!b) return;
+  // Picking Priority again flips the order.
+  if (b.dataset.group === "priority" && groupBy === "priority") store.set("lowFirst", (lowFirst = !lowFirst) ? "1" : "0");
   groupBy = b.dataset.group;
   store.set("groupBy", groupBy);
   setMenu(false);
   render();
 };
-document.addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target)) setMenu(false); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+
+// ---- priority picker (one floating menu, placed next to whichever task's button) ----
+const prioMenu = $("prio-menu");
+let prioTask = null;
+function openPrioMenu(btn, t) {
+  prioTask = t;
+  for (const b of prioMenu.querySelectorAll("button")) {
+    b.setAttribute("aria-checked", b.dataset.p === (t.priority == null ? "" : String(t.priority)));
+  }
+  prioMenu.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const h = prioMenu.offsetHeight;
+  prioMenu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+  // Open downward if it fits, otherwise upward.
+  prioMenu.style.top = r.bottom + 4 + h < innerHeight ? `${r.bottom + 4}px` : `${Math.max(8, r.top - 4 - h)}px`;
+}
+prioMenu.onclick = async (e) => {
+  const b = e.target.closest("button[data-p]");
+  if (!b || !prioTask) return;
+  prioMenu.hidden = true;
+  const priority = b.dataset.p === "" ? null : Number(b.dataset.p);
+  update(await invoke("set_priority", { id: prioTask.id, priority }));
+};
+
+document.addEventListener("click", (e) => {
+  if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
+  if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { setMenu(false); prioMenu.hidden = true; }
+});
+$("main").addEventListener("scroll", () => (prioMenu.hidden = true));
 
 listen("tasks-changed", refresh);
 window.addEventListener("focus", () => render()); // keeps "2h" labels fresh

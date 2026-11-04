@@ -59,6 +59,7 @@ header > .menu-wrap { min-width: 0; }
 .view-btn .chev { width: 16px; height: 16px; color: var(--muted); }
 #view-menu { left: -8px; right: auto; min-width: 200px; }
 #view-menu .n { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
+#view-menu button svg { width: 16px; height: 16px; margin-right: 9px; color: var(--muted); flex: none; }
 .menu-sep { height: 1px; background: var(--line); margin: 4px 2px; }
 #where {
   padding: 0 8px 4px; font-size: 12.5px; color: var(--soft);
@@ -71,6 +72,27 @@ header > .menu-wrap { min-width: 0; }
   background: var(--bg-hover); border-bottom: 1px solid var(--line);
 }
 #notice[hidden] { display: none; }
+/* Editing a task in place */
+.edit-title, .edit-details {
+  width: 100%; border: 0; outline: 0; padding: 0; margin: 0;
+  background: none; color: var(--ink); font: inherit;
+  user-select: text; -webkit-user-select: text;
+}
+.edit-title {
+  display: block; resize: none; overflow: hidden; line-height: inherit;
+  border-bottom: 1px solid var(--accent); padding-bottom: 1px;
+}
+.edit-details {
+  display: block; resize: none; overflow: hidden; margin: 2px 0 6px;
+  font-size: 12.5px; line-height: 1.45; color: var(--soft);
+  border-left: 2px solid var(--line); padding-left: 8px;
+}
+.edit-details:focus { border-left-color: var(--accent); }
+.edit-details::placeholder { color: var(--muted); }
+.task.editing .actions { display: none; }
+.task.editing .line { cursor: default; }
+.task.editing .line:hover { background: none; }
+
 #problem { margin: 40px 24px; text-align: center; color: var(--soft); font-size: 13px; }
 #problem[hidden] { display: none; }
 #problem p { margin: 0 0 12px; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }

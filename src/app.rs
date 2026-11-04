@@ -33,7 +33,7 @@ pub fn run(background: bool) {
 
     builder
         .invoke_handler(tauri::generate_handler![
-            list, add_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, set_pinned,
+            list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, set_pinned,
             location, pick_folder, open_file
         ])
         .setup(move |app| {
@@ -200,6 +200,18 @@ fn add_task(app: AppHandle, title: String, mydesk: bool) -> Res<Vec<Task>> {
             Ok(l.add(t))
         })?;
     }
+    reply(&app)
+}
+
+/// The user rewording a task or its details (any task, agents' included).
+#[tauri::command]
+fn edit_task(app: AppHandle, id: i64, title: String, details: String) -> Res<Vec<Task>> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("A task needs a title.".into());
+    }
+    let changes = store::Changes { title: Some(title), details: Some(&details), ..Default::default() };
+    store::change(|l| Ok(l.update(id, changes)))?;
     reply(&app)
 }
 

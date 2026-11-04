@@ -8,7 +8,7 @@ check them off. The agent can see what you finished. That's it: no due dates, no
 
 You can add your own with **+** too, and agents see those as well. Tasks can have a priority
 (P0 to P3) and a due date, set by you or the agent. Ask an agent what to focus on and it puts a
-few things on your **desk**. Click the title to switch between Tasks, My desk and Completed.
+few things on your **desk** for the day. Click the title to switch between Tasks, My desk and Completed.
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 

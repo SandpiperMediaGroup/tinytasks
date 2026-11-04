@@ -164,6 +164,7 @@ function row(t) {
     link.remove();
   }
   li.querySelector(".delete").onclick = async () => act("delete_task", { id: t.id });
+  li.querySelector(".edit").onclick = () => startEdit(li, t);
   return li;
 }
 
@@ -250,6 +251,50 @@ function render() {
   $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority", due: "due date" }[groupBy]}`;
 }
 
+// ---- editing a task in place ----
+// While one is being edited, incoming changes wait so they don't wipe out what you're typing.
+let editingId = null;
+function startEdit(li, t) {
+  editingId = t.id;
+  li.classList.add("editing");
+  // Both fields wrap and grow with their text, so long titles stay readable.
+  const title = Object.assign(document.createElement("textarea"), { className: "edit-title", value: t.title, maxLength: 300, rows: 1 });
+  title.setAttribute("aria-label", "Task");
+  li.querySelector(".title").replaceChildren(title);
+  const details = Object.assign(document.createElement("textarea"), { className: "edit-details", value: t.details, placeholder: "Details", rows: 2 });
+  details.setAttribute("aria-label", "Details");
+  li.querySelector(".body").replaceWith(details);
+  li.querySelector(".stamp").textContent = "Click away to save. Esc cancels.";
+  const grow = () => {
+    for (const f of [title, details]) { f.style.height = "auto"; f.style.height = `${f.scrollHeight}px`; }
+  };
+  title.oninput = details.oninput = grow;
+  grow();
+
+  const finish = (save) => {
+    if (editingId !== t.id) return;
+    editingId = null;
+    const changed = title.value.trim() !== t.title || details.value.trimEnd() !== t.details;
+    if (save && changed && title.value.trim()) act("edit_task", { id: t.id, title: title.value, details: details.value });
+    else render();
+  };
+  title.onclick = (e) => e.stopPropagation(); // don't fold the row up
+  title.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    if (e.key === "Escape") finish(false);
+  };
+  details.onkeydown = (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) finish(true);
+    if (e.key === "Escape") finish(false);
+  };
+  // Save once focus leaves both fields (moving between them doesn't count).
+  title.onblur = details.onblur = () => setTimeout(() => {
+    if (!li.contains(document.activeElement)) finish(true);
+  });
+  title.focus();
+  title.setSelectionRange(title.value.length, title.value.length);
+}
+
 // Set when the list can't be read (say, its synced folder is offline). Shown instead of the list.
 let problem = "";
 
@@ -257,7 +302,7 @@ function update(list) {
   tasks = list;
   lastJson = JSON.stringify(list);
   problem = "";
-  render();
+  if (editingId == null) render();
 }
 
 async function refresh() {
@@ -472,5 +517,6 @@ document.addEventListener("keydown", (e) => {
 $("main").addEventListener("scroll", closeFloating);
 
 listen("tasks-changed", refresh);
-window.addEventListener("focus", () => render()); // keeps "2h" labels fresh
+// Coming back to the window: fresh "2h" labels, and yesterday's desk cleared.
+window.addEventListener("focus", () => { if (editingId == null) { render(); refresh(); } });
 refresh();

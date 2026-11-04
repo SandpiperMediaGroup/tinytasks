@@ -82,7 +82,7 @@ fn tools() -> Value {
                                 "link": { "type": "string", "description": "Optional URL back to where this came up (conversation, thread, PR, ticket). Overrides the top-level link." },
                                 "priority": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Optional urgency: 0 = drop everything, 1 = today, 2 = soon, 3 = whenever. Leave out if unsure." },
                                 "due": { "type": "string", "description": "Optional due date, YYYY-MM-DD. Only when there's a real deadline." },
-                                "mydesk": { "type": "boolean", "description": "Optional. Put it straight on the user's desk (what they focus on now)." }
+                                "mydesk": { "type": "boolean", "description": "Optional. Put it straight on the user's desk (what they focus on today)." }
                             },
                             "required": ["title"]
                         }
@@ -99,7 +99,7 @@ fn tools() -> Value {
             "description": "List tasks on the user's TinyTasks list and whether they've checked them off \
                 (finished tasks from the last two weeks), most urgent first. Call this when resuming work or before \
                 relying on the user having done something. Tasks with an empty `agent` are ones the user added \
-                themselves; `mydesk` means it's on their desk (what they're focusing on now).",
+                themselves; `mydesk` means it's on their desk (what they're focusing on today; the desk clears overnight).",
             "annotations": { "readOnlyHint": true },
             "inputSchema": {
                 "type": "object",
@@ -126,15 +126,15 @@ fn tools() -> Value {
                     "chat": { "type": "string" },
                     "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0 = most urgent ... 3 = whenever; null clears it." },
                     "due": { "type": ["string", "null"], "description": "YYYY-MM-DD; null clears it." },
-                    "mydesk": { "type": "boolean", "description": "On the user's desk or not." }
+                    "mydesk": { "type": "boolean", "description": "On the user's desk (for today) or not." }
                 },
                 "required": ["id"]
             }
         },
         {
             "name": "set_desk",
-            "description": "Decide what's on the user's desk: the few open tasks they should focus on now. \
-                Replaces whatever was there. Use it when the user asks what to focus on or what's next; \
+            "description": "Decide what's on the user's desk: the few open tasks they should focus on today. \
+                Replaces whatever was there; the desk clears overnight. Use it when the user asks what to focus on or what's next; \
                 usually 1-5 tasks. An empty list clears the desk.",
             "annotations": { "idempotentHint": true },
             "inputSchema": {

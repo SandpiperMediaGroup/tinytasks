@@ -8,7 +8,7 @@
 //!
 //! ## Stripe billing setup
 //!
-//! - [ ] Add the STRIPE_KEY secret in Vercel @priority(1) @due(2026-11-06) @mydesk(today) @from(claude-code) @added(2026-11-04 10:12) @id(7)
+//! - [ ] Add the STRIPE_KEY secret in Vercel @priority(1) @due(2026-11-06) @mydesk(2026-11-04) @from(claude-code) @added(2026-11-04 10:12) @id(7)
 //!   Details go on indented lines under the task.
 //! ```
 
@@ -36,7 +36,7 @@ pub struct Task {
     pub priority: Option<i64>,
     /// `YYYY-MM-DD`.
     pub due: Option<String>,
-    /// On the user's desk: what they're focusing on now.
+    /// On the user's desk: what they're focusing on today. The desk clears overnight.
     pub mydesk: bool,
 }
 
@@ -218,7 +218,8 @@ fn write_error(e: std::io::Error, p: &Path) -> String {
 /// Shown to anyone (any agent) who opens the raw file; markdown viewers hide it.
 const HEADER: &str = "<!-- TinyTasks: the user's to-do list. You may edit this file directly.
 - [ ] is an open task, - [x] a done one. A \"## Heading\" is the chat the tasks under it came from.
-@priority(0-3): 0 is most urgent. @due(YYYY-MM-DD). @mydesk(today): on the user's desk, what they focus on now.
+@priority(0-3): 0 is most urgent. @due(YYYY-MM-DD). @mydesk(YYYY-MM-DD): on the user's desk (their focus) that day only;
+write @mydesk(today) and TinyTasks fills in the date.
 @from(agent): who added it. @link(url): back to that chat. @added/@done(YYYY-MM-DD HH:MM).
 @id(n): unique, never change it. TinyTasks fills in @id and @added when you leave them out.
 Details go on lines indented two spaces under the task. Leave everything else as it is. -->";
@@ -239,6 +240,13 @@ struct Entry {
     extras: Vec<String>,
     /// The task's lines as read; `None` once changed, so it's written out fresh.
     raw: Option<Vec<String>>,
+    /// The day it was put on the desk (`today` until filled in). Only today's count.
+    desk: Option<String>,
+}
+
+/// Today's date, `YYYY-MM-DD`, local time.
+pub fn today() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
 }
 
 pub struct NewTask<'a> {
@@ -376,6 +384,7 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
     let mut extras = Vec::new();
     let mut title = String::new();
     let mut done_stamp = None;
+    let mut desk = None;
     let chars: Vec<(usize, char)> = rest.char_indices().collect();
     let mut k = 0;
     while k < chars.len() {
@@ -411,7 +420,7 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
                         "id" => task.id = value.parse().unwrap_or(0),
                         "priority" => task.priority = value.parse().ok().filter(|p| valid_priority(*p)),
                         "due" if valid_due(value) => task.due = Some(value.to_string()),
-                        "mydesk" => task.mydesk = true,
+                        "mydesk" => desk = Some(if valid_due(value) { value.to_string() } else { "today".to_string() }),
                         "from" => task.agent = value.to_string(),
                         "link" => task.link = value.replace("%28", "(").replace("%29", ")"),
                         "added" => task.created_at = parse_time(value).unwrap_or(0),
@@ -422,7 +431,7 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
                     continue;
                 }
             } else if name == "mydesk" {
-                task.mydesk = true;
+                desk = Some("today".to_string());
                 k = n;
                 continue;
             }
@@ -444,7 +453,7 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
     if !done && done_stamp.is_some() {
         task.done_at = None;
     }
-    Entry { task, extras, raw: None }
+    Entry { task, extras, raw: None, desk }
 }
 
 fn parse_time(s: &str) -> Option<i64> {
@@ -477,8 +486,8 @@ impl Entry {
         if let Some(d) = &t.due {
             line += &format!(" @due({d})");
         }
-        if t.mydesk {
-            line += " @mydesk(today)";
+        if let Some(d) = &self.desk {
+            line += &format!(" @mydesk({d})");
         }
         for x in &self.extras {
             line += &format!(" {x}");
@@ -565,6 +574,23 @@ impl List {
                 e.task.done_at = Some(t);
                 e.raw = None;
             }
+        }
+        // The desk is for one day: "today" gets the date; an earlier day's desk is cleared
+        // (in memory now, in the file on the next write).
+        let day = today();
+        for e in self.entries_mut() {
+            match e.desk.as_deref() {
+                Some("today") => {
+                    e.desk = Some(day.clone());
+                    e.raw = None;
+                }
+                Some(d) if d != day => {
+                    e.desk = None;
+                    e.raw = None;
+                }
+                _ => {}
+            }
+            e.task.mydesk = e.desk.is_some();
         }
         // A done stamp on an unchecked task: drop it.
         for e in self.entries_mut() {
@@ -675,7 +701,8 @@ impl List {
             due: t.due.map(String::from),
             mydesk: t.mydesk,
         };
-        self.insert(Entry { task, extras: vec![], raw: None });
+        let desk = t.mydesk.then(today);
+        self.insert(Entry { task, extras: vec![], raw: None, desk });
         id
     }
 
@@ -701,6 +728,7 @@ impl List {
         }
         if let Some(v) = c.mydesk {
             t.mydesk = v;
+            e.desk = v.then(today);
         }
         if let Some(chat) = c.chat.map(one_line).filter(|c| *c != t.chat) {
             let Block::Task(mut e) = self.blocks.remove(pos) else { unreachable!() };
@@ -740,6 +768,7 @@ impl List {
             let on = ids.contains(&e.task.id);
             if e.task.mydesk != on {
                 e.task.mydesk = on;
+                e.desk = on.then(today);
                 e.raw = None;
             }
         }
@@ -817,7 +846,7 @@ mod tests {
         assert!(list.update(7, Changes { due: Some(Some("2026-11-06")), mydesk: Some(true), ..Default::default() }));
         let out = list.render();
         assert!(out.contains("@repeat(weekly) #ops"), "{out}");
-        assert!(out.contains("@due(2026-11-06) @mydesk(today)"), "{out}");
+        assert!(out.contains(&format!("@due(2026-11-06) @mydesk({})", today())), "{out}");
         assert!(out.contains("@link(https://x.com/a_%28b%29)"), "{out}");
         assert!(out.contains("free text"));
 
@@ -828,6 +857,24 @@ mod tests {
         let out = list.render();
         assert!(out.contains("## Chat A\n\n- [ ] new"), "{out}");
         assert!(out.contains("typed by hand @added("), "{out}");
+    }
+
+    #[test]
+    fn the_desk_lasts_a_day() {
+        let text = format!(
+            "- [ ] old @mydesk(2020-01-01) @added(2026-11-04 09:00) @id(1)\n\
+             - [ ] typed @mydesk(today) @added(2026-11-04 09:00) @id(2)\n\
+             - [ ] bare @mydesk @added(2026-11-04 09:00) @id(3)\n\
+             - [ ] current @mydesk({}) @added(2026-11-04 09:00) @id(4)\n",
+            today()
+        );
+        let list = parse(&text);
+        let desk: Vec<i64> = list.tasks().filter(|t| t.mydesk).map(|t| t.id).collect();
+        assert_eq!(desk, vec![2, 3, 4]);
+        let out = list.render();
+        assert!(!out.contains("2020-01-01"), "{out}");
+        assert_eq!(out.matches(&format!("@mydesk({})", today())).count(), 3, "{out}");
+        assert!(!out.contains("@mydesk(today)") || out.contains("write @mydesk(today)"), "{out}");
     }
 
     #[test]

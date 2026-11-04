@@ -14,14 +14,14 @@
         <svg class="chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
       </button></h1>
       <div id="view-menu" class="menu" role="menu" hidden>
-        <button role="menuitemradio" data-view="all">Tasks <span class="n"></span></button>
-        <button role="menuitemradio" data-view="desk">My desk <span class="n"></span></button>
-        <button role="menuitemradio" data-view="done">Completed <span class="n"></span></button>
+        <button role="menuitemradio" data-view="all"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Tasks <span class="n"></span></button>
+        <button role="menuitemradio" data-view="desk"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>My desk <span class="n"></span></button>
+        <button role="menuitemradio" data-view="done"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>Completed <span class="n"></span></button>
         <div class="menu-sep"></div>
         <div class="menu-label">Task location</div>
         <div id="where"></div>
-        <button id="change-folder" role="menuitem">Change folder…</button>
-        <button id="open-file" role="menuitem">Open tasks.md</button>
+        <button id="change-folder" role="menuitem"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Change folder…</button>
+        <button id="open-file" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4"/></svg>Open tasks.md</button>
       </div>
     </div>
     <div class="tools">
@@ -102,6 +102,9 @@
             <div class="meta">
               <span class="stamp"></span>
               <span class="actions">
+                <button class="icon edit" title="Edit">
+                  <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+                </button>
                 <button class="icon set-desk" title="Put on my desk" aria-pressed="false">
                   <svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>
                 </button>

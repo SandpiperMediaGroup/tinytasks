@@ -160,7 +160,22 @@ fn text(s: impl Into<String>, is_error: bool) -> Value {
 
 fn call(conn: &rusqlite::Connection, client: &str, params: &Value) -> Value {
     let args = &params["arguments"];
-    let res: Result<String, String> = match params["name"].as_str().unwrap_or("") {
+    let name = params["name"].as_str().unwrap_or("");
+    // SQLite quietly opens the file read-only when this process may not write it, which
+    // happens when an agent runs `tinytasks mcp` from inside its own shell sandbox.
+    if name != "list_tasks" && conn.is_readonly(rusqlite::DatabaseName::Main).unwrap_or(false) {
+        return text(
+            format!(
+                "TinyTasks can read but not save here: this process isn't allowed to write {}. \
+                 That usually means it was started from a sandboxed shell instead of as an MCP server. \
+                 Use the tinytasks MCP tools (if this chat started before TinyTasks was set up, the user \
+                 needs to start a new chat), or ask the user to add the task themselves.",
+                db::path().display()
+            ),
+            true,
+        );
+    }
+    let res: Result<String, String> = match name {
         "add_tasks" => add_tasks(conn, client, args),
         "list_tasks" => {
             let status = args["status"].as_str().unwrap_or("all");

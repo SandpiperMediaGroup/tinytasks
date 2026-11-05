@@ -239,7 +239,10 @@ function row(t, parent = null, index = 0) {
   };
   if (t.parent_id == null) {
     const section = li.querySelector(".subtasks");
-    section.hidden = false;
+    section.hidden = children.length === 0;
+    const firstSubtask = li.querySelector(".first-subtask");
+    firstSubtask.hidden = children.length > 0;
+    firstSubtask.onclick = () => startNewSubtask(t.id);
     const mode = section.querySelector(".mode-chip");
     mode.setAttribute("aria-pressed", !!t.ordered);
     mode.title = t.ordered ? "Switch to checklist" : "Switch to ordered steps";
@@ -317,6 +320,8 @@ async function startNewSubtask(parentId) {
   if (!parentRow) return;
   expanded.add(parentId);
   parentRow.classList.add("open");
+  parentRow.querySelector(".subtasks").hidden = false;
+  parentRow.querySelector(".first-subtask").hidden = true;
   const draft = document.createElement("li");
   draft.className = "subtask new-subtask";
   draft.innerHTML = '<form class="line"><span class="check"></span><input maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></form>';

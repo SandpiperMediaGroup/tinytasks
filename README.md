@@ -33,7 +33,8 @@ but hasn't been tried yet.
   is kept.
 - **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
   Click a group header to collapse or expand it; each view remembers collapsed groups.
-- **Subtasks** live in a task's details. Use the **+** beside Subtasks to add one. Click its
+- **Subtasks** live in a task's details. Use the **+** beside the sticky-note icon to add the
+  first one; the Subtasks header appears once needed, with its own **+** for more. Click its
   text to edit, or the rest of its row to open its own details, priority, due date, and sticky note.
   Use the small **1 / •** chip to switch between numbered steps and a checklist.
 - **Drag subtasks** to reorder them, or focus a subtask row and press Alt+Up/Down. Both modes

@@ -16,23 +16,23 @@ but hasn't been tried yet.
 - **Click a task's text** to edit it directly. Click away or press Enter to save a title;
   use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
   Click the empty gutter or space beneath expanded details to collapse the task again.
-- **Open a sticky note** using the folded-corner note icon in task details. Notes
+- **Open a sticky note** from the task’s **⋯** menu, using the folded-corner note icon. Notes
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
   metadata, or action strip. Drag the thin top edge to move a note; its quiet close button
   becomes clearer on hover or keyboard focus. Notes stay above other windows and edits sync with the list.
   Close a note to dismiss it without deleting the task. Notes last for the current app session;
-  use the note icon again to reopen one.
+  use the menu’s note action again to reopen one.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
-  Hover the row's time indicator for the full added date; completed tasks also show their completion date.
+  Hover the row’s action button for the full added date; completed tasks also show their completion date.
 - **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Choose Solarized Light or Dark,
   Parchment, Paper, Forest, or Midnight with live palette previews. System follows the computer’s
   light/dark appearance. The choice saves automatically and updates open sticky notes on this computer.
 - **+** adds your own task. Agents see those too.
-- **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the details)
+- **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the task menu)
   or by the agent.
 - **Your desk** is what you're focusing on today. Ask an agent "what should I focus on?" and it
-  puts a few tasks there, or use the lamp in a task's details. The desk clears overnight.
+  puts a few tasks there, or use the lamp action in a task’s menu. The desk clears overnight.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
 - **Grouping and ordering** share a compact two-row menu. Group by date added, chat, agent,
@@ -40,9 +40,9 @@ but hasn't been tried yet.
   date added, or name; Completed also offers date completed. Each row has a direction control.
   Missing dates and priorities stay last. Tasks, My desk, and Completed remember their own
   choices and collapsed groups. Subtasks keep their saved order.
-- **Subtasks** live in a task's details. Use the **+** beside the sticky-note icon to add the
+- **Subtasks** live in a task's details. Use **Add subtask** in the task’s **⋯** menu to add the
   first one; the Subtasks header appears once needed, with its own **+** for more. Click its
-  text to edit, or the rest of its row to open its own details, priority, due date, and sticky note.
+  text to edit, or the rest of its row to open its own details. Its **⋯** menu manages its priority, due date, and sticky note.
   Use the small **1 / •** chip to switch between numbered steps and a checklist.
 - **Drag subtasks** to reorder them, or focus a subtask row and press Alt+Up/Down. Both modes
   remember the same order. Numbers stay muted; the parent's circle shows completion progress.
@@ -50,7 +50,9 @@ but hasn't been tried yet.
   open; reopening a child also reopens its parent. Deleting a parent deletes its subtasks.
 - **Hover controls**: group chevrons appear over their header; the subtask **+** and mode chip
   appear over the Subtasks header. Keyboard focus reveals them too, and touch devices keep
-  them visible. Actions inside expanded details remain visible.
+  them visible. Hover or focus a task row to reveal **⋯** in place of its priority/time badges.
+  Click it, right-click a row, or press Shift+F10 for the same custom menu with icons.
+  Expanded details contain only the description and subtasks; editing text keeps the standard text context menu.
 
 Subtasks support one level of nesting. Completed steps stay under their parent, and list/tray
 counts count top-level tasks. My desk counts and shows the individual tasks and subtasks selected

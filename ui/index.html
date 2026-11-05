@@ -87,6 +87,17 @@
     </div>
   </main>
 
+  <div id="task-menu" class="menu floating" role="menu" aria-label="Task actions" hidden>
+    <button class="open-note" data-action="open-note" role="menuitem"><svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg><span>Open as sticky note</span></button>
+    <button class="first-subtask" data-action="first-subtask" role="menuitem"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Add subtask</span></button>
+    <button class="set-desk" data-action="set-desk" role="menuitem"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg><span>Put on my desk</span></button>
+    <button class="set-due" data-action="set-due" role="menuitem" aria-haspopup="dialog"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span>Due date</span></button>
+    <button class="set-prio" data-action="set-prio" role="menuitem" aria-haspopup="menu"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Priority</span></button>
+    <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open conversation</span></button>
+    <div class="menu-sep" role="separator"></div>
+    <button class="delete" data-action="delete" role="menuitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Delete task</span></button>
+  </div>
+
   <div id="prio-menu" class="menu floating" role="menu" hidden>
     <div class="menu-label">Priority</div>
     <button role="menuitemradio" data-p="0"><span class="prio" data-p="0">P0</span>Drop everything</button>
@@ -133,8 +144,10 @@
           <div class="preview" hidden></div>
           <div class="sub"><span class="task-id" hidden></span><span class="src"></span><span class="due" hidden><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span></span></span><span class="time-sub"></span></div>
         </div>
-        <span class="prio" hidden></span>
-        <span class="time"></span>
+        <div class="row-status">
+          <span class="prio" hidden></span><span class="time"></span>
+          <button class="icon more" aria-label="Task actions" title="Task actions" aria-haspopup="menu" aria-controls="task-menu" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        </div>
       </div>
       <div class="details">
         <div class="details-inner">
@@ -148,31 +161,7 @@
               </div>
               <ul class="subtask-list"></ul>
             </div>
-            <div class="meta">
-              <span class="actions">
-                <button class="icon open-note" title="Open as sticky note" aria-label="Open as sticky note">
-                  <svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg>
-                </button>
-                <button class="icon first-subtask" title="Add subtask" aria-label="Add subtask" hidden>
-                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                </button>
-                <button class="icon set-desk" title="Put on my desk" aria-pressed="false">
-                  <svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>
-                </button>
-                <button class="icon set-due" title="Set a due date" aria-haspopup="dialog">
-                  <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
-                </button>
-                <button class="icon set-prio" title="Priority" aria-haspopup="menu">
-                  <svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>
-                </button>
-                <button class="icon open-link" title="Back to the conversation">
-                  <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-                </button>
-                <button class="icon delete" title="Delete task">
-                  <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
-                </button>
-              </span>
-            </div>
+
           </div>
         </div>
       </div>

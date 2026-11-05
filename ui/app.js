@@ -178,21 +178,6 @@ function row(t, parent = null, index = 0) {
     if (n <= 0) due.dataset.when = n < 0 ? "late" : "today";
     due.title = `Due ${dueLong(t.due)}`;
   }
-  const dueBtn = li.querySelector(".set-due");
-  dueBtn.classList.toggle("on", !!t.due);
-  dueBtn.title = t.due ? `Due ${dueLong(t.due)}` : "Set a due date";
-  dueBtn.onclick = (e) => { e.stopPropagation(); openDueMenu(dueBtn, t); };
-
-  const deskBtn = li.querySelector(".set-desk");
-  deskBtn.setAttribute("aria-pressed", t.mydesk);
-  deskBtn.title = t.mydesk ? "Take off my desk" : "Put on my desk";
-  deskBtn.onclick = async () => act("set_desk", { id: t.id, on: !t.mydesk });
-
-  const prioBtn = li.querySelector(".set-prio");
-  if (t.priority != null) prioBtn.dataset.p = t.priority;
-  prioBtn.title = t.priority != null ? `Priority: P${t.priority}` : "Set priority";
-  prioBtn.onclick = (e) => { e.stopPropagation(); openPrioMenu(prioBtn, t); };
-
   const when = done ? t.done_at : t.created_at;
   const time = li.querySelector(".time");
   time.textContent = li.querySelector(".time-sub").textContent = !parent && properties[done ? "completed" : "added"] ? short(when) : "";
@@ -235,7 +220,7 @@ function row(t, parent = null, index = 0) {
   };
   li.querySelector(".details").onclick = async (e) => {
     // Only this task's blank gutter/footer: child rows, text, and controls handle their own clicks.
-    if (e.target.closest(".task") !== li || !e.target.matches(".details, .details-inner, .details-pad, .meta")) return;
+    if (e.target.closest(".task") !== li || !e.target.matches(".details, .details-inner, .details-pad")) return;
     if (noteId === t.id || suppressSubtaskClick || !expanded.has(t.id)) return;
     e.stopPropagation();
     if (editingId != null && !await finishEditing?.(true)) return;
@@ -253,39 +238,32 @@ function row(t, parent = null, index = 0) {
     } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); line.onclick(); }
   };
 
-  const link = li.querySelector(".open-link");
-  if (t.link) {
-    link.title = `Back to the conversation\n${t.link}`;
-    // No alert(): it's a no-op in macOS webviews. Say it on the button instead.
-    link.onclick = () =>
-      invoke("open_link", { id: t.id }).catch((err) => {
-        link.title = String(err);
-        link.classList.add("failed");
-        setTimeout(() => link.classList.remove("failed"), 1500);
-      });
-  } else {
-    link.remove();
-  }
-  const deleteButton = li.querySelector(".delete");
-  if (children.length) deleteButton.title = "Delete task and its subtasks";
-  deleteButton.onclick = async () => act("delete_task", { id: t.id });
-  const note = li.querySelector(".open-note");
-  note.hidden = noteId === t.id;
-  note.onclick = async () => {
-    note.disabled = true;
-    try { await invoke("open_note", { id: t.id }); }
-    catch (e) { notice(String(e)); }
-    finally { note.disabled = false; }
+  const more = li.querySelector(".more");
+  more.title = `Task actions\n${time.title}`;
+  more.onpointerdown = e => { if (editingId != null && e.button === 0) e.preventDefault(); };
+  more.onclick = e => {
+    e.stopPropagation();
+    if (suppressSubtaskClick) return;
+    if (!taskMenu.hidden && taskMenuId === t.id) closeTaskMenu(true);
+    else openTaskMenu(t.id);
   };
+  li.oncontextmenu = e => {
+    if (e.target.closest(".task") !== li || e.target.closest('input, textarea, [contenteditable="true"]')) return;
+    e.preventDefault(); e.stopPropagation();
+    openTaskMenu(t.id, { x: e.clientX, y: e.clientY });
+  };
+  li.addEventListener("keydown", e => {
+    if (e.target.closest(".task") !== li || e.target.closest('input, textarea, [contenteditable="true"]')) return;
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault(); e.stopPropagation(); openTaskMenu(t.id);
+    }
+  });
   if (t.parent_id == null) {
     // A child selected for My desk has its own row there; don't render a duplicate inside its parent.
     const nestedChildren = children.map((child, i) => ({ child, i })).filter(({ child }) =>
       !(view === "desk" && noteId == null && child.mydesk && child.done_at == null));
     const section = li.querySelector(".subtasks");
     section.hidden = nestedChildren.length === 0;
-    const firstSubtask = li.querySelector(".first-subtask");
-    firstSubtask.hidden = nestedChildren.length > 0;
-    firstSubtask.onclick = () => startNewSubtask(t.id);
     const mode = section.querySelector(".mode-chip");
     mode.setAttribute("aria-pressed", !!t.ordered);
     mode.title = t.ordered ? "Switch to checklist" : "Switch to ordered steps";
@@ -364,7 +342,6 @@ async function startNewSubtask(parentId) {
   expanded.add(parentId);
   parentRow.classList.add("open");
   parentRow.querySelector(".subtasks").hidden = false;
-  parentRow.querySelector(".first-subtask").hidden = true;
   const draft = document.createElement("li");
   draft.className = "subtask new-subtask";
   draft.innerHTML = '<form class="line"><span class="check"></span><input maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></form>';
@@ -456,6 +433,7 @@ const tasksForView = (name) => tasks.filter(t => (name === "desk" || t.parent_id
 
 function render() {
   if (editingId != null || draggingSubtask != null) return;
+  if (taskMenuId != null) closeFloating();
   const v = VIEWS[view];
   const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view);
   const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
@@ -791,6 +769,85 @@ for (const id of ["group-field", "order-field"]) {
 $("group-direction").onclick = () => { groupDescending = !groupDescending; saveLayout(); };
 $("order-direction").onclick = () => { orderDescending = !orderDescending; saveLayout(); };
 
+// ---- shared task actions: row overflow and context menu ----
+const taskMenu = $("task-menu");
+let taskMenuId = null;
+let actionReturnId = null;
+function focusTask(id) {
+  (document.querySelector(`.task[data-task-id="${id}"] > .line`) || document.querySelector(".task > .line") || $("view")).focus();
+}
+function closeTaskMenu(focus = false) {
+  const id = taskMenuId;
+  taskMenu.hidden = true;
+  document.querySelectorAll('.more[aria-expanded="true"]').forEach(b => b.setAttribute("aria-expanded", "false"));
+  taskMenuId = null;
+  if (actionReturnId === id) actionReturnId = null;
+  if (focus && id != null) focusTask(id);
+}
+async function openTaskMenu(id, point = null) {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  const task = tasks.find(t => t.id === id);
+  const anchor = document.querySelector(`.task[data-task-id="${id}"] > .line .more`);
+  if (!task || !anchor) return;
+  setMenu(false); setViewMenu(false); setDisplayMenu(false);
+  const set = (action, label, hidden = false) => {
+    const b = taskMenu.querySelector(`[data-action="${action}"]`);
+    b.hidden = hidden;
+    b.querySelector("span").textContent = label;
+  };
+  set("open-note", "Open as sticky note", noteId === id);
+  set("first-subtask", "Add subtask", task.parent_id != null);
+  set("set-desk", task.mydesk ? "Remove from My desk" : "Put on My desk");
+  set("set-due", task.due ? `Due date · ${dueText(task.due)}` : "Due date");
+  set("set-prio", task.priority != null ? `Priority · P${task.priority}` : "Priority");
+  set("open-link", "Open conversation", !task.link);
+  set("delete", childrenOf(id).length ? "Delete task and subtasks" : "Delete task");
+  place(taskMenu, anchor);
+  taskMenuId = id;
+  actionReturnId = id;
+  anchor.setAttribute("aria-expanded", "true");
+  if (point) {
+    taskMenu.style.right = "auto";
+    taskMenu.style.left = `${Math.max(8, Math.min(point.x, innerWidth - taskMenu.offsetWidth - 8))}px`;
+    taskMenu.style.top = `${Math.max(8, Math.min(point.y, innerHeight - taskMenu.offsetHeight - 8))}px`;
+  }
+  taskMenu.querySelector('button:not([hidden])').focus();
+}
+taskMenu.onclick = async e => {
+  const button = e.target.closest("button[data-action]");
+  if (!button) return;
+  e.stopPropagation();
+  const t = tasks.find(t => t.id === taskMenuId);
+  if (!t) return closeTaskMenu();
+  const anchor = document.querySelector(`.task[data-task-id="${t.id}"] > .line .more`);
+  const action = button.dataset.action;
+  if (action === "set-prio") { openPrioMenu(anchor, t); prioMenu.querySelector('[aria-checked="true"]').focus(); return; }
+  if (action === "set-due") { openDueMenu(anchor, t); dueMenu.querySelector('[data-quick="0"]').focus(); return; }
+  closeTaskMenu(); actionReturnId = null;
+  if (action === "first-subtask") return startNewSubtask(t.id);
+  if (action === "set-desk") await act("set_desk", { id: t.id, on: !t.mydesk });
+  else if (action === "delete") await act("delete_task", { id: t.id });
+  else {
+    try { await invoke(action === "open-note" ? "open_note" : "open_link", { id: t.id }); }
+    catch (err) { notice(String(err)); }
+  }
+  focusTask(t.id);
+};
+function menuKeys(e, popup) {
+  const items = [...popup.querySelectorAll('button:not([hidden]):not(:disabled)')];
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+    e.preventDefault(); e.stopPropagation();
+    const index = items.indexOf(document.activeElement);
+    const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
+  } else if (e.key === "Tab") {
+    const id = actionReturnId;
+    closeFloating();
+    if (id != null) focusTask(id);
+  }
+}
+taskMenu.onkeydown = e => menuKeys(e, taskMenu);
+
 // ---- settings ----
 const settings = $("settings");
 for (const theme of tinyThemes.catalog) {
@@ -835,17 +892,21 @@ function openPrioMenu(btn, t) {
     b.setAttribute("aria-checked", b.dataset.p === (t.priority == null ? "" : String(t.priority)));
   }
   place(prioMenu, btn);
+  actionReturnId = t.id;
 }
 function place(menu, btn) {
-  closeFloating();
-  menu.hidden = false;
   const r = btn.getBoundingClientRect();
+  closeFloating();
+  menu.style.left = "auto";
+  menu.hidden = false;
   const h = menu.offsetHeight;
   menu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
   // Open downward if it fits, otherwise upward.
   menu.style.top = r.bottom + 4 + h < innerHeight ? `${r.bottom + 4}px` : `${Math.max(8, r.top - 4 - h)}px`;
 }
 function closeFloating() {
+  closeTaskMenu();
+  actionReturnId = null;
   closeLayoutOptions();
   prioMenu.hidden = true;
   dueMenu.hidden = true;
@@ -855,8 +916,12 @@ prioMenu.onclick = async (e) => {
   if (!b || !prioTask) return;
   prioMenu.hidden = true;
   const priority = b.dataset.p === "" ? null : Number(b.dataset.p);
-  act("set_priority", { id: prioTask.id, priority });
+  const id = prioTask.id; actionReturnId = null;
+  await act("set_priority", { id, priority });
+  focusTask(id);
 };
+
+prioMenu.onkeydown = e => menuKeys(e, prioMenu);
 
 // ---- due date picker ----
 const dueMenu = $("due-menu");
@@ -876,6 +941,7 @@ function openDueMenu(btn, t) {
   month = new Date(base.getFullYear(), base.getMonth(), 1);
   drawMonth();
   place(dueMenu, btn);
+  actionReturnId = t.id;
 }
 function drawMonth() {
   $("cal-title").textContent = month.toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -910,19 +976,27 @@ dueMenu.onclick = async (e) => {
   const q = b.dataset.quick;
   const due = b.dataset.date || (q === "clear" ? null : daysFrom(Number(q)));
   dueMenu.hidden = true;
-  act("set_due", { id: dueTask.id, due });
+  const id = dueTask.id; actionReturnId = null;
+  await act("set_due", { id, due });
+  focusTask(id);
 };
 
 document.addEventListener("click", (e) => {
+  if (!taskMenu.hidden && !taskMenu.contains(e.target)) closeTaskMenu();
   if (!layoutOptions.hidden && !layoutOptions.contains(e.target) && !layoutOwner?.contains(e.target)) closeLayoutOptions();
   if (!displayMenu.hidden && !displayMenu.contains(e.target)) setDisplayMenu(false);
   if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
   if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);
   if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
   if (!dueMenu.hidden && !dueMenu.contains(e.target)) dueMenu.hidden = true;
+  if (taskMenu.hidden && prioMenu.hidden && dueMenu.hidden) actionReturnId = null;
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating(); }
+  if (e.key === "Escape") {
+    const id = actionReturnId;
+    setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating();
+    if (id != null) { e.preventDefault(); focusTask(id); }
+  }
 });
 document.addEventListener("keydown", (e) => {
   if (noteId != null && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w") {

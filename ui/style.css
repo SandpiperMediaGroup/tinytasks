@@ -284,8 +284,8 @@ section:first-child .group-head { padding-top: 16px; }
 .task.open > .details { grid-template-rows: 1fr; }
 .task.open > .details > .details-inner { opacity: 1; visibility: visible; transition-delay: 0s; }
 .details-pad { padding: 0 14px 8px 44px; }
-.details-pad, .meta { cursor: pointer; }
-.details-pad > .subtasks, .actions { cursor: default; }
+.details-pad { cursor: pointer; }
+.details-pad > .subtasks { cursor: default; }
 .sticky-note #open > section > ul > .task > .details .details-pad { cursor: default; }
 .body {
   margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -293,9 +293,6 @@ section:first-child .group-head { padding-top: 16px; }
   user-select: text; -webkit-user-select: text;
 }
 .body:empty { display: none; }
-/* Details actions stay visible while the task is expanded. */
-.meta { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; color: var(--muted); font-size: 12px; }
-.actions { display: flex; gap: 2px; margin-left: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   .details, .details-inner, .task.checking { transition: none; }
@@ -335,8 +332,8 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 #note-handle:active { cursor: grabbing; }
 #close-note { position: absolute; top: 2px; right: 4px; width: 20px; height: 20px; border-radius: 0; opacity: .4; }
 #close-note svg { width: 14px; height: 14px; }
-.sticky-note .meta, .sticky-note .sub, .sticky-note .time,
-.sticky-note .line > .prio, .sticky-note .preview, .sticky-note .subtasks-head { display: none; }
+.sticky-note .sub, .sticky-note .time,
+.sticky-note .row-status > .prio, .sticky-note .preview, .sticky-note .subtasks-head { display: none; }
 .sticky-note .subtasks:not(:has(.subtask)) { display: none; }
 .sticky-note .task.subtask { border-bottom: none; }
 .sticky-note .task > .line .title { font-weight: 550; }
@@ -405,3 +402,20 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .theme-name { display: block; font-size: 12px; font-weight: 600; margin-top: 7px; }
 .theme-description { display: block; font-size: 11px; color: var(--soft); margin-top: 1px; }
 .settings-footnote { font-size: 11px; color: var(--soft); line-height: 1.5; margin: 20px 0 0; }
+
+/* Overflow actions occupy the badge slot without adding height or moving task text. */
+.row-status { position: relative; display: flex; align-items: flex-start; gap: 8px; flex: none; min-width: 26px; min-height: 20px; }
+.row-status .more { position: absolute; top: -3px; right: -3px; width: 26px; height: 26px; opacity: 0; pointer-events: none; }
+.line:hover > .row-status .more, .line:focus-within > .row-status .more, .row-status .more[aria-expanded="true"] { opacity: 1; pointer-events: auto; }
+.line:hover > .row-status > :is(.prio, .time), .line:focus-within > .row-status > :is(.prio, .time), .row-status:has(.more[aria-expanded="true"]) > :is(.prio, .time) { opacity: 0; pointer-events: none; }
+#task-menu { width: max-content; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
+#task-menu button { gap: 9px; font-size: 12px; }
+#task-menu button[hidden] { display: none; }
+#task-menu button svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+#task-menu button::after { display: none; }
+#task-menu button:focus { background: var(--bg-hover); }
+#task-menu .delete, #task-menu .delete svg { color: var(--danger); }
+@media (hover: none) {
+  .row-status { padding-right: 27px; }
+  .row-status .more { opacity: 1; pointer-events: auto; }
+}

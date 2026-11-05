@@ -147,7 +147,7 @@ section > h2 { margin: 0; }
 section:first-child .group-head { padding-top: 16px; }
 .group-head { width: 100%; text-align: left; }
 .group-head:hover { color: var(--ink); }
-.group-chevron { font-size: 17px; line-height: 14px; width: 10px; transform: rotate(90deg); }
+.group-chevron { margin-left: auto; font-size: 17px; line-height: 14px; width: 10px; transform: rotate(90deg); }
 .group-head[aria-expanded="false"] .group-chevron { transform: none; }
 .group-head .n { font-weight: 500; opacity: .8; }
 .group-head .agent-badge { width: 13px; height: 13px; }

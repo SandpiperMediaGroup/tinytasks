@@ -20,13 +20,15 @@ body { display: block; height: auto; background: #151410; padding: 36px; color: 
 .window .details-inner { opacity: 1; visibility: visible; }
 .window .body { margin: 2px 0 16px; }
 .mode { display: flex; align-items: center; gap: 9px; padding: 0 0 6px; font-size: 12px; color: var(--soft); }
-.segments { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; padding: 2px; gap: 1px; }
-.segments button { width: 23px; height: 21px; border-radius: 3px; color: var(--muted); font-size: 12px; line-height: 1; }
-.segments button:first-child { font-size: 17px; }
-.segments button[aria-pressed="true"] { color: var(--ink); background: var(--bg-hover); box-shadow: 0 1px 2px #0003; }
+.mode-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px; background: var(--bg-hover); color: var(--muted); font-size: 11px; line-height: 16px; }
+.mode-chip .slash { opacity: .45; }
+.mode-chip[aria-pressed="true"] .mode-number, .mode-chip[aria-pressed="false"] .mode-dot { color: var(--ink); font-weight: 650; }
+.mode-chip[aria-pressed="true"] .mode-dot, .mode-chip[aria-pressed="false"] .mode-number { opacity: .45; }
+.mode .add-child { margin-left: auto; width: 24px; height: 24px; }
+.mode .add-child svg { width: 16px; height: 16px; }
 .child { border-bottom: 1px solid var(--line); font-size: 13px; }
 .child:last-child { border-bottom: none; }
-.child-line { display: flex; align-items: start; gap: 8px; padding: 10px 4px; cursor: grab; border-radius: 5px; }
+.child-line { position: relative; display: flex; align-items: start; gap: 8px; padding: 10px 4px; cursor: grab; border-radius: 5px; }
 .child-line:hover { background: var(--bg-hover); }
 .child-line:active { cursor: grabbing; }
 .child .check { width: 17px; height: 17px; font-size: 11px; }
@@ -35,17 +37,15 @@ body { display: block; height: auto; background: #151410; padding: 36px; color: 
 .child-text { flex: 1; min-width: 0; }
 .label { cursor: text; outline-color: var(--accent); overflow-wrap: anywhere; }
 .label[contenteditable="true"] { border-bottom: 1px solid var(--accent); }
-.number { width: 12px; flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.number { position: absolute; left: -18px; top: 11px; width: 14px; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .child.dragging { opacity: .4; }
 .child.drop-target { box-shadow: 0 -2px var(--accent); }
 .child-details { padding: 0 4px 12px 29px; }
-.ordered .child-details { padding-left: 49px; }
 .child-details p { margin: 0 0 7px; color: var(--soft); font-size: 12px; line-height: 1.5; cursor: text; }
 .child-actions { display: flex; align-items: center; gap: 1px; }
 .child-actions small { font-size: 11px; color: var(--muted); margin-right: auto; }
 .child-actions .icon { width: 25px; height: 25px; }
 .child-actions .icon svg { width: 15px; height: 15px; }
-.add-child { font-size: 12px; color: var(--muted); padding: 13px 4px; }
 .parent-check { position: relative; }
 .parent-check::after { content: ''; width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(var(--muted) var(--progress), transparent 0); }
 .parent-check.all-done { background: var(--accent); border-color: var(--accent); color: var(--bg); font-size: 13px; }
@@ -71,10 +71,10 @@ const icons = {
 };
 for(const state of examples) {
  const wrap=document.createElement('div');wrap.className='example';
- wrap.innerHTML=`<div class="window"><header><h1>Tasks <span style="color:var(--muted)">3</span> ⌄</h1><div class="tools"><span class="icon">＋</span><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 7h4M12 7h8M4 17h8M16 17h4M8 4v6M16 14v6"/></svg></span></div></header><h2 class="group-head">⌄ Billing launch <span class="n">3</span></h2><ul><li class="task open"><div class="line"><button class="check parent-check" aria-label="Complete parent task"></button><div class="text"><div class="title"></div></div><span class="prio" data-p="1">P1</span></div><div class="details"><div class="details-inner"><div class="details-pad"><p class="body"></p><div class="mode"><span>Subtasks</span><div class="segments" role="group" aria-label="Subtask mode"><button data-ordered="false" aria-label="Checklist" title="Checklist">•</button><button data-ordered="true" aria-label="Ordered steps" title="Ordered steps">1</button></div></div><div class="children"></div><button class="add-child">＋ Add subtask</button></div></div></div></li><li class="task"><div class="line"><span class="check"></span><div class="text">Review the pricing page<div class="sub">Codex</div></div><span class="time">2h</span></div></li><li class="task"><div class="line"><span class="check"></span><div class="text">Approve the launch email<div class="sub">Claude</div></div><span class="time">3h</span></div></li></ul><h2 class="group-head" style="padding-bottom:18px">› Later <span class="n">2</span></h2></div><p class="caption">${state.caption}</p>`;
+ wrap.innerHTML=`<div class="window"><header><h1>Tasks <span style="color:var(--muted)">3</span> ⌄</h1><div class="tools"><span class="icon">＋</span><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 7h4M12 7h8M4 17h8M16 17h4M8 4v6M16 14v6"/></svg></span></div></header><h2 class="group-head">Billing launch <span class="n">3</span><span style="margin-left:auto">⌄</span></h2><ul><li class="task open"><div class="line"><button class="check parent-check" aria-label="Complete parent task"></button><div class="text"><div class="title"></div></div><span class="prio" data-p="1">P1</span></div><div class="details"><div class="details-inner"><div class="details-pad"><p class="body"></p><div class="mode"><span>Subtasks</span><button class="mode-chip" aria-label="Ordered steps"><span class="mode-number">1</span><span class="slash">/</span><span class="mode-dot">•</span></button><button class="icon add-child" aria-label="Add subtask" title="Add subtask"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div><div class="children"></div></div></div></div></li><li class="task"><div class="line"><span class="check"></span><div class="text">Review the pricing page<div class="sub">Codex</div></div><span class="time">2h</span></div></li><li class="task"><div class="line"><span class="check"></span><div class="text">Approve the launch email<div class="sub">Claude</div></div><span class="time">3h</span></div></li></ul><h2 class="group-head" style="padding-bottom:18px">Later <span class="n">2</span><span style="margin-left:auto">›</span></h2></div><p class="caption">${state.caption}</p>`;
  wrap.querySelector('.title').textContent=state.title;
  wrap.querySelector('.body').textContent=state.details;
- wrap.querySelectorAll('[data-ordered]').forEach(b=>b.onclick=()=>{state.ordered=b.dataset.ordered==='true';draw();});
+ wrap.querySelector('.mode-chip').onclick=()=>{state.ordered=!state.ordered;draw();};
  wrap.querySelector('.add-child').onclick=()=>{state.items.push({title:'New subtask',details:''});draw();};
  wrap.querySelector('.parent-check').onclick=()=>{const done=!state.items.every(x=>x.done);state.items.forEach(x=>x.done=done);draw();};
  let dragged=null;
@@ -91,7 +91,7 @@ for(const state of examples) {
   parent.title=`${complete} of ${total} subtasks complete`;
   parent.setAttribute('aria-label',parent.title);
   parent.classList.toggle('all-done',total>0&&complete===total);parent.textContent=total>0&&complete===total?'✓':'';
-  wrap.querySelectorAll('[data-ordered]').forEach(b=>b.setAttribute('aria-pressed',String(state.ordered)===b.dataset.ordered));
+  const chip=wrap.querySelector('.mode-chip');chip.setAttribute('aria-pressed',state.ordered);chip.title=state.ordered?'Switch to checklist':'Switch to ordered steps';
   wrap.querySelector('.children').classList.toggle('ordered',state.ordered);
   wrap.querySelector('.children').replaceChildren(...state.items.map((item,i)=>{
    const row=document.createElement('div');row.className=`child${item.done?' complete':''}`;
@@ -104,7 +104,7 @@ for(const state of examples) {
    row.ondragleave=()=>row.classList.remove('drop-target');
    row.ondrop=e=>{e.preventDefault();if(dragged!==null){move(dragged,i);dragged=null;}};
    const check=document.createElement('button');check.className='check';check.textContent=item.done?'✓':'';check.setAttribute('aria-label',`${item.done?'Reopen':'Complete'} ${item.title}`);check.onclick=e=>{e.stopPropagation();item.done=!item.done;draw();};line.append(check);
-   if(state.ordered){const n=document.createElement('span');n.className='number';n.textContent=`${i+1}.`;line.append(n);}
+   if(state.ordered){const n=document.createElement('span');n.className='number';n.textContent=`${i+1}.`;line.prepend(n);}
    const text=document.createElement('div');text.className='child-text';const label=document.createElement('span');label.className='label';label.textContent=item.title;edit(label,item,'title');text.append(label);line.append(text);row.append(line);
    if(item.open){const details=document.createElement('div');details.className='child-details';const body=document.createElement('p');body.textContent=item.details||'Add details…';edit(body,item,'details');details.append(body);const actions=document.createElement('div');actions.className='child-actions';actions.innerHTML='<small>Added today</small>'+Object.entries(icons).map(([name,svg])=>`<span class="icon" title="${name}"><svg viewBox="0 0 24 24">${svg}</svg></span>`).join('');details.append(actions);row.append(details);}
    return row;

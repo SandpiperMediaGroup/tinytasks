@@ -267,7 +267,6 @@ function render() {
         toggle.setAttribute("aria-expanded", !ul.hidden);
         toggle.setAttribute("aria-controls", ul.id);
         toggle.setAttribute("aria-label", `${g.label || "Personal"}, ${g.items.length} tasks`);
-        toggle.appendChild(Object.assign(document.createElement("span"), { className: "group-chevron", textContent: "›" }));
         if (groupBy === "priority" && g.k !== 9) {
           toggle.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
           toggle.lastChild.dataset.p = g.k;
@@ -278,6 +277,7 @@ function render() {
         if (groupBy === "due" && g.k <= 1) toggle.dataset.when = g.k === 0 ? "late" : "today";
         const text = groupBy === "priority" && g.k !== 9 ? "" : g.label || "Personal";
         toggle.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
+        toggle.appendChild(Object.assign(document.createElement("span"), { className: "group-chevron", textContent: "›" }));
         toggle.onclick = () => {
           ul.hidden = !ul.hidden;
           toggle.setAttribute("aria-expanded", !ul.hidden);

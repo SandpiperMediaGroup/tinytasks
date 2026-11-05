@@ -15,6 +15,7 @@ but hasn't been tried yet.
 
 - **Click a task's text** to edit it directly. Click away or press Enter to save a title;
   use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
+  Click the empty gutter or space beneath expanded details to collapse the task again.
 - **Open a sticky note** using the folded-corner note icon in task details. Notes
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
   metadata, or action strip. Drag the thin top edge to move a note; its quiet close button

@@ -233,6 +233,17 @@ function row(t, parent = null, index = 0) {
     line.setAttribute("aria-expanded", open);
     if (open) setTimeout(() => li.scrollIntoView({ block: "nearest", behavior: "smooth" }), 170);
   };
+  li.querySelector(".details").onclick = async (e) => {
+    // Only this task's blank gutter/footer: child rows, text, and controls handle their own clicks.
+    if (e.target.closest(".task") !== li || !e.target.matches(".details, .details-inner, .details-pad, .meta")) return;
+    if (noteId === t.id || suppressSubtaskClick || !expanded.has(t.id)) return;
+    e.stopPropagation();
+    if (editingId != null && !await finishEditing?.(true)) return;
+    expanded.delete(t.id);
+    const current = document.querySelector(`.task[data-task-id="${t.id}"]`);
+    current?.classList.remove("open");
+    current?.querySelector(".line").setAttribute("aria-expanded", "false");
+  };
   line.onkeydown = (e) => {
     if (e.target !== line) return;
     if (parent && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {

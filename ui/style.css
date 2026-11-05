@@ -276,6 +276,9 @@ section:first-child .group-head { padding-top: 16px; }
 .task.open > .details { grid-template-rows: 1fr; }
 .task.open > .details > .details-inner { opacity: 1; visibility: visible; transition-delay: 0s; }
 .details-pad { padding: 0 14px 8px 44px; }
+.details-pad, .meta { cursor: pointer; }
+.details-pad > .subtasks, .actions { cursor: default; }
+.sticky-note #open > section > ul > .task > .details .details-pad { cursor: default; }
 .body {
   margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere;
   font-size: 12.5px; line-height: 1.45; color: var(--soft);

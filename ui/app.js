@@ -511,10 +511,12 @@ function render() {
     b.setAttribute("aria-checked", b.dataset.view === view);
     b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
   }
-  $("group-field").value = groupBy;
-  $("order-field").value = orderBy;
-  const completedOption = $("order-field").querySelector('[value="completed"]');
-  completedOption.hidden = completedOption.disabled = view !== "done";
+  for (const [id, value, label, name] of [["group-field", groupBy, groupLabels[groupBy], "Grouping"], ["order-field", orderBy, orderBy === "completed" ? "Completed" : orderLabels[orderBy], "Ordering"]]) {
+    const button = $(id);
+    button.dataset.value = value;
+    button.querySelector(".choice-label").textContent = label;
+    button.setAttribute("aria-label", `${name}: ${label}`);
+  }
   for (const [id, field, reversed, grouping] of [["group-direction", groupBy, groupDescending, true], ["order-direction", orderBy, orderDescending, false]]) {
     const button = $(id);
     button.disabled = field === "none";
@@ -720,18 +722,72 @@ displayMenu.onclick = (e) => {
 };
 
 const menu = $("group-menu");
+const layoutOptions = $("layout-options");
+let layoutOwner = null;
+function closeLayoutOptions(focus = false) {
+  layoutOptions.hidden = true;
+  layoutOwner?.setAttribute("aria-expanded", "false");
+  if (focus) layoutOwner?.focus();
+  layoutOwner = null;
+}
+function openLayoutOptions(button, last = false) {
+  if (layoutOwner === button && !layoutOptions.hidden) { closeLayoutOptions(true); return; }
+  const grouping = button.id === "group-field";
+  const labels = grouping ? groupLabels : orderLabels;
+  const selected = grouping ? groupBy : orderBy;
+  layoutOptions.replaceChildren(...Object.entries(labels)
+    .filter(([value]) => value !== "completed" || view === "done")
+    .map(([value, label]) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = label;
+      item.dataset.value = value;
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", value === selected);
+      item.tabIndex = -1;
+      return item;
+    }));
+  place(layoutOptions, button);
+  layoutOwner = button;
+  button.setAttribute("aria-expanded", "true");
+  layoutOptions.setAttribute("aria-label", grouping ? "Grouping" : "Ordering");
+  const items = [...layoutOptions.querySelectorAll("button")];
+  (last ? items.at(-1) : layoutOptions.querySelector('[aria-checked="true"]') || items[0]).focus();
+}
+layoutOptions.onclick = (e) => {
+  e.stopPropagation();
+  const item = e.target.closest("button[data-value]");
+  if (!item || !layoutOwner) return;
+  if (layoutOwner.id === "group-field") { groupBy = item.dataset.value; groupDescending = false; }
+  else { orderBy = item.dataset.value; orderDescending = ["added", "completed"].includes(orderBy); }
+  closeLayoutOptions(true);
+  saveLayout();
+};
+layoutOptions.onkeydown = (e) => {
+  const items = [...layoutOptions.querySelectorAll("button")];
+  const index = items.indexOf(document.activeElement);
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+    e.preventDefault(); e.stopPropagation();
+    const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  } else if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation(); closeLayoutOptions(true);
+  } else if (e.key === "Tab") { closeLayoutOptions(true); }
+};
 const setMenu = (open) => {
   menu.hidden = !open;
+  if (!open) closeLayoutOptions();
   if (open) menu.style.top = `${$("group").getBoundingClientRect().bottom + 5}px`;
   $("group").setAttribute("aria-expanded", open);
 };
 $("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setDisplayMenu(false); closeFloating(); setMenu(menu.hidden); };
-$("group-field").onchange = () => { groupBy = $("group-field").value; groupDescending = false; saveLayout(); };
-$("order-field").onchange = () => {
-  orderBy = $("order-field").value;
-  orderDescending = ["added", "completed"].includes(orderBy);
-  saveLayout();
-};
+for (const id of ["group-field", "order-field"]) {
+  const button = $(id);
+  button.onclick = (e) => { e.stopPropagation(); openLayoutOptions(button); };
+  button.onkeydown = (e) => {
+    if (["ArrowDown", "ArrowUp"].includes(e.key)) { e.preventDefault(); openLayoutOptions(button, e.key === "ArrowUp"); }
+  };
+}
 $("group-direction").onclick = () => { groupDescending = !groupDescending; saveLayout(); };
 $("order-direction").onclick = () => { orderDescending = !orderDescending; saveLayout(); };
 
@@ -755,6 +811,7 @@ function place(menu, btn) {
   menu.style.top = r.bottom + 4 + h < innerHeight ? `${r.bottom + 4}px` : `${Math.max(8, r.top - 4 - h)}px`;
 }
 function closeFloating() {
+  closeLayoutOptions();
   prioMenu.hidden = true;
   dueMenu.hidden = true;
 }
@@ -822,6 +879,7 @@ dueMenu.onclick = async (e) => {
 };
 
 document.addEventListener("click", (e) => {
+  if (!layoutOptions.hidden && !layoutOptions.contains(e.target) && !layoutOwner?.contains(e.target)) closeLayoutOptions();
   if (!displayMenu.hidden && !displayMenu.contains(e.target)) setDisplayMenu(false);
   if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
   if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);

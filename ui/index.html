@@ -39,13 +39,14 @@
           <div class="layout-setting">
             <label for="group-field">Grouping</label>
             <button id="group-direction" class="direction" aria-label="Reverse group order"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sort-arrow" d="M6 19V5m-3 3 3-3 3 3"/><path d="M13 6h3M13 12h5M13 18h8"/></svg></button>
-            <div class="layout-picker"><select id="group-field"><option value="none">No grouping</option><option value="chat">Chat</option><option value="agent">Agent</option><option value="priority">Priority</option><option value="due">Due date</option><option value="time">Date added</option></select><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></div>
+            <button id="group-field" class="layout-picker" aria-haspopup="menu" aria-expanded="false" aria-controls="layout-options"><span class="choice-label"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
           </div>
           <div class="layout-setting">
             <label for="order-field">Ordering</label>
             <button id="order-direction" class="direction" aria-label="Reverse task order"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sort-arrow" d="M6 19V5m-3 3 3-3 3 3"/><path d="M13 6h3M13 12h5M13 18h8"/></svg></button>
-            <div class="layout-picker"><select id="order-field"><option value="priority">Priority</option><option value="due">Due date</option><option value="added">Date added</option><option value="name">Name</option><option value="completed">Completed</option></select><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></div>
+            <button id="order-field" class="layout-picker" aria-haspopup="menu" aria-expanded="false" aria-controls="layout-options"><span class="choice-label"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
           </div>
+          <div id="layout-options" class="menu floating" role="menu" hidden></div>
         </div>
       </div>
       <div class="menu-wrap">

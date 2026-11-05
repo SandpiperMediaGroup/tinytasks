@@ -8,8 +8,28 @@ check them off. The agent can see what you finished. Keep related steps together
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 
-Built with Rust + [Tauri](https://tauri.app). Tested on Windows; macOS builds from the same code
-but hasn't been tried yet.
+Built with Rust + [Tauri](https://tauri.app). Runs on Windows and macOS. The current subtask
+and sticky-note interactions have been checked on macOS; Windows still needs that regression pass.
+
+## Set it up with your agent
+
+Give your Dot, Claude, Codex, or other agent this repository URL and ask:
+
+> Set up TinyTasks for me: https://github.com/SandpiperMediaGroup/tinytasks
+> Follow its agent setup guide, ask where I want to keep my task list, connect the agents I use,
+> and remember when to use TinyTasks for my action items.
+
+**Agents: start with the [agent setup guide](docs/agent-setup.md).** It covers installation,
+choosing the task folder, connecting tools, checking access, and saving a durable usage instruction.
+Do not assume the user wants the default folder or that every agent has the same configuration.
+
+For multiple computers, we recommend a dedicated **TinyTasks folder in a cloud-synced drive**
+you already use, such as Google Drive, Dropbox, OneDrive, or iCloud Drive. Each computer runs
+its own app and selects its local copy of that shared folder. A local-only folder works too.
+This folder holds your `tasks.md`; you do not need to keep the source-code checkout there.
+
+Prebuilt downloads belong on the repository's [Releases page](https://github.com/SandpiperMediaGroup/tinytasks/releases).
+Until a release for your platform is available, use the [source build instructions](#build).
 
 ## Using it
 
@@ -50,7 +70,8 @@ counts count top-level tasks. A subtask on My desk brings its parent into that v
 
 ## Build
 
-Needs [Rust](https://rustup.rs).
+Needs [Rust](https://rustup.rs) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+for your operating system.
 
 ```bash
 cargo build --release
@@ -61,34 +82,47 @@ need a bundled `.app`), use `cargo install tauri-cli --version "^2"` then `cargo
 
 ## Connect your agents
 
-The same binary is the MCP server: `tinytasks mcp`. Agents start the app for you if it isn't running.
+The same binary is the MCP server: `tinytasks mcp`, using local stdio transport. Adding tasks
+through MCP starts the app if it isn't running. Use the installed executable's absolute path.
+For a macOS app installed in Applications, that is
+`/Applications/TinyTasks.app/Contents/MacOS/tinytasks`; on Windows, use the installed `tinytasks.exe`.
+The GitHub URL is the setup entry point, not an MCP server endpoint.
 
 Claude Code:
 
 ```bash
-claude mcp add tinytasks -s user -- /path/to/tinytasks mcp
+claude mcp add --scope user tinytasks -- /absolute/path/to/tinytasks mcp
 ```
 
 Codex:
 
 ```bash
-codex mcp add tinytasks -- /path/to/tinytasks mcp
+codex mcp add tinytasks -- /absolute/path/to/tinytasks mcp
 ```
 
-Anything else that takes an MCP config:
+Dot, Claude Desktop, and other clients: use the client's local MCP settings and the same command
+and `mcp` argument. Discover its supported setup flow; the Claude Code command above does not
+configure Claude Desktop. For clients accepting the `mcpServers` JSON format:
 
 ```json
-{ "mcpServers": { "tinytasks": { "command": "/path/to/tinytasks", "args": ["mcp"] } } }
+{ "mcpServers": { "tinytasks": { "command": "/absolute/path/to/tinytasks", "args": ["mcp"] } } }
 ```
 
 Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_tasks` and
-`set_desk`, plus `reorder_subtasks`. Then tell your agent to use them, e.g. in `CLAUDE.md` or `AGENTS.md`:
+`set_desk`, plus `reorder_subtasks`. Tool access and remembering to use it are separate steps.
+Save the following in each agent's supported persistent memory or instructions (for example,
+`CLAUDE.md` or `AGENTS.md`, at the scope where you want it to apply):
 
-> When you give me something I have to do myself, add it to TinyTasks with `add_tasks` (name
-> this chat in `chat`, add a link back if you have one). When resuming, check `list_tasks` for
-> what I've finished. When I ask what to focus on, put a few tasks on my desk with `set_desk`.
+> Use TinyTasks for action items I, the human, need to do. Check existing tasks before adding
+> one so you don't duplicate it. Use `add_tasks` with a consistent `chat` name and a real
+> conversation link when available. Keep related steps together as subtasks, ordered when
+> sequence matters. Keep your own agent work plan elsewhere. When resuming work, use
+> `list_tasks` to see what I've finished. Only mark tasks complete when I say they're done
+> or you have verified the outcome. When I ask what to focus on, use `set_desk` for a few
+> relevant tasks; the desk resets each day. Report a failed write rather than claiming success.
 
-A chat that was already open when you added TinyTasks won't see the tools; start a new one.
+After connecting a client, start a new chat or reload its tools, then verify `list_tasks` works.
+See the [setup guide](docs/agent-setup.md) for cloud-file-only agents and a complete setup check.
 
 To add steps, call `add_tasks` with an existing `parent_id` and a `tasks` array. Array order
 becomes the sibling order, and the parent supplies the chat and default conversation link.
@@ -103,6 +137,11 @@ Tasks live in `~/.tinytasks/tasks.md`. To keep them somewhere else, like a Googl
 click the title and choose **Change folder…**. Your list moves there, or, if that folder already
 has one (from your other computer, say), TinyTasks uses it. Each computer notifies you once per
 new task.
+
+Keep the shared folder available offline on each computer and let sync finish before switching
+between them. TinyTasks locks writes on one machine; cloud sync does not coordinate simultaneous
+writes from different computers. Conflicted copies need reconciliation. Local settings and locks
+stay in `~/.tinytasks`; sync the chosen task-data folder, not that settings directory.
 
 Agents that can read your Drive but can't run the MCP server can then read and update the list
 too: the file starts with a short comment explaining the format to them. If the folder goes

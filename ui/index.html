@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="note-handle" hidden title="Drag to move note">
+    <button id="close-note" class="icon" tabindex="0" aria-label="Close sticky note" title="Close note"><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+  </div>
   <header>
     <div class="menu-wrap">
       <h1><button id="view" class="view-btn" title="Choose what to show" aria-haspopup="menu" aria-expanded="false">
@@ -115,8 +118,15 @@
         <div class="details-inner">
           <div class="details-pad">
             <p class="body" role="button" tabindex="0" aria-label="Edit task details"></p>
+            <div class="subtasks" hidden>
+              <div class="subtasks-head">
+                <span>Subtasks</span>
+                <button class="mode-chip" aria-label="Ordered subtasks" aria-pressed="false"><span class="mode-number">1</span><span class="slash">/</span><span class="mode-dot">•</span></button>
+                <button class="icon add-subtask" title="Add subtask" aria-label="Add subtask"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+              <ul class="subtask-list"></ul>
+            </div>
             <div class="meta">
-              <span class="stamp"></span>
               <span class="actions">
                 <button class="icon pin-task" title="Open as sticky note" aria-label="Open as sticky note">
                   <svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4-1-6z"/></svg>

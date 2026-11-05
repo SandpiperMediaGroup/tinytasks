@@ -19,7 +19,7 @@ body { display: block; height: auto; background: #151410; padding: 36px; color: 
 .window .details { grid-template-rows: 1fr; }
 .window .details-inner { opacity: 1; visibility: visible; }
 .window .body { margin: 2px 0 16px; }
-.mode { display: flex; align-items: center; gap: 9px; padding: 0 0 6px; font-size: 12px; color: var(--soft); }
+.mode { display: flex; align-items: center; gap: 9px; padding: 0; font-size: 12px; color: var(--soft); }
 .mode-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px; background: var(--bg-hover); color: var(--muted); font-size: 11px; line-height: 16px; }
 .mode-chip .slash { opacity: .45; }
 .mode-chip[aria-pressed="true"] .mode-number, .mode-chip[aria-pressed="false"] .mode-dot { color: var(--ink); font-weight: 650; }
@@ -28,7 +28,7 @@ body { display: block; height: auto; background: #151410; padding: 36px; color: 
 .mode .add-child svg { width: 16px; height: 16px; }
 .child { border-bottom: 1px solid var(--line); font-size: 13px; }
 .child:last-child { border-bottom: none; }
-.child-line { position: relative; display: flex; align-items: start; gap: 8px; padding: 10px 0; cursor: grab; border-radius: 5px; }
+.child-line { position: relative; display: flex; align-items: start; gap: 8px; padding: 7px 0; cursor: grab; border-radius: 5px; }
 .child-line:hover { background: var(--bg-hover); }
 .child-line:active { cursor: grabbing; }
 .child .check { width: 17px; height: 17px; font-size: 11px; }
@@ -37,12 +37,12 @@ body { display: block; height: auto; background: #151410; padding: 36px; color: 
 .child-text { flex: 1; min-width: 0; }
 .label { cursor: text; outline-color: var(--accent); overflow-wrap: anywhere; }
 .label[contenteditable="true"] { border-bottom: 1px solid var(--accent); }
-.number { position: absolute; left: -22px; top: 11px; width: 14px; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.number { position: absolute; left: -28px; top: 9px; width: 14px; text-align: right; font-size: 11px; color: color-mix(in srgb, var(--muted) 45%, var(--bg)); font-variant-numeric: tabular-nums; }
 .child.dragging { opacity: .4; }
 .child.drop-target { box-shadow: 0 -2px var(--accent); }
 .child-details { padding: 0 0 12px 25px; }
 .child-details p { margin: 0 0 7px; color: var(--soft); font-size: 12px; line-height: 1.5; cursor: text; }
-.child-actions { display: flex; align-items: center; gap: 1px; }
+.child-actions { display: flex; align-items: center; justify-content: flex-end; gap: 1px; }
 .child-actions small { font-size: 11px; color: var(--muted); margin-right: auto; }
 .child-actions .icon { width: 25px; height: 25px; }
 .child-actions .icon svg { width: 15px; height: 15px; }
@@ -106,7 +106,7 @@ for(const state of examples) {
    const check=document.createElement('button');check.className='check';check.textContent=item.done?'✓':'';check.setAttribute('aria-label',`${item.done?'Reopen':'Complete'} ${item.title}`);check.onclick=e=>{e.stopPropagation();item.done=!item.done;draw();};line.append(check);
    if(state.ordered){const n=document.createElement('span');n.className='number';n.textContent=`${i+1}.`;line.prepend(n);}
    const text=document.createElement('div');text.className='child-text';const label=document.createElement('span');label.className='label';label.textContent=item.title;edit(label,item,'title');text.append(label);line.append(text);row.append(line);
-   if(item.open){const details=document.createElement('div');details.className='child-details';const body=document.createElement('p');body.textContent=item.details||'Add details…';edit(body,item,'details');details.append(body);const actions=document.createElement('div');actions.className='child-actions';actions.innerHTML='<small>Added today</small>'+Object.entries(icons).map(([name,svg])=>`<span class="icon" title="${name}"><svg viewBox="0 0 24 24">${svg}</svg></span>`).join('');details.append(actions);row.append(details);}
+   if(item.open){const details=document.createElement('div');details.className='child-details';const body=document.createElement('p');body.textContent=item.details||'Add details…';edit(body,item,'details');details.append(body);const actions=document.createElement('div');actions.className='child-actions';actions.innerHTML=Object.entries(icons).map(([name,svg])=>`<span class="icon" title="${name}"><svg viewBox="0 0 24 24">${svg}</svg></span>`).join('');details.append(actions);row.append(details);}
    return row;
   }));
  }

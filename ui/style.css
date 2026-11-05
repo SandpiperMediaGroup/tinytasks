@@ -89,8 +89,8 @@ header > .menu-wrap { min-width: 0; }
 }
 .edit-details:focus { border-left-color: var(--accent); }
 .edit-details::placeholder { color: var(--muted); }
-.task.editing .line { cursor: default; }
-.task.editing .line:hover { background: none; }
+.task.editing > .line { cursor: default; }
+.task.editing > .line:hover { background: none; }
 
 #problem { margin: 40px 24px; text-align: center; color: var(--soft); font-size: 13px; }
 #problem[hidden] { display: none; }
@@ -172,8 +172,11 @@ section:first-child .group-head { padding-top: 16px; }
 .check svg { width: 13px; height: 13px; stroke-width: 2.6; opacity: 0; color: var(--bg); }
 .check:hover { border-color: var(--accent); }
 .check:hover svg { opacity: .5; color: var(--accent); }
-.task.done .check, .task.checking .check { background: var(--accent); border-color: var(--accent); }
-.task.done .check svg, .task.checking .check svg { opacity: 1; color: var(--bg); }
+.task.done > .line > .check, .task.checking > .line > .check { background: var(--accent); border-color: var(--accent); }
+.task.done > .line > .check svg, .task.checking > .line > .check svg { opacity: 1; color: var(--bg); }
+.check.has-progress { position: relative; }
+.check.has-progress::after { content: ""; position: absolute; width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(var(--muted) var(--progress), transparent 0); pointer-events: none; }
+.check.has-progress:hover::after, .task.checking > .line > .check::after { opacity: 0; }
 
 .text { min-width: 0; flex: 1; }
 .title { overflow-wrap: anywhere; }
@@ -210,6 +213,7 @@ section:first-child .group-head { padding-top: 16px; }
 }
 .time-sub { display: none; }
 .time-sub:empty { display: none; }
+.time:empty { display: none; }
 @media (max-width: 300px) {
   .time { display: none; }
   .time-sub { display: inline; }
@@ -249,7 +253,7 @@ section:first-child .group-head { padding-top: 16px; }
 .cal-quick { display: flex; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 .menu .cal-quick button { justify-content: center; padding: 5px 0; font-size: 12px; color: var(--soft); }
 
-.task.done .title, .task.checking .title { text-decoration: line-through; color: var(--muted); }
+.task.done > .line .title, .task.checking > .line .title { text-decoration: line-through; color: var(--muted); }
 .task.checking { transition: opacity .3s .25s; opacity: 0; }
 
 /* Details slide open under the row. */
@@ -261,8 +265,8 @@ section:first-child .group-head { padding-top: 16px; }
   overflow: hidden; min-height: 0; opacity: 0; visibility: hidden;
   transition: opacity .16s ease-out, visibility 0s .16s;
 }
-.task.open .details { grid-template-rows: 1fr; }
-.task.open .details-inner { opacity: 1; visibility: visible; transition-delay: 0s; }
+.task.open > .details { grid-template-rows: 1fr; }
+.task.open > .details > .details-inner { opacity: 1; visibility: visible; transition-delay: 0s; }
 .details-pad { padding: 0 14px 8px 44px; }
 .body {
   margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -270,9 +274,8 @@ section:first-child .group-head { padding-top: 16px; }
   user-select: text; -webkit-user-select: text;
 }
 .body:empty { display: none; }
-/* The stamp gets the full width; the icons drop to their own line when both don't fit. */
+/* Details actions stay visible while the task is expanded. */
 .meta { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; color: var(--muted); font-size: 12px; }
-.stamp { flex: 1 0 auto; max-width: 100%; }
 .actions { display: flex; gap: 2px; margin-left: auto; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -302,11 +305,61 @@ section:first-child .group-head { padding-top: 16px; }
 .menu .property-options button::after { display: none; }
 button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sticky-note header, .sticky-note #new-task { display: none; }
-.sticky-note main { padding-top: 12px; }
+.sticky-note main { padding-top: 3px; }
 .sticky-note .title { font-size: 18px; line-height: 1.4; }
 .sticky-note .body { font-size: 14px; }
 .sticky-note .task { border-bottom: 0; }
 .sticky-note .line { cursor: default; }
 .sticky-note .line:hover { background: none; }
+.sticky-note { --bg: #fff1b8; --bg-hover: #f7e8ab; }
+@media (prefers-color-scheme: dark) {
+  .sticky-note { --bg: #302b1c; --bg-hover: #3a3321; }
+}
+#note-handle { position: relative; height: 24px; flex: none; cursor: grab; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+#note-handle:active { cursor: grabbing; }
+#close-note { position: absolute; top: 2px; right: 4px; width: 20px; height: 20px; border-radius: 0; opacity: .4; }
+#close-note svg { width: 14px; height: 14px; }
+.sticky-note .meta, .sticky-note .sub, .sticky-note .time,
+.sticky-note .line > .prio, .sticky-note .preview, .sticky-note .subtasks-head { display: none; }
+.sticky-note .subtasks:not(:has(.subtask)) { display: none; }
+.sticky-note .task.subtask { border-bottom: none; }
+.sticky-note .task > .line .title { font-weight: 550; }
+.sticky-note .subtask > .line .title { font-weight: 400; }
+
+/* Subtasks share the normal task interactions, with a slightly tighter rhythm. */
+.subtasks { margin: 10px 0; }
+.subtasks-head { display: flex; align-items: center; gap: 9px; min-height: 24px; font-size: 12px; color: var(--soft); }
+.mode-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px; background: var(--bg-hover); color: var(--muted); font-size: 11px; line-height: 16px; }
+.mode-chip .slash { opacity: .45; }
+.mode-chip[aria-pressed="true"] .mode-number, .mode-chip[aria-pressed="false"] .mode-dot { color: var(--ink); font-weight: 650; }
+.mode-chip[aria-pressed="true"] .mode-dot, .mode-chip[aria-pressed="false"] .mode-number { opacity: .45; }
+.subtasks-head .add-subtask { margin-left: auto; width: 24px; height: 24px; }
+.subtasks-head .add-subtask svg { width: 16px; height: 16px; }
+.subtask > .line { position: relative; padding: 7px 0; gap: 8px; border-radius: 5px; cursor: grab; }
+.subtask > .line:hover { background: var(--bg-hover); }
+.subtask > .line:active { cursor: grabbing; }
+.subtask > .line .title { font-size: 13px; line-height: 1.4; }
+.subtask > .line .title-text { user-select: none; -webkit-user-select: none; }
+.subtask > .line { touch-action: none; }
+.subtask > .line > .check { width: 17px; height: 17px; }
+.subtask-number { position: absolute; left: -28px; top: 9px; width: 14px; text-align: right; font-size: 11px; color: color-mix(in srgb, var(--muted) 45%, var(--bg)); font-variant-numeric: tabular-nums; }
+.subtask > .details > .details-inner > .details-pad { padding: 0 0 7px 25px; }
+.subtask > .details .body { font-size: 12px; }
+.subtask:last-child { border-bottom: none; }
+.subtask.dragging { opacity: .4; }
+.subtask.drop-target { box-shadow: 0 -2px var(--accent); }
+.new-subtask .check { border-style: dashed; }
+.new-subtask input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; }
+.new-subtask input::placeholder { color: var(--muted); }
+.new-subtask .line:focus-within { box-shadow: 0 1px var(--accent); }
+
+/* Reserve the space; controls also appear for keyboard users and stay visible on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .group-chevron, .subtasks-head > .mode-chip, .subtasks-head > .add-subtask { opacity: 0; }
+  .sticky-note:hover #close-note, #note-handle:focus-within #close-note { opacity: 1; }
+  .group-head:hover .group-chevron, .group-head:focus-visible .group-chevron,
+  .subtasks-head:hover > .mode-chip, .subtasks-head:hover > .add-subtask,
+  .subtasks-head:focus-within > .mode-chip, .subtasks-head:focus-within > .add-subtask { opacity: 1; }
+}
 [hidden] { display: none !important; }
 

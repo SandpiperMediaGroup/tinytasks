@@ -13,7 +13,10 @@ let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 fi
 let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
 if (!["all", "desk", "done"].includes(view)) view = "all";
 const noteId = Number(new URLSearchParams(location.search).get("task")) || null;
-if (noteId != null) document.body.classList.add("sticky-note");
+if (noteId != null) {
+  document.body.classList.add("sticky-note");
+  $("note-handle").hidden = false;
+}
 const properties = { id: false, agent: true, chat: true, priority: true, due: true, added: true, completed: true, details: false };
 try {
   const saved = JSON.parse(store.get("properties", "{}"));
@@ -26,6 +29,8 @@ try {
 } catch {}
 let tasks = [];
 let lastJson = "";
+const childrenOf = (id) => tasks.filter(t => t.parent_id === id).sort((a, b) => a.position - b.position || a.id - b.id);
+let draggingSubtask = null;
 
 // ---- time ----
 const DAY = 86400;
@@ -93,18 +98,24 @@ function source(t, { icon = true, chat = true } = {}) {
   return el;
 }
 
-function row(t) {
+function row(t, parent = null, index = 0) {
   const li = tpl.content.firstElementChild.cloneNode(true);
   li.dataset.taskId = t.id;
   const done = t.done_at != null;
   li.classList.toggle("done", done);
-  li.classList.toggle("open", noteId != null || expanded.has(t.id));
+  li.classList.toggle("open", noteId === t.id || expanded.has(t.id));
+  li.classList.toggle("subtask", parent != null);
+  if (parent?.ordered) {
+    const number = Object.assign(document.createElement("span"), { className: "subtask-number", textContent: `${index + 1}.` });
+    number.setAttribute("aria-hidden", "true");
+    li.querySelector(".line").prepend(number);
+  }
   const titleText = li.querySelector(".title-text");
   titleText.textContent = t.title;
   const editText = (el, field) => {
-    el.onclick = (e) => { e.stopPropagation(); startEdit(li, t, field); };
+    el.onclick = (e) => { e.stopPropagation(); if (!suppressSubtaskClick) startEdit(li, t, field); };
     el.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); startEdit(li, t, field); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (!suppressSubtaskClick) startEdit(li, t, field); }
     };
   };
   editText(titleText, "title");
@@ -117,9 +128,9 @@ function row(t) {
   id.hidden = !properties.id;
 
   // A row leaves out whatever its group header already says (Completed has no headers).
-  const by = view === "done" || noteId != null ? "" : groupBy;
-  const showIcon = properties.agent && (done || (by !== "chat" && by !== "agent"));
-  const showChat = properties.chat && (done || by !== "chat");
+  const by = view === "done" || noteId != null || parent ? "" : groupBy;
+  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : done || (by !== "chat" && by !== "agent"));
+  const showChat = properties.chat && (parent ? t.chat !== parent.chat : done || by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
@@ -155,31 +166,51 @@ function row(t) {
 
   const when = done ? t.done_at : t.created_at;
   const time = li.querySelector(".time");
-  time.textContent = li.querySelector(".time-sub").textContent = properties[done ? "completed" : "added"] ? short(when) : "";
-  time.title = `${done ? "Done" : "Added"} ${full(when)}`;
-
-  const added = t.agent ? `From ${agentInfo(t.agent).name}, ${full(t.created_at)}` : `Added ${full(t.created_at)}`;
-  li.querySelector(".stamp").textContent = added + (done ? `. Done ${full(t.done_at)}` : "");
+  time.textContent = li.querySelector(".time-sub").textContent = !parent && properties[done ? "completed" : "added"] ? short(when) : "";
+  time.title = li.querySelector(".time-sub").title = done ? `Done ${full(when)}\nAdded ${full(t.created_at)}` : `Added ${full(when)}`;
   li.querySelector(".body").textContent = t.details || "Add details…";
   li.querySelector(".body").classList.toggle("placeholder", !t.details);
 
   const check = li.querySelector(".check");
   check.title = done ? "Mark not done" : "Mark done";
+  const children = childrenOf(t.id);
+  if (children.length && !done) {
+    const count = children.filter(child => child.done_at != null).length;
+    check.classList.add("has-progress");
+    check.style.setProperty("--progress", `${count / children.length * 100}%`);
+    check.title = `${count} of ${children.length} subtasks complete. Complete task and subtasks.`;
+  }
+  check.setAttribute("aria-label", check.title);
   check.onclick = async (e) => {
     e.stopPropagation();
-    if (!done) {
+    if (!done && !parent) {
       li.classList.add("checking");
       await new Promise((r) => setTimeout(r, 550));
     }
     act("set_done", { id: t.id, done: !done });
   };
 
-  li.querySelector(".line").onclick = () => {
-    if (noteId != null) return;
+  const line = li.querySelector(".line");
+  line.tabIndex = 0;
+  line.setAttribute("aria-label", `${t.title}: task details`);
+  line.setAttribute("aria-expanded", noteId === t.id || expanded.has(t.id));
+  li.querySelector(".details").id = `task-details-${t.id}`;
+  line.setAttribute("aria-controls", `task-details-${t.id}`);
+  line.onclick = () => {
+    if (noteId === t.id || suppressSubtaskClick) return;
     const open = !expanded.has(t.id);
     open ? expanded.add(t.id) : expanded.delete(t.id);
     li.classList.toggle("open", open);
+    line.setAttribute("aria-expanded", open);
     if (open) setTimeout(() => li.scrollIntoView({ block: "nearest", behavior: "smooth" }), 170);
+  };
+  line.onkeydown = (e) => {
+    if (e.target !== line) return;
+    if (parent && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+      e.preventDefault();
+      const to = index + (e.key === "ArrowUp" ? -1 : 1);
+      if (to >= 0 && to < childrenOf(parent.id).length) moveSubtask(parent.id, t.id, to, true);
+    } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); line.onclick(); }
   };
 
   const link = li.querySelector(".open-link");
@@ -195,16 +226,134 @@ function row(t) {
   } else {
     link.remove();
   }
-  li.querySelector(".delete").onclick = async () => act("delete_task", { id: t.id });
+  const deleteButton = li.querySelector(".delete");
+  if (children.length) deleteButton.title = "Delete task and its subtasks";
+  deleteButton.onclick = async () => act("delete_task", { id: t.id });
   const pin = li.querySelector(".pin-task");
-  pin.hidden = noteId != null;
+  pin.hidden = noteId === t.id;
   pin.onclick = async () => {
     pin.disabled = true;
     try { await invoke("open_note", { id: t.id }); }
     catch (e) { notice(String(e)); }
     finally { pin.disabled = false; }
   };
+  if (t.parent_id == null) {
+    const section = li.querySelector(".subtasks");
+    section.hidden = false;
+    const mode = section.querySelector(".mode-chip");
+    mode.setAttribute("aria-pressed", !!t.ordered);
+    mode.title = t.ordered ? "Switch to checklist" : "Switch to ordered steps";
+    mode.onclick = () => act("set_subtask_mode", { id: t.id, ordered: !t.ordered });
+    section.querySelector(".add-subtask").onclick = () => startNewSubtask(t.id);
+    section.querySelector(".subtask-list").append(...children.map((child, i) => row(child, t, i)));
+  }
+  if (parent) {
+    line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
+    line.onpointerdown = (e) => beginSubtaskDrag(e, line, t.id, parent.id);
+  }
   return li;
+}
+
+// Pointer dragging works consistently in desktop webviews and doesn't launch an OS text drag.
+let suppressSubtaskClick = false;
+function beginSubtaskDrag(event, line, id, parentId) {
+  if (event.button !== 0 || editingId != null || event.target.closest("button, input, textarea")) return;
+  const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
+  let destination = null;
+  const move = (e) => {
+    if (e.pointerId !== start.pointer) return;
+    if (!line.isConnected) { end({ pointerId: start.pointer, type: "pointercancel" }); return; }
+    if (!draggingSubtask && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5) return;
+    e.preventDefault();
+    if (!draggingSubtask) {
+      draggingSubtask = { id, parentId };
+      line.setPointerCapture(start.pointer);
+      line.parentElement.classList.add("dragging");
+    }
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".task.subtask");
+    const siblings = childrenOf(parentId);
+    destination = target ? siblings.findIndex(t => t.id === Number(target.dataset.taskId)) : -1;
+    document.querySelectorAll(".drop-target").forEach(el => el.classList.remove("drop-target"));
+    if (destination >= 0 && Number(target.dataset.taskId) !== id) target.classList.add("drop-target");
+    const main = $("main"), bounds = main.getBoundingClientRect();
+    if (e.clientY > bounds.bottom - 24) main.scrollBy(0, 12);
+    else if (e.clientY < bounds.top + 24) main.scrollBy(0, -12);
+  };
+  const end = (e) => {
+    if (e.pointerId !== start.pointer) return;
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", end);
+    document.removeEventListener("pointercancel", end);
+    const dragged = draggingSubtask != null;
+    draggingSubtask = null;
+    if (line.hasPointerCapture(start.pointer)) line.releasePointerCapture(start.pointer);
+    document.querySelectorAll(".dragging, .drop-target").forEach(el => el.classList.remove("dragging", "drop-target"));
+    if (dragged) {
+      suppressSubtaskClick = true;
+      setTimeout(() => { suppressSubtaskClick = false; }, 0);
+      if (e.type === "pointerup" && destination != null && destination >= 0) moveSubtask(parentId, id, destination);
+      else render();
+    }
+  };
+  document.addEventListener("pointermove", move, { passive: false });
+  document.addEventListener("pointerup", end);
+  document.addEventListener("pointercancel", end);
+}
+
+async function moveSubtask(parentId, id, position, focus = false) {
+  const ids = childrenOf(parentId).map(t => t.id);
+  const from = ids.indexOf(id);
+  if (editingId != null) return;
+  if (from < 0 || from === position) { render(); return; }
+  ids.splice(from, 1);
+  ids.splice(position, 0, id);
+  await act("reorder_subtasks", { parentId, ids });
+  if (focus) document.querySelector(`.task[data-task-id="${id}"] > .line`)?.focus();
+}
+
+async function startNewSubtask(parentId) {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  const parentRow = document.querySelector(`.task[data-task-id="${parentId}"]`);
+  if (!parentRow) return;
+  expanded.add(parentId);
+  parentRow.classList.add("open");
+  const draft = document.createElement("li");
+  draft.className = "subtask new-subtask";
+  draft.innerHTML = '<form class="line"><span class="check"></span><input maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></form>';
+  parentRow.querySelector(".subtask-list").append(draft);
+  const field = draft.querySelector("input");
+  const editKey = `new:${parentId}`;
+  editingId = editKey;
+  let saving = false;
+  const finish = async (save) => {
+    if (saving || editingId !== editKey || finishEditing !== finish) return false;
+    const title = field.value.trim();
+    if (!save || !title) { editingId = null; render(); return true; }
+    saving = true;
+    field.readOnly = true;
+    try {
+      let list = await invoke("add_subtask", { parentId, title });
+      if (noteId != null) list = await invoke("list_note", { id: noteId });
+      editingId = null;
+      update(list);
+      return true;
+    } catch (e) {
+      saving = false;
+      field.readOnly = false;
+      notice(`Couldn't add subtask: ${e}`);
+      field.focus();
+      return false;
+    }
+  };
+  finishEditing = finish;
+  draft.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const title = field.value.trim();
+    if (await finish(true) && title) startNewSubtask(parentId);
+  };
+  field.onkeydown = (e) => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
+  field.onblur = () => setTimeout(() => { if (document.activeElement !== field) finish(true); });
+  field.focus();
 }
 
 // ---- groups ----
@@ -241,14 +390,14 @@ function groupsOf(open) {
 
 const VIEWS = {
   all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
-  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
+  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && (t.mydesk || childrenOf(t.id).some(c => c.mydesk && c.done_at == null)) },
   done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
 };
 
 function render() {
-  if (editingId != null) return;
+  if (editingId != null || draggingSubtask != null) return;
   const v = VIEWS[view];
-  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasks.filter(v.show);
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasks.filter(t => t.parent_id == null && v.show(t));
   // Completed is one list, most recently finished first; the others use the group-by choice.
   const groups = view === "done" || noteId != null ? [{ label: "", items: open }] : groupsOf(open);
   const headers = view !== "done" && noteId == null;
@@ -287,7 +436,7 @@ function render() {
         h.appendChild(toggle);
         sec.appendChild(h);
       }
-      ul.append(...g.items.map(row));
+      ul.append(...g.items.map(t => row(t)));
       sec.appendChild(ul);
       return sec;
     })
@@ -301,7 +450,7 @@ function render() {
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", b.dataset.view === view);
-    b.querySelector(".n").textContent = tasks.filter(VIEWS[b.dataset.view].show).length || "";
+    b.querySelector(".n").textContent = tasks.filter(t => t.parent_id == null && VIEWS[b.dataset.view].show(t)).length || "";
   }
   for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
   document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
@@ -330,7 +479,7 @@ async function startEdit(li, t, field) {
   if (field === "title") input.maxLength = 300;
   input.setAttribute("aria-label", field === "title" ? "Task title" : "Task details");
   target.replaceChildren(input);
-  li.querySelector(".stamp").textContent = "Click away to save. Esc cancels.";
+  input.title = "Click away to save. Esc cancels.";
   input.oninput = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
   input.oninput();
   let saving = false;
@@ -455,6 +604,16 @@ function notice(text) {
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => ($("notice").hidden = true), 6000);
 }
+async function closeNote() {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  invoke("close_note").catch(e => notice(String(e)));
+}
+$("close-note").onclick = closeNote;
+$("note-handle").onmousedown = (e) => {
+  if (e.button !== 0 || e.target.closest("button")) return;
+  e.preventDefault();
+  invoke("drag_note").catch(e => notice(String(e)));
+};
 async function pickFolder() {
   setViewMenu(false);
   try {
@@ -604,6 +763,11 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating(); }
 });
+document.addEventListener("keydown", (e) => {
+  if (noteId != null && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w") {
+    e.preventDefault(); e.stopPropagation(); closeNote();
+  }
+}, true);
 $("main").addEventListener("scroll", closeFloating);
 
 listen("tasks-changed", refresh);

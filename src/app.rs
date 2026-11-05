@@ -34,7 +34,7 @@ pub fn run(background: bool) {
     builder
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
-            location, pick_folder, open_file, list_note
+            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -196,7 +196,29 @@ fn list() -> Res<Vec<Task>> {
 /// A note remains readable after completion, including beyond the list's retention window.
 #[tauri::command]
 fn list_note(id: i64) -> Res<Vec<Task>> {
-    Ok(store::load()?.get(id).into_iter().collect())
+    Ok(store::load()?.note_tasks(id))
+}
+
+#[tauri::command]
+fn add_subtask(app: AppHandle, parent_id: i64, title: String) -> Res<Vec<Task>> {
+    let title = title.trim();
+    if title.is_empty() { return Err("A subtask needs a title.".into()); }
+    store::change(|l| l.add_subtask(parent_id, store::NewTask {
+        title, details: "", agent: "", chat: "", link: "", priority: None, due: None, mydesk: false,
+    }))?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn set_subtask_mode(app: AppHandle, id: i64, ordered: bool) -> Res<Vec<Task>> {
+    store::change(|l| l.set_subtask_mode(id, ordered))?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn reorder_subtasks(app: AppHandle, parent_id: i64, ids: Vec<i64>) -> Res<Vec<Task>> {
+    store::change(|l| l.reorder_subtasks(parent_id, &ids))?;
+    reply(&app)
 }
 
 /// The user typing in their own task: no agent, no chat (so no notification).
@@ -348,7 +370,22 @@ async fn open_note(app: AppHandle, id: i64) -> Res<()> {
         .inner_size(340.0, 300.0)
         .min_inner_size(280.0, 180.0)
         .always_on_top(true)
+        .decorations(false)
+        .shadow(true)
+        .disable_drag_drop_handler()
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+fn close_note(window: tauri::WebviewWindow) -> Res<()> {
+    if !window.label().starts_with("note-") { return Err("Only sticky notes can be closed here.".into()); }
+    window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn drag_note(window: tauri::WebviewWindow) -> Res<()> {
+    if !window.label().starts_with("note-") { return Err("Only sticky notes can be moved here.".into()); }
+    window.start_dragging().map_err(|e| e.to_string())
 }

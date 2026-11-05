@@ -265,7 +265,7 @@ section:first-child .group-head { padding-top: 16px; }
 }
 #cal-grid button.past { color: var(--muted); }
 #cal-grid button.today { box-shadow: inset 0 0 0 1.5px var(--accent); }
-.menu #cal-grid button[aria-checked="true"] { background: var(--accent); color: #2a2620; font-weight: 650; }
+.menu #cal-grid button[aria-checked="true"] { background: var(--accent); color: var(--bg); font-weight: 650; }
 .cal-quick { display: flex; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 .menu .cal-quick button { justify-content: center; padding: 5px 0; font-size: 12px; color: var(--soft); }
 
@@ -330,10 +330,7 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .sticky-note .task { border-bottom: 0; }
 .sticky-note .line { cursor: default; }
 .sticky-note .line:hover { background: none; }
-.sticky-note { --bg: #fff1b8; --bg-hover: #f7e8ab; }
-@media (prefers-color-scheme: dark) {
-  .sticky-note { --bg: #302b1c; --bg-hover: #3a3321; }
-}
+.sticky-note { --bg: var(--note-bg); --bg-hover: var(--note-hover); }
 #note-handle { position: relative; height: 24px; flex: none; cursor: grab; background: color-mix(in srgb, var(--accent) 8%, transparent); }
 #note-handle:active { cursor: grabbing; }
 #close-note { position: absolute; top: 2px; right: 4px; width: 20px; height: 20px; border-radius: 0; opacity: .4; }
@@ -382,3 +379,29 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 }
 [hidden] { display: none !important; }
 
+
+/* Settings occupies the existing window, with palette previews at task-list scale. */
+.shortcut { margin-left: auto; color: var(--muted); font-size: 12px; }
+#settings { position: fixed; inset: 0; margin: 0; border: 0; padding: 0; width: 100%; height: 100%; max-width: none; max-height: none; background: var(--bg); color: var(--ink); }
+#settings[open] { display: flex; flex-direction: column; }
+.settings-header { display: flex; align-items: center; gap: 6px; padding: 10px; border-bottom: 1px solid var(--line); flex: none; }
+.settings-body { padding: 18px 16px; overflow-y: auto; }
+.settings-body h2 { font-size: 14px; margin: 0 0 3px; font-weight: 650; }
+.settings-description { margin: 0 0 16px; font-size: 12px; color: var(--soft); }
+#themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.theme-card { position: relative; cursor: pointer; min-width: 0; }
+.theme-card input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.theme-preview { position: relative; display: block; height: 76px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); padding: 12px 11px; color: var(--ink); }
+.theme-preview::before { content: ''; display: block; width: 44%; height: 4px; border-radius: 2px; background: var(--soft); margin-bottom: 9px; opacity: .65; }
+.theme-sample { display: flex; align-items: center; gap: 6px; margin: 7px 0; }
+.theme-sample i { display: block; width: 9px; height: 9px; border: 1px solid var(--muted); border-radius: 50%; }
+.theme-sample b { display: block; height: 3px; width: 65%; background: var(--ink); border-radius: 2px; opacity: .55; }
+.theme-sample:last-child i { background: var(--accent); border-color: var(--accent); }
+.theme-sample:last-child b { width: 47%; opacity: .3; }
+.theme-card input:checked + .theme-preview { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-card input:focus-visible + .theme-preview { outline: 2px solid var(--ink); outline-offset: 3px; }
+.theme-selected { position: absolute; right: 7px; top: 6px; color: var(--accent); font-size: 13px; visibility: hidden; }
+.theme-card input:checked + .theme-preview .theme-selected { visibility: visible; }
+.theme-name { display: block; font-size: 12px; font-weight: 600; margin-top: 7px; }
+.theme-description { display: block; font-size: 11px; color: var(--soft); margin-top: 1px; }
+.settings-footnote { font-size: 11px; color: var(--soft); line-height: 1.5; margin: 20px 0 0; }

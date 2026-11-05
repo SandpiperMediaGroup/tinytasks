@@ -25,6 +25,9 @@ but hasn't been tried yet.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
   Hover the row's time indicator for the full added date; completed tasks also show their completion date.
+- **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Choose Solarized Light or Dark,
+  Parchment, Paper, Forest, or Midnight with live palette previews. System follows the computer’s
+  light/dark appearance. The choice saves automatically and updates open sticky notes on this computer.
 - **+** adds your own task. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the details)
   or by the agent.

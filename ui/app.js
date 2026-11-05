@@ -12,7 +12,18 @@ let groupBy = store.get("groupBy", "time");
 let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 first instead of P0
 let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
 if (!["all", "desk", "done"].includes(view)) view = "all";
-let pinned = false;
+const noteId = Number(new URLSearchParams(location.search).get("task")) || null;
+if (noteId != null) document.body.classList.add("sticky-note");
+const properties = { id: false, agent: true, chat: true, priority: true, due: true, added: true, completed: true, details: false };
+try {
+  const saved = JSON.parse(store.get("properties", "{}"));
+  for (const key of Object.keys(properties)) if (typeof saved?.[key] === "boolean") properties[key] = saved[key];
+} catch {}
+let collapsedGroups = new Set();
+try {
+  const saved = JSON.parse(store.get("collapsedGroups", "[]"));
+  if (Array.isArray(saved)) collapsedGroups = new Set(saved.filter(k => typeof k === "string"));
+} catch {}
 let tasks = [];
 let lastJson = "";
 
@@ -84,19 +95,35 @@ function source(t, { icon = true, chat = true } = {}) {
 
 function row(t) {
   const li = tpl.content.firstElementChild.cloneNode(true);
+  li.dataset.taskId = t.id;
   const done = t.done_at != null;
   li.classList.toggle("done", done);
-  li.classList.toggle("open", expanded.has(t.id));
-  li.querySelector(".title").textContent = t.title;
+  li.classList.toggle("open", noteId != null || expanded.has(t.id));
+  const titleText = li.querySelector(".title-text");
+  titleText.textContent = t.title;
+  const editText = (el, field) => {
+    el.onclick = (e) => { e.stopPropagation(); startEdit(li, t, field); };
+    el.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); startEdit(li, t, field); }
+    };
+  };
+  editText(titleText, "title");
+  editText(li.querySelector(".body"), "details");
+  const preview = li.querySelector(".preview");
+  preview.textContent = t.details;
+  preview.hidden = !properties.details || !t.details || noteId != null;
+  const id = li.querySelector(".task-id");
+  id.textContent = `#${t.id}`;
+  id.hidden = !properties.id;
 
   // A row leaves out whatever its group header already says (Completed has no headers).
-  const by = view === "done" ? "" : groupBy;
-  const showIcon = done || (by !== "chat" && by !== "agent");
-  const showChat = done || by !== "chat";
+  const by = view === "done" || noteId != null ? "" : groupBy;
+  const showIcon = properties.agent && (done || (by !== "chat" && by !== "agent"));
+  const showChat = properties.chat && (done || by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
-  if (t.priority != null && by !== "priority") {
+  if (properties.priority && t.priority != null && by !== "priority") {
     pill.hidden = false;
     pill.dataset.p = t.priority;
     pill.textContent = `P${t.priority}`;
@@ -104,7 +131,7 @@ function row(t) {
   const due = li.querySelector(".due");
   // Grouped by due date, only the Today and Tomorrow headers name the day; other rows keep it.
   const headerSaysDay = by === "due" && t.due && [0, 1].includes(daysUntil(t.due));
-  if (t.due && !done && !headerSaysDay) {
+  if (properties.due && t.due && !done && !headerSaysDay) {
     due.hidden = false;
     due.lastChild.textContent = dueText(t.due);
     const n = daysUntil(t.due);
@@ -128,12 +155,13 @@ function row(t) {
 
   const when = done ? t.done_at : t.created_at;
   const time = li.querySelector(".time");
-  time.textContent = li.querySelector(".time-sub").textContent = short(when);
+  time.textContent = li.querySelector(".time-sub").textContent = properties[done ? "completed" : "added"] ? short(when) : "";
   time.title = `${done ? "Done" : "Added"} ${full(when)}`;
 
   const added = t.agent ? `From ${agentInfo(t.agent).name}, ${full(t.created_at)}` : `Added ${full(t.created_at)}`;
   li.querySelector(".stamp").textContent = added + (done ? `. Done ${full(t.done_at)}` : "");
-  li.querySelector(".body").textContent = t.details;
+  li.querySelector(".body").textContent = t.details || "Add details…";
+  li.querySelector(".body").classList.toggle("placeholder", !t.details);
 
   const check = li.querySelector(".check");
   check.title = done ? "Mark not done" : "Mark done";
@@ -147,6 +175,7 @@ function row(t) {
   };
 
   li.querySelector(".line").onclick = () => {
+    if (noteId != null) return;
     const open = !expanded.has(t.id);
     open ? expanded.add(t.id) : expanded.delete(t.id);
     li.classList.toggle("open", open);
@@ -167,7 +196,14 @@ function row(t) {
     link.remove();
   }
   li.querySelector(".delete").onclick = async () => act("delete_task", { id: t.id });
-  li.querySelector(".edit").onclick = () => startEdit(li, t);
+  const pin = li.querySelector(".pin-task");
+  pin.hidden = noteId != null;
+  pin.onclick = async () => {
+    pin.disabled = true;
+    try { await invoke("open_note", { id: t.id }); }
+    catch (e) { notice(String(e)); }
+    finally { pin.disabled = false; }
+  };
   return li;
 }
 
@@ -210,31 +246,47 @@ const VIEWS = {
 };
 
 function render() {
+  if (editingId != null) return;
   const v = VIEWS[view];
-  const open = tasks.filter(v.show);
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasks.filter(v.show);
   // Completed is one list, most recently finished first; the others use the group-by choice.
-  const groups = view === "done" ? [{ label: "", items: open }] : groupsOf(open);
-  const headers = groupBy !== "time" || groups.length > 1;
+  const groups = view === "done" || noteId != null ? [{ label: "", items: open }] : groupsOf(open);
+  const headers = view !== "done" && noteId == null;
 
   $("open").replaceChildren(
-    ...groups.map((g) => {
+    ...groups.map((g, index) => {
       const sec = document.createElement("section");
-      if (headers && g.label) {
+      const ul = document.createElement("ul");
+      ul.id = `group-items-${index}`;
+      if (headers) {
         const h = document.createElement("h2");
-        h.className = "group-head";
+        const toggle = document.createElement("button");
+        toggle.className = "group-head";
+        const key = JSON.stringify([view, groupBy, g.k]);
+        ul.hidden = collapsedGroups.has(key);
+        toggle.setAttribute("aria-expanded", !ul.hidden);
+        toggle.setAttribute("aria-controls", ul.id);
+        toggle.setAttribute("aria-label", `${g.label || "Personal"}, ${g.items.length} tasks`);
+        toggle.appendChild(Object.assign(document.createElement("span"), { className: "group-chevron", textContent: "›" }));
         if (groupBy === "priority" && g.k !== 9) {
-          h.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
-          h.lastChild.dataset.p = g.k;
+          toggle.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
+          toggle.lastChild.dataset.p = g.k;
         } else if (groupBy === "chat" || groupBy === "agent") {
-          h.appendChild(agentIcon(g.sample.agent));
+          toggle.appendChild(agentIcon(g.sample.agent));
         }
         // Overdue and Today read in the same red and orange as the due dates on rows.
-        if (groupBy === "due" && g.k <= 1) h.dataset.when = g.k === 0 ? "late" : "today";
-        const text = groupBy === "priority" && g.k !== 9 ? "" : g.label; // the pill already says P1
-        h.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
+        if (groupBy === "due" && g.k <= 1) toggle.dataset.when = g.k === 0 ? "late" : "today";
+        const text = groupBy === "priority" && g.k !== 9 ? "" : g.label || "Personal";
+        toggle.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
+        toggle.onclick = () => {
+          ul.hidden = !ul.hidden;
+          toggle.setAttribute("aria-expanded", !ul.hidden);
+          ul.hidden ? collapsedGroups.add(key) : collapsedGroups.delete(key);
+          store.set("collapsedGroups", JSON.stringify([...collapsedGroups]));
+        };
+        h.appendChild(toggle);
         sec.appendChild(h);
       }
-      const ul = document.createElement("ul");
       ul.append(...g.items.map(row));
       sec.appendChild(ul);
       return sec;
@@ -244,8 +296,8 @@ function render() {
   $("problem").hidden = !problem;
   $("problem").querySelector("p").textContent = problem;
   $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
-  $("empty").textContent = v.empty;
-  $("heading").textContent = v.name;
+  $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
+  $("heading").textContent = noteId != null ? "Sticky note" : v.name;
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", b.dataset.view === view);
@@ -254,50 +306,67 @@ function render() {
   for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
   document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
   $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority", due: "due date" }[groupBy]}`;
+  for (const b of document.querySelectorAll("[data-property]")) b.setAttribute("aria-pressed", properties[b.dataset.property]);
 }
 
 // ---- editing a task in place ----
 // While one is being edited, incoming changes wait so they don't wipe out what you're typing.
 let editingId = null;
-function startEdit(li, t) {
+let finishEditing = null;
+async function startEdit(li, t, field) {
+  if (editingId != null) {
+    if (!await finishEditing?.(true)) return;
+    li = document.querySelector(`.task[data-task-id="${t.id}"]`);
+    t = tasks.find(task => task.id === t.id);
+    if (!li || !t) return;
+  }
   editingId = t.id;
   li.classList.add("editing");
-  // Both fields wrap and grow with their text, so long titles stay readable.
-  const title = Object.assign(document.createElement("textarea"), { className: "edit-title", value: t.title, maxLength: 300, rows: 1 });
-  title.setAttribute("aria-label", "Task");
-  li.querySelector(".title").replaceChildren(title);
-  const details = Object.assign(document.createElement("textarea"), { className: "edit-details", value: t.details, placeholder: "Details", rows: 2 });
-  details.setAttribute("aria-label", "Details");
-  li.querySelector(".body").replaceWith(details);
-  li.querySelector(".stamp").textContent = "Click away to save. Esc cancels.";
-  const grow = () => {
-    for (const f of [title, details]) { f.style.height = "auto"; f.style.height = `${f.scrollHeight}px`; }
-  };
-  title.oninput = details.oninput = grow;
-  grow();
-
-  const finish = (save) => {
-    if (editingId !== t.id) return;
-    editingId = null;
-    const changed = title.value.trim() !== t.title || details.value.trimEnd() !== t.details;
-    if (save && changed && title.value.trim()) act("edit_task", { id: t.id, title: title.value, details: details.value });
-    else render();
-  };
-  title.onclick = (e) => e.stopPropagation(); // don't fold the row up
-  title.onkeydown = (e) => {
-    if (e.key === "Enter") { e.preventDefault(); finish(true); }
-    if (e.key === "Escape") finish(false);
-  };
-  details.onkeydown = (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) finish(true);
-    if (e.key === "Escape") finish(false);
-  };
-  // Save once focus leaves both fields (moving between them doesn't count).
-  title.onblur = details.onblur = () => setTimeout(() => {
-    if (!li.contains(document.activeElement)) finish(true);
+  const target = li.querySelector(field === "title" ? ".title" : ".body");
+  const input = Object.assign(document.createElement("textarea"), {
+    className: field === "title" ? "edit-title" : "edit-details",
+    value: t[field], rows: 1,
   });
-  title.focus();
-  title.setSelectionRange(title.value.length, title.value.length);
+  if (field === "title") input.maxLength = 300;
+  input.setAttribute("aria-label", field === "title" ? "Task title" : "Task details");
+  target.replaceChildren(input);
+  li.querySelector(".stamp").textContent = "Click away to save. Esc cancels.";
+  input.oninput = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
+  input.oninput();
+  let saving = false;
+  const finish = async (save) => {
+    if (saving || editingId !== t.id || finishEditing !== finish) return false;
+    const value = field === "title" ? input.value.trim() : input.value.trimEnd();
+    if (!save || value === t[field]) { editingId = null; render(); return true; }
+    if (field === "title" && !value) { notice("A task needs a title. Esc cancels."); input.focus(); return false; }
+    saving = true;
+    input.readOnly = true;
+    try {
+      // Send only the field being edited, preserving concurrent agent changes to other fields.
+      let list = await invoke("edit_task", { id: t.id, [field]: value });
+      if (noteId != null) list = await invoke("list_note", { id: noteId });
+      editingId = null;
+      $("notice").hidden = true;
+      update(list);
+      return true;
+    } catch (e) {
+      saving = false;
+      input.readOnly = false;
+      notice(`Couldn't save: ${e}`);
+      input.focus();
+      return false;
+    }
+  };
+  finishEditing = finish;
+  input.onclick = (e) => e.stopPropagation();
+  input.onkeydown = (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter" && (field === "title" || e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); }
+    if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  };
+  input.onblur = () => setTimeout(() => { if (document.activeElement !== input) finish(true); });
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 
 // Set when the list can't be read (say, its synced folder is offline). Shown instead of the list.
@@ -312,7 +381,7 @@ function update(list) {
 
 async function refresh() {
   try {
-    const list = await invoke("list");
+    const list = await invoke(noteId != null ? "list_note" : "list", noteId != null ? { id: noteId } : undefined);
     if (problem || JSON.stringify(list) !== lastJson) update(list);
   } catch (e) {
     problem = String(e);
@@ -325,8 +394,10 @@ async function refresh() {
 // Changes go through here so a failure (the file went missing mid-way) shows up too.
 async function act(cmd, args) {
   try {
-    update(await invoke(cmd, args));
-  } catch {
+    const list = await invoke(cmd, args);
+    update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
+  } catch (e) {
+    notice(String(e));
     refresh();
   }
 }
@@ -361,7 +432,7 @@ const setViewMenu = (open) => {
 };
 $("view").onclick = async (e) => {
   e.stopPropagation();
-  setMenu(false);
+  setMenu(false); setDisplayMenu(false); closeFloating();
   if (!viewMenu.hidden) return setViewMenu(false);
   const loc = await invoke("location");
   $("where").textContent = loc.short;
@@ -400,11 +471,24 @@ $("open-file").onclick = () => {
   setViewMenu(false);
   invoke("open_file").catch((e) => notice(String(e)));
 };
-$("pin").onclick = async () => {
-  pinned = !pinned;
-  await invoke("set_pinned", { pinned });
-  $("pin").setAttribute("aria-pressed", pinned);
-  $("pin").title = pinned ? "Stop keeping on top" : "Keep on top";
+const displayMenu = $("display-menu");
+function setDisplayMenu(open) {
+  displayMenu.hidden = !open;
+  $("display").setAttribute("aria-expanded", open);
+}
+$("display").onclick = (e) => {
+  e.stopPropagation();
+  setMenu(false); setViewMenu(false); closeFloating();
+  setDisplayMenu(displayMenu.hidden);
+};
+displayMenu.onclick = (e) => {
+  const b = e.target.closest("[data-property]");
+  if (!b) return;
+  const key = b.dataset.property;
+  properties[key] = !properties[key];
+  b.setAttribute("aria-pressed", properties[key]);
+  store.set("properties", JSON.stringify(properties));
+  render();
 };
 
 const menu = $("group-menu");
@@ -412,7 +496,7 @@ const setMenu = (open) => {
   menu.hidden = !open;
   $("group").setAttribute("aria-expanded", open);
 };
-$("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setMenu(menu.hidden); };
+$("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setDisplayMenu(false); closeFloating(); setMenu(menu.hidden); };
 menu.onclick = (e) => {
   const b = e.target.closest("[data-group]");
   if (!b) return;
@@ -511,17 +595,27 @@ dueMenu.onclick = async (e) => {
 };
 
 document.addEventListener("click", (e) => {
+  if (!displayMenu.hidden && !displayMenu.contains(e.target)) setDisplayMenu(false);
   if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
   if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);
   if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
   if (!dueMenu.hidden && !dueMenu.contains(e.target)) dueMenu.hidden = true;
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setMenu(false); setViewMenu(false); closeFloating(); }
+  if (e.key === "Escape") { setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating(); }
 });
 $("main").addEventListener("scroll", closeFloating);
 
 listen("tasks-changed", refresh);
+window.addEventListener("storage", (e) => {
+  if (e.key === "properties") {
+    try {
+      const saved = JSON.parse(e.newValue || "{}");
+      for (const key of Object.keys(properties)) if (typeof saved?.[key] === "boolean") properties[key] = saved[key];
+      render();
+    } catch {}
+  }
+});
 // Coming back to the window: fresh "2h" labels, and yesterday's desk cleared.
 window.addEventListener("focus", () => { if (editingId == null) { render(); refresh(); } });
 refresh();

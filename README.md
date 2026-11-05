@@ -13,8 +13,13 @@ but hasn't been tried yet.
 
 ## Using it
 
-- **Click a task** to see its details and a link back to the chat it came from. The pencil edits
-  the title and details.
+- **Click a task's text** to edit it directly. Click away or press Enter to save a title;
+  use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
+- **Pin a task** from its details to open an individual sticky note on your desktop. Notes
+  stay above other windows and edits sync with the list. Close a note to dismiss it without
+  deleting the task. Notes last for the current app session; pin again to reopen one.
+- **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
+  chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
 - **+** adds your own task. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the details)
   or by the agent.
@@ -23,6 +28,10 @@ but hasn't been tried yet.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
 - **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
+  Click a group header to collapse or expand it; each view remembers collapsed groups.
+
+The [subtask design mock](docs/mockups/subtasks.html) previews checklists and ordered steps.
+Subtasks are a proposal awaiting design review, not yet a live feature.
 
 ## Build
 

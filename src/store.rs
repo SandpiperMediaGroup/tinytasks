@@ -38,6 +38,10 @@ pub struct Task {
     pub due: Option<String>,
     /// On the user's desk: what they're focusing on today. The desk clears overnight.
     pub mydesk: bool,
+    /// One level of subtasks; each child remains a full task with its own ID and details.
+    pub parent_id: Option<i64>,
+    pub position: i64,
+    pub ordered: bool,
 }
 
 pub fn valid_priority(p: i64) -> bool {
@@ -56,7 +60,8 @@ pub fn now() -> i64 {
 /// Windows, Store apps (Claude, Codex, ...) and everything they launch get a private,
 /// redirected AppData, so each agent would see a different one. The home folder isn't redirected.
 pub fn data_dir() -> PathBuf {
-    let dir = dirs::home_dir().unwrap_or_else(std::env::temp_dir).join(".tinytasks");
+    let dir = std::env::var_os("TINYTASKS_DATA_DIR").map(PathBuf::from)
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(std::env::temp_dir).join(".tinytasks"));
     let _ = fs::create_dir_all(&dir);
     dir
 }
@@ -222,6 +227,8 @@ const HEADER: &str = "<!-- TinyTasks: the user's to-do list. You may edit this f
 write @mydesk(today) and TinyTasks fills in the date.
 @from(agent): who added it. @link(url): back to that chat. @added/@done(YYYY-MM-DD HH:MM).
 @id(n): unique, never change it. TinyTasks fills in @id and @added when you leave them out.
+@parent(id) and @position(0-based): a subtask and its sibling order. Keep these as top-level task lines.
+@subtasks(ordered): show a parent's subtasks as numbered steps. One level of subtasks is supported.
 Details go on lines indented two spaces under the task. Leave everything else as it is. -->";
 
 pub struct List {
@@ -380,6 +387,9 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
         priority: None,
         due: None,
         mydesk: false,
+        parent_id: None,
+        position: 0,
+        ordered: false,
     };
     let mut extras = Vec::new();
     let mut title = String::new();
@@ -418,6 +428,9 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
                     let raw = &rest[pos..chars[close].0 + 1];
                     match name {
                         "id" => task.id = value.parse().unwrap_or(0),
+                        "parent" if value.parse::<i64>().is_ok_and(|v| v > 0) => task.parent_id = value.parse().ok(),
+                        "position" if value.parse::<i64>().is_ok_and(|v| v >= 0) => task.position = value.parse().unwrap_or(0),
+                        "subtasks" if value == "ordered" => task.ordered = true,
                         "priority" => task.priority = value.parse().ok().filter(|p| valid_priority(*p)),
                         "due" if valid_due(value) => task.due = Some(value.to_string()),
                         "mydesk" => desk = Some(if valid_due(value) { value.to_string() } else { "today".to_string() }),
@@ -480,6 +493,12 @@ impl Entry {
         }
         let t = &self.task;
         let mut line = format!("- [{}] {}", if t.done_at.is_some() { "x" } else { " " }, one_line(&t.title));
+        if let Some(parent) = t.parent_id {
+            line += &format!(" @parent({parent}) @position({})", t.position);
+        }
+        if t.ordered {
+            line += " @subtasks(ordered)";
+        }
         if let Some(p) = t.priority {
             line += &format!(" @priority({p})");
         }
@@ -542,7 +561,7 @@ impl List {
     }
 
     pub fn open_count(&self) -> usize {
-        self.tasks().filter(|t| t.done_at.is_none()).count()
+        self.tasks().filter(|t| t.done_at.is_none() && t.parent_id.is_none()).count()
     }
 
     fn max_id(&self) -> i64 {
@@ -595,6 +614,22 @@ impl List {
         // A done stamp on an unchecked task: drop it.
         for e in self.entries_mut() {
             if e.task.done_at.is_none() && e.raw.as_ref().is_some_and(|r| r[0].contains("@done(")) {
+                e.raw = None;
+            }
+        }
+        // Recover malformed hand-edited relationships as ordinary tasks, never hidden orphans.
+        let roots: HashSet<i64> = self.tasks().filter(|t| t.parent_id.is_none()).map(|t| t.id).collect();
+        for e in self.entries_mut() {
+            if e.task.parent_id.is_some_and(|p| !roots.contains(&p)) {
+                e.task.parent_id = None;
+                e.raw = None;
+            }
+        }
+        // A hand-edited open subtask must remain reachable even if its parent was checked off.
+        let reopen: HashSet<i64> = self.tasks().filter(|t| t.done_at.is_none()).filter_map(|t| t.parent_id).collect();
+        for e in self.entries_mut() {
+            if reopen.contains(&e.task.id) && e.task.done_at.is_some() {
+                e.task.done_at = None;
                 e.raw = None;
             }
         }
@@ -700,10 +735,69 @@ impl List {
             priority: t.priority,
             due: t.due.map(String::from),
             mydesk: t.mydesk,
+            parent_id: None,
+            position: 0,
+            ordered: false,
         };
         let desk = t.mydesk.then(today);
         self.insert(Entry { task, extras: vec![], raw: None, desk });
         id
+    }
+
+    pub fn children(&self, parent_id: i64) -> Vec<Task> {
+        let mut children: Vec<Task> = self.tasks().filter(|t| t.parent_id == Some(parent_id)).cloned().collect();
+        children.sort_by_key(|t| (t.position, t.id));
+        children
+    }
+
+    pub fn note_tasks(&self, id: i64) -> Vec<Task> {
+        self.get(id).into_iter().chain(self.children(id)).collect()
+    }
+
+    pub fn add_subtask(&mut self, parent_id: i64, new: NewTask) -> Result<i64, String> {
+        let parent = self.get(parent_id).ok_or("The parent task is gone.")?;
+        if parent.parent_id.is_some() { return Err("Subtasks can be added to top-level tasks only.".into()); }
+        let position = self.children(parent_id).iter().map(|t| t.position).max().unwrap_or(-1)
+            .checked_add(1).ok_or("Too many subtasks to append. Reorder them first.")?;
+        let id = self.add(NewTask {
+            chat: &parent.chat,
+            link: if new.link.is_empty() { &parent.link } else { new.link },
+            ..new
+        });
+        let e = self.entry_mut(id).unwrap();
+        e.task.parent_id = Some(parent_id);
+        e.task.position = position;
+        self.set_done(parent_id, false);
+        Ok(id)
+    }
+
+    pub fn set_subtask_mode(&mut self, id: i64, ordered: bool) -> Result<(), String> {
+        let e = self.entry_mut(id).ok_or("That task is gone.")?;
+        if e.task.parent_id.is_some() { return Err("Only top-level tasks have a subtask mode.".into()); }
+        if e.task.ordered != ordered {
+            e.task.ordered = ordered;
+            e.raw = None;
+        }
+        Ok(())
+    }
+
+    /// Require the complete current sibling set so a stale client cannot lose a new child.
+    pub fn reorder_subtasks(&mut self, parent_id: i64, ids: &[i64]) -> Result<(), String> {
+        let parent = self.get(parent_id).ok_or("The parent task is gone.")?;
+        if parent.parent_id.is_some() { return Err("Only top-level tasks have subtasks.".into()); }
+        let current: HashSet<i64> = self.children(parent_id).iter().map(|t| t.id).collect();
+        let requested: HashSet<i64> = ids.iter().copied().collect();
+        if current != requested || requested.len() != ids.len() {
+            return Err("Subtasks changed. Refresh and reorder the complete list of subtask IDs.".into());
+        }
+        for (position, id) in ids.iter().enumerate() {
+            let e = self.entry_mut(*id).unwrap();
+            if e.task.position != position as i64 {
+                e.task.position = position as i64;
+                e.raw = None;
+            }
+        }
+        Ok(())
     }
 
     pub fn update(&mut self, id: i64, c: Changes) -> bool {
@@ -739,6 +833,12 @@ impl List {
             self.insert(e);
             self.tidy();
         }
+        if let Some(chat) = c.chat {
+            let children = self.children(id);
+            for child in children {
+                self.update(child.id, Changes { chat: Some(chat), ..Default::default() });
+            }
+        }
         true
     }
 
@@ -748,12 +848,23 @@ impl List {
             e.task.done_at = done.then(now);
             e.raw = None;
         }
+        let parent_id = e.task.parent_id;
+        if done {
+            for e in self.entries_mut().filter(|e| e.task.parent_id == Some(id)) {
+                if e.task.done_at.is_none() { e.task.done_at = Some(now()); e.raw = None; }
+            }
+        } else if let Some(parent_id) = parent_id {
+            if let Some(parent) = self.entry_mut(parent_id) {
+                if parent.task.done_at.is_some() { parent.task.done_at = None; parent.raw = None; }
+            }
+        }
         true
     }
 
     pub fn delete(&mut self, id: i64) -> bool {
         let Some(pos) = self.position(id) else { return false };
         self.blocks.remove(pos);
+        self.blocks.retain(|b| !matches!(b, Block::Task(e) if e.task.parent_id == Some(id)));
         // Don't leave a double blank line behind.
         if pos < self.blocks.len() && pos > 0 && is_blank(&self.blocks[pos - 1]) && is_blank(&self.blocks[pos]) {
             self.blocks.remove(pos);
@@ -780,7 +891,8 @@ const DAY: i64 = 86400;
 /// What the window shows: every open task plus things finished in the last week, newest first.
 pub fn for_ui(list: &List) -> Vec<Task> {
     let cutoff = now() - 7 * DAY;
-    let mut v: Vec<Task> = list.tasks().filter(|t| t.done_at.is_none_or(|d| d > cutoff)).cloned().collect();
+    let roots: HashSet<i64> = list.tasks().filter(|t| t.parent_id.is_none() && t.done_at.is_none_or(|d| d > cutoff)).map(|t| t.id).collect();
+    let mut v: Vec<Task> = list.tasks().filter(|t| roots.contains(&t.id) || t.parent_id.is_some_and(|p| roots.contains(&p))).cloned().collect();
     v.sort_by_key(|t| (t.done_at.is_some(), std::cmp::Reverse(t.done_at.unwrap_or(t.created_at))));
     v
 }
@@ -890,5 +1002,100 @@ mod tests {
         let out = list.render();
         assert!(out.contains("- [ ] Mine"), "{out}");
         assert!(out.find("- [ ] top").unwrap() < out.find("## Other").unwrap(), "{out}");
+    }
+
+    fn new_task(title: &str) -> NewTask<'_> {
+        NewTask { title, details: "", agent: "", chat: "", link: "", priority: None, due: None, mydesk: false }
+    }
+
+    #[test]
+    fn subtasks_round_trip_with_details_and_parent_context() {
+        let mut list = parse(SAMPLE);
+        let id = list.add_subtask(7, NewTask { details: "First line\nSecond line", ..new_task("Child") }).unwrap();
+        list.set_subtask_mode(7, true).unwrap();
+        let out = list.render();
+        let restored = parse(&out);
+        let child = restored.get(id).unwrap();
+        assert_eq!(child.parent_id, Some(7));
+        assert_eq!(child.position, 0);
+        assert_eq!(child.chat, "Billing");
+        assert_eq!(child.link, "https://x.com/a_(b)");
+        assert_eq!(child.details, "First line\nSecond line");
+        assert!(restored.get(7).unwrap().ordered);
+        assert_eq!(restored.render(), out);
+        assert!(out.contains("@repeat(weekly) #ops"));
+        list.update(7, Changes { chat: Some("New chat"), ..Default::default() });
+        assert_eq!(list.get(id).unwrap().chat, "New chat");
+    }
+
+    #[test]
+    fn reordering_is_exact_and_preserves_file_order_and_mode_switches() {
+        let mut list = parse("");
+        let parent = list.add(new_task("Parent"));
+        let a = list.add_subtask(parent, new_task("A")).unwrap();
+        let b = list.add_subtask(parent, new_task("B")).unwrap();
+        let file_order = list.tasks().map(|t| t.id).collect::<Vec<_>>();
+        list.reorder_subtasks(parent, &[b, a]).unwrap();
+        list.set_subtask_mode(parent, true).unwrap();
+        list.set_subtask_mode(parent, false).unwrap();
+        let restored = parse(&list.render());
+        assert_eq!(restored.children(parent).iter().map(|t| t.id).collect::<Vec<_>>(), vec![b, a]);
+        assert_eq!(list.tasks().map(|t| t.id).collect::<Vec<_>>(), file_order);
+        let before = list.render();
+        for ids in [vec![a], vec![a, a], vec![b, parent], vec![b, a, 99]] {
+            assert!(list.reorder_subtasks(parent, &ids).is_err());
+            assert_eq!(list.render(), before);
+        }
+        let c = list.add_subtask(parent, new_task("C")).unwrap();
+        assert_eq!(list.get(c).unwrap().position, 2);
+        assert!(list.reorder_subtasks(parent, &[b, a]).is_err());
+    }
+
+    #[test]
+    fn parent_completion_and_reopening_keep_children_reachable() {
+        let mut list = parse("");
+        let parent = list.add(new_task("Parent"));
+        let child = list.add_subtask(parent, new_task("Child")).unwrap();
+        assert_eq!(list.open_count(), 1);
+        list.set_done(child, true);
+        assert!(list.get(parent).unwrap().done_at.is_none());
+        list.set_done(child, false);
+        list.set_done(parent, true);
+        assert!(list.get(child).unwrap().done_at.is_some());
+        assert_eq!(list.open_count(), 0);
+        list.set_done(child, false);
+        assert!(list.get(parent).unwrap().done_at.is_none());
+        list.set_done(parent, true);
+        list.add_subtask(parent, new_task("New step")).unwrap();
+        assert!(list.get(parent).unwrap().done_at.is_none());
+    }
+
+    #[test]
+    fn deleting_a_parent_removes_children_but_not_other_tasks() {
+        let mut list = parse("");
+        let parent = list.add(new_task("Parent"));
+        let child = list.add_subtask(parent, new_task("Child")).unwrap();
+        let other = list.add(new_task("Other"));
+        assert!(list.add_subtask(child, new_task("Too deep")).is_err());
+        assert!(list.set_subtask_mode(child, true).is_err());
+        list.delete(parent);
+        assert!(list.get(child).is_none());
+        assert!(list.get(other).is_some());
+    }
+
+    #[test]
+    fn completed_children_stay_with_open_parents_beyond_retention() {
+        let list = parse("- [ ] Parent @added(2020-01-01 00:00) @id(1)\n- [x] Child @parent(1) @position(0) @added(2020-01-01 00:00) @done(2020-01-01 00:00) @id(2)\n");
+        assert_eq!(for_ui(&list).len(), 2);
+        assert_eq!(list.note_tasks(1).len(), 2);
+        assert_eq!(list.note_tasks(2).len(), 1);
+        assert!(list.note_tasks(99).is_empty());
+    }
+
+    #[test]
+    fn broken_manual_parent_links_become_visible_roots() {
+        let list = parse("- [ ] Orphan @parent(99) @id(1)\n- [ ] Self @parent(2) @id(2)\n- [ ] Cycle A @parent(4) @id(3)\n- [ ] Cycle B @parent(3) @id(4)\n");
+        assert!(list.tasks().all(|t| t.parent_id.is_none()));
+        assert_eq!(for_ui(&list).len(), 4);
     }
 }

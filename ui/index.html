@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="note-handle" hidden title="Drag to move note">
+    <button id="close-note" class="icon" tabindex="0" aria-label="Close sticky note" title="Close note"><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+  </div>
   <header>
     <div class="menu-wrap">
       <h1><button id="view" class="view-btn" title="Choose what to show" aria-haspopup="menu" aria-expanded="false">
@@ -41,13 +44,28 @@
           <button role="menuitemradio" data-group="due">Due date</button>
         </div>
       </div>
-      <button id="pin" class="icon" title="Keep on top" aria-pressed="false">
-        <svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4-1-6z"/></svg>
-      </button>
+      <div class="menu-wrap">
+        <button id="display" class="icon" title="Display properties" aria-label="Display properties" aria-haspopup="dialog" aria-expanded="false">
+          <svg viewBox="0 0 24 24"><path d="M4 7h4M12 7h8M4 17h8M16 17h4M8 4v6M16 14v6"/></svg>
+        </button>
+        <div id="display-menu" class="menu" role="dialog" aria-label="Display properties" hidden>
+          <div class="menu-label">Display properties</div>
+          <div class="property-options">
+            <button data-property="id" aria-pressed="false">ID</button>
+            <button data-property="agent" aria-pressed="true">Agent</button>
+            <button data-property="chat" aria-pressed="true">Chat</button>
+            <button data-property="priority" aria-pressed="true">Priority</button>
+            <button data-property="due" aria-pressed="true">Due date</button>
+            <button data-property="added" aria-pressed="true">Added</button>
+            <button data-property="completed" aria-pressed="true">Completed</button>
+            <button data-property="details" aria-pressed="false">Details</button>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
 
-  <p id="notice" hidden></p>
+  <p id="notice" role="status" hidden></p>
   <main id="main">
     <form id="new-task" hidden autocomplete="off">
       <span class="check"></span>
@@ -89,8 +107,9 @@
       <div class="line">
         <button class="check" title="Mark done"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg></button>
         <div class="text">
-          <div class="title"></div>
-          <div class="sub"><span class="src"></span><span class="due" hidden><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span></span></span><span class="time-sub"></span></div>
+          <div class="title"><span class="title-text" role="button" tabindex="0" aria-label="Edit task title"></span></div>
+          <div class="preview" hidden></div>
+          <div class="sub"><span class="task-id" hidden></span><span class="src"></span><span class="due" hidden><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span></span></span><span class="time-sub"></span></div>
         </div>
         <span class="prio" hidden></span>
         <span class="time"></span>
@@ -98,12 +117,19 @@
       <div class="details">
         <div class="details-inner">
           <div class="details-pad">
-            <p class="body"></p>
+            <p class="body" role="button" tabindex="0" aria-label="Edit task details"></p>
+            <div class="subtasks" hidden>
+              <div class="subtasks-head">
+                <span>Subtasks</span>
+                <button class="mode-chip" aria-label="Ordered subtasks" aria-pressed="false"><span class="mode-number">1</span><span class="slash">/</span><span class="mode-dot">•</span></button>
+                <button class="icon add-subtask" title="Add subtask" aria-label="Add subtask"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+              </div>
+              <ul class="subtask-list"></ul>
+            </div>
             <div class="meta">
-              <span class="stamp"></span>
               <span class="actions">
-                <button class="icon edit" title="Edit">
-                  <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+                <button class="icon open-note" title="Open as sticky note" aria-label="Open as sticky note">
+                  <svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg>
                 </button>
                 <button class="icon set-desk" title="Put on my desk" aria-pressed="false">
                   <svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>

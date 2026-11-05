@@ -67,7 +67,9 @@ fn tools() -> Value {
             "description": "Put action items for the USER (the human) on their TinyTasks desktop list. \
                 Call this whenever you hand the user something they must do themselves (e.g. 'Approve the PR', \
                 'Add the STRIPE_KEY secret in Vercel'), so it doesn't get lost as the chat scrolls. \
-                Not for your own todo items. The user gets a desktop notification.",
+                Not for your own todo items. The user gets a desktop notification. \
+                Set parent_id to append subtasks to an existing top-level task in the array's order. \
+                Use ordered=true for numbered steps; otherwise subtasks are a checklist.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -87,11 +89,13 @@ fn tools() -> Value {
                             "required": ["title"]
                         }
                     },
-                    "chat": { "type": "string", "description": "The name of this conversation as the user would recognize it: its title if you know it, otherwise 2-5 words on what you're working on together (e.g. 'Stripe billing setup'). Tasks are grouped by this, so reuse the same name for every call in this conversation." },
+                    "parent_id": { "type": "integer", "description": "Optional existing top-level task ID. Every item becomes its subtask; chat and default link come from the parent. One level only." },
+                    "ordered": { "type": "boolean", "description": "Optional subtask mode: true = numbered steps, false = checklist. Applies to parent_id when supplied, otherwise to each new top-level task." },
+                    "chat": { "type": "string", "description": "Conversation name, reused for calls in the same conversation. Omit when adding subtasks via parent_id." },
                     "link": { "type": "string", "description": "Optional URL back to this conversation, applied to every task." },
                     "agent": { "type": "string", "description": "Optional. Which agent you are; normally detected automatically, so leave it out." }
                 },
-                "required": ["tasks", "chat"]
+                "required": ["tasks"]
             }
         },
         {
@@ -99,14 +103,17 @@ fn tools() -> Value {
             "description": "List tasks on the user's TinyTasks list and whether they've checked them off \
                 (finished tasks from the last two weeks), most urgent first. Call this when resuming work or before \
                 relying on the user having done something. Tasks with an empty `agent` are ones the user added \
-                themselves; `mydesk` means it's on their desk (what they're focusing on today; the desk clears overnight).",
+                themselves; `mydesk` means it's on their desk (what they're focusing on today; the desk clears overnight). \
+                Subtasks have parent_id and a zero-based position. Set parent_id to get all siblings in their saved order, \
+                including older completed steps, before calling reorder_subtasks.",
             "annotations": { "readOnlyHint": true },
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "status": { "type": "string", "enum": ["open", "done", "all"], "description": "Default: all." },
                     "chat": { "type": "string", "description": "Only tasks whose chat name contains this text (case-insensitive)." },
-                    "desk": { "type": "boolean", "description": "Only tasks on the user's desk." }
+                    "desk": { "type": "boolean", "description": "Only tasks on the user's desk." },
+                    "parent_id": { "type": "integer", "description": "Only this parent's subtasks, in position order. Default status=all; no age or count cutoff." }
                 }
             }
         },
@@ -126,9 +133,23 @@ fn tools() -> Value {
                     "chat": { "type": "string" },
                     "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0 = most urgent ... 3 = whenever; null clears it." },
                     "due": { "type": ["string", "null"], "description": "YYYY-MM-DD; null clears it." },
-                    "mydesk": { "type": "boolean", "description": "On the user's desk (for today) or not." }
+                    "mydesk": { "type": "boolean", "description": "On the user's desk (for today) or not." },
+                    "ordered": { "type": "boolean", "description": "For a top-level task: show its subtasks as numbered steps (true) or a checklist (false). Preserves their saved order." }
                 },
                 "required": ["id"]
+            }
+        },
+        {
+            "name": "reorder_subtasks",
+            "description": "Set a parent's complete subtask order. Pass every current child ID exactly once, including completed children. Use list_tasks with parent_id first. Rejects stale, missing, duplicate or unrelated IDs without changing the file. Applies to checklists and numbered steps alike.",
+            "annotations": { "idempotentHint": true },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "parent_id": { "type": "integer" },
+                    "ids": { "type": "array", "items": { "type": "integer" }, "uniqueItems": true }
+                },
+                "required": ["parent_id", "ids"]
             }
         },
         {
@@ -145,7 +166,7 @@ fn tools() -> Value {
         },
         {
             "name": "complete_tasks",
-            "description": "Check tasks off for the user, e.g. when they tell you in chat that they've done them.",
+            "description": "Check tasks off for the user. Completing a parent also completes its remaining subtasks. Completing an individual subtask updates the parent's progress; it does not automatically complete the parent.",
             "annotations": { "idempotentHint": true },
             "inputSchema": {
                 "type": "object",
@@ -155,7 +176,7 @@ fn tools() -> Value {
         },
         {
             "name": "remove_tasks",
-            "description": "Delete tasks that were added by mistake or are no longer needed.",
+            "description": "Delete tasks that were added by mistake or are no longer needed. Deleting a parent also deletes its subtasks.",
             "annotations": { "destructiveHint": true },
             "inputSchema": {
                 "type": "object",
@@ -174,10 +195,17 @@ fn call(client: &str, params: &Value) -> Value {
     let args = &params["arguments"];
     let res: Result<String, String> = match params["name"].as_str().unwrap_or("") {
         "add_tasks" => add_tasks(client, args),
-        "list_tasks" => store::load().map(|list| {
+        "list_tasks" => store::load().and_then(|list| {
             let status = args["status"].as_str().unwrap_or("all");
             let desk = args["desk"].as_bool().unwrap_or(false);
-            let items: Vec<Value> = store::for_agents(&list, status, args["chat"].as_str(), desk)
+            let selected = if let Some(parent) = args.get("parent_id") {
+                let parent_id = id_of(parent).ok_or("`parent_id` must be a task id")?;
+                if list.get(parent_id).is_none() { return Err("The parent task is gone.".into()); }
+                list.children(parent_id).into_iter().filter(|t| match status {
+                    "open" => t.done_at.is_none(), "done" => t.done_at.is_some(), _ => true,
+                }).filter(|t| !desk || t.mydesk).collect()
+            } else { store::for_agents(&list, status, args["chat"].as_str(), desk) };
+            let items: Vec<Value> = selected
                 .iter()
                 .map(|t| {
                     json!({
@@ -191,12 +219,16 @@ fn call(client: &str, params: &Value) -> Value {
                         "agent": t.agent,
                         "details": t.details,
                         "link": t.link,
+                        "parent_id": t.parent_id,
+                        "position": t.position,
+                        "ordered": t.ordered,
                     })
                 })
                 .collect();
-            serde_json::to_string_pretty(&items).unwrap_or_default()
+            Ok(serde_json::to_string_pretty(&items).unwrap_or_default())
         }),
         "update_task" => update_task(args),
+        "reorder_subtasks" => reorder_subtasks(args),
         "set_desk" => set_desk(args),
         "complete_tasks" => for_ids(args, |l, id| l.set_done(id, true), "Checked off"),
         "remove_tasks" => for_ids(args, |l, id| l.delete(id), "Removed"),
@@ -213,6 +245,8 @@ fn add_tasks(client: &str, args: &Value) -> Result<String, String> {
     let agent = args["agent"].as_str().map(str::trim).filter(|s| !s.is_empty()).unwrap_or(client);
     let chat = args["chat"].as_str().map(str::trim).unwrap_or("");
     let default_link = args["link"].as_str().unwrap_or("");
+    let parent_id = args.get("parent_id").map(|v| id_of(v).ok_or("`parent_id` must be a task id")).transpose()?;
+    let ordered = args.get("ordered").map(|v| v.as_bool().ok_or("`ordered` must be true or false")).transpose()?;
     // Validate the whole batch first, so a bad item doesn't leave half of it saved
     // (and duplicated when the agent retries).
     let mut batch = Vec::new();
@@ -232,13 +266,17 @@ fn add_tasks(client: &str, args: &Value) -> Result<String, String> {
         batch.push(store::NewTask { title, details, agent, chat, link, priority, due, mydesk });
     }
     let added = store::change(|list| {
-        Ok(batch
-            .into_iter()
-            .map(|new| {
-                let title = new.title;
-                format!("#{} {title}", list.add(new))
-            })
-            .collect::<Vec<_>>())
+        if let (Some(parent), Some(ordered)) = (parent_id, ordered) { list.set_subtask_mode(parent, ordered)?; }
+        let mut added = Vec::new();
+        for new in batch {
+            let title = new.title;
+            let id = if let Some(parent) = parent_id { list.add_subtask(parent, new)? } else { list.add(new) };
+            if parent_id.is_none() {
+                if let Some(ordered) = ordered { list.set_subtask_mode(id, ordered)?; }
+            }
+            added.push(format!("#{id} {title}"));
+        }
+        Ok(added)
     })?;
     crate::launch::ensure_app_running();
     Ok(format!(
@@ -273,11 +311,24 @@ fn update_task(args: &Value) -> Result<String, String> {
         due,
         mydesk: args["mydesk"].as_bool(),
     };
-    if store::change(|list| Ok(list.update(id, changes)))? {
+    let ordered = args.get("ordered").map(|v| v.as_bool().ok_or("`ordered` must be true or false")).transpose()?;
+    if store::change(|list| {
+        if let Some(ordered) = ordered { list.set_subtask_mode(id, ordered)?; }
+        Ok(list.update(id, changes))
+    })? {
         Ok(format!("Updated #{id}."))
     } else {
         Err(format!("No task #{id}."))
     }
+}
+
+fn reorder_subtasks(args: &Value) -> Result<String, String> {
+    let parent_id = id_of(&args["parent_id"]).ok_or("`parent_id` must be a task id")?;
+    let ids = args["ids"].as_array().ok_or("`ids` must be an array")?.iter()
+        .map(|v| id_of(v).ok_or("Every item in `ids` must be a task id"))
+        .collect::<Result<Vec<_>, _>>()?;
+    store::change(|list| list.reorder_subtasks(parent_id, &ids))?;
+    Ok(format!("Reordered subtasks of #{parent_id}."))
 }
 
 fn set_desk(args: &Value) -> Result<String, String> {

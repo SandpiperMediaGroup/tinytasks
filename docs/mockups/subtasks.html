@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyTasks — revised subtask proposal</title>
+<link rel="stylesheet" href="../../ui/style.css">
+<style>
+body { display: block; height: auto; background: #151410; padding: 36px; color: #ece5d5; }
+.intro { max-width: 792px; margin: 0 auto 24px; }
+.intro h1 { font-size: 24px; font-weight: 600; }
+.intro p { color: #aaa190; font-size: 14px; max-width: 670px; }
+.examples { display: flex; gap: 32px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+.example { width: 380px; }
+.caption { color: #aaa190; margin: 14px 4px; font-size: 13px; line-height: 1.6; }
+.window { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 14px 40px #0004; }
+.window header { padding: 12px 16px; }
+.window .icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.window .group-head { padding: 18px 16px 6px; }
+.window .details { grid-template-rows: 1fr; }
+.window .details-inner { opacity: 1; visibility: visible; }
+.window .body { margin: 2px 0 16px; }
+.mode { display: flex; align-items: center; gap: 9px; padding: 0; font-size: 12px; color: var(--soft); }
+.mode-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px; background: var(--bg-hover); color: var(--muted); font-size: 11px; line-height: 16px; }
+.mode-chip .slash { opacity: .45; }
+.mode-chip[aria-pressed="true"] .mode-number, .mode-chip[aria-pressed="false"] .mode-dot { color: var(--ink); font-weight: 650; }
+.mode-chip[aria-pressed="true"] .mode-dot, .mode-chip[aria-pressed="false"] .mode-number { opacity: .45; }
+.mode .add-child { margin-left: auto; width: 24px; height: 24px; }
+.mode .add-child svg { width: 16px; height: 16px; }
+.child { border-bottom: 1px solid var(--line); font-size: 13px; }
+.child:last-child { border-bottom: none; }
+.child-line { position: relative; display: flex; align-items: start; gap: 8px; padding: 7px 0; cursor: grab; border-radius: 5px; }
+.child-line:hover { background: var(--bg-hover); }
+.child-line:active { cursor: grabbing; }
+.child .check { width: 17px; height: 17px; font-size: 11px; }
+.child.complete .check { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.child.complete .label { text-decoration: line-through; color: var(--muted); }
+.child-text { flex: 1; min-width: 0; }
+.label { cursor: text; outline-color: var(--accent); overflow-wrap: anywhere; }
+.label[contenteditable="true"] { border-bottom: 1px solid var(--accent); }
+.number { position: absolute; left: -28px; top: 9px; width: 14px; text-align: right; font-size: 11px; color: color-mix(in srgb, var(--muted) 45%, var(--bg)); font-variant-numeric: tabular-nums; }
+.child.dragging { opacity: .4; }
+.child.drop-target { box-shadow: 0 -2px var(--accent); }
+.child-details { padding: 0 0 12px 25px; }
+.child-details p { margin: 0 0 7px; color: var(--soft); font-size: 12px; line-height: 1.5; cursor: text; }
+.child-actions { display: flex; align-items: center; justify-content: flex-end; gap: 1px; }
+.child-actions small { font-size: 11px; color: var(--muted); margin-right: auto; }
+.child-actions .icon { width: 25px; height: 25px; }
+.child-actions .icon svg { width: 15px; height: 15px; }
+.parent-check { position: relative; }
+.parent-check::after { content: ''; width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(var(--muted) var(--progress), transparent 0); }
+.parent-check.all-done { background: var(--accent); border-color: var(--accent); color: var(--bg); font-size: 13px; }
+.parent-check.all-done::after { display: none; }
+.window .details-pad { padding-bottom: 8px; padding-right: 14px; }
+.foot { margin: 20px auto 0; max-width: 792px; color: #8f8676; font-size: 12px; }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media(max-width: 500px) { body { padding: 24px 12px; } .example { width: 100%; } }
+</style>
+<div class="intro"><h1>Subtasks, revised</h1><p>Progress lives in the parent circle. Switch between • and 1, drag rows to reorder, and click a subtask’s row to open its details.</p></div>
+<div class="examples" id="examples"></div>
+<p class="foot">Interactive design preview. Click text to edit. Reorder with drag, or focus a row and use Alt + ↑ / ↓. No changes are saved to your tasks.</p>
+<script>
+const examples = [
+ {title:'Prepare the launch assets',ordered:false,details:'Everything we need before the site goes live.',items:[{title:'Export the product screenshots',done:true,details:'Export desktop and mobile versions.'},{title:'Write the announcement',details:'Keep it brief. Link to the new site.'},{title:'Check the social preview',details:'Check the title, description, and preview image.'}],caption:'<b>Checklist</b><br>A quiet progress circle. Subtasks stay neatly indented, with no vertical rule.'},
+ {title:'Connect the payment flow',ordered:true,details:'Follow these steps to finish the billing setup.',items:[{title:'Create the Stripe API key',done:true,details:'Use the production account.'},{title:'Add the secret in Vercel',open:true,details:'Open the project’s environment settings. Add STRIPE_KEY, then redeploy.'},{title:'Deploy and test checkout',details:'Run a test purchase and confirm the receipt.'}],caption:'<b>Ordered steps</b><br>The same tasks, numbered. Drag to change their order. Each subtask opens its own details.'}
+];
+const icons = {
+ 'Open as sticky note':'<path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/>',
+ due:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/>',
+ priority:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+ delete:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'
+};
+for(const state of examples) {
+ const wrap=document.createElement('div');wrap.className='example';
+ wrap.innerHTML=`<div class="window"><header><h1>Tasks <span style="color:var(--muted)">3</span> ⌄</h1><div class="tools"><span class="icon">＋</span><span class="icon"><svg viewBox="0 0 24 24"><path d="M4 7h4M12 7h8M4 17h8M16 17h4M8 4v6M16 14v6"/></svg></span></div></header><h2 class="group-head">Billing launch <span class="n">3</span><span style="margin-left:auto">⌄</span></h2><ul><li class="task open"><div class="line"><button class="check parent-check" aria-label="Complete parent task"></button><div class="text"><div class="title"></div></div><span class="prio" data-p="1">P1</span></div><div class="details"><div class="details-inner"><div class="details-pad"><p class="body"></p><div class="mode"><span>Subtasks</span><button class="mode-chip" aria-label="Ordered steps"><span class="mode-number">1</span><span class="slash">/</span><span class="mode-dot">•</span></button><button class="icon add-child" aria-label="Add subtask" title="Add subtask"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div><div class="children"></div></div></div></div></li><li class="task"><div class="line"><span class="check"></span><div class="text">Review the pricing page<div class="sub">Codex</div></div><span class="time">2h</span></div></li><li class="task"><div class="line"><span class="check"></span><div class="text">Approve the launch email<div class="sub">Claude</div></div><span class="time">3h</span></div></li></ul><h2 class="group-head" style="padding-bottom:18px">Later <span class="n">2</span><span style="margin-left:auto">›</span></h2></div><p class="caption">${state.caption}</p>`;
+ wrap.querySelector('.title').textContent=state.title;
+ wrap.querySelector('.body').textContent=state.details;
+ wrap.querySelector('.mode-chip').onclick=()=>{state.ordered=!state.ordered;draw();};
+ wrap.querySelector('.add-child').onclick=()=>{state.items.push({title:'New subtask',details:''});draw();};
+ wrap.querySelector('.parent-check').onclick=()=>{const done=!state.items.every(x=>x.done);state.items.forEach(x=>x.done=done);draw();};
+ let dragged=null;
+ function move(from,to) {const [item]=state.items.splice(from,1);state.items.splice(to,0,item);draw();}
+ function edit(el,item,field) {
+  el.onclick=e=>{e.stopPropagation();el.contentEditable='true';el.focus();};
+  el.onblur=()=>{item[field]=el.textContent.trim()||item[field];el.contentEditable='false';el.textContent=item[field]||'Add details…';};
+  el.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();el.blur();}if(e.key==='Escape'){el.textContent=item[field];el.blur();}};
+ }
+ function draw() {
+  const complete=state.items.filter(x=>x.done).length, total=state.items.length;
+  const parent=wrap.querySelector('.parent-check');
+  parent.style.setProperty('--progress',`${total?complete/total*100:0}%`);
+  parent.title=`${complete} of ${total} subtasks complete`;
+  parent.setAttribute('aria-label',parent.title);
+  parent.classList.toggle('all-done',total>0&&complete===total);parent.textContent=total>0&&complete===total?'✓':'';
+  const chip=wrap.querySelector('.mode-chip');chip.setAttribute('aria-pressed',state.ordered);chip.title=state.ordered?'Switch to checklist':'Switch to ordered steps';
+  wrap.querySelector('.children').classList.toggle('ordered',state.ordered);
+  wrap.querySelector('.children').replaceChildren(...state.items.map((item,i)=>{
+   const row=document.createElement('div');row.className=`child${item.done?' complete':''}`;
+   const line=document.createElement('div');line.className='child-line';line.draggable=true;line.tabIndex=0;line.setAttribute('aria-label',`${item.title}, drag to reorder`);line.setAttribute('aria-expanded',!!item.open);
+   line.onclick=()=>{item.open=!item.open;draw();};
+   line.onkeydown=e=>{if(e.target!==line)return;if(e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const target=i+(e.key==='ArrowUp'?-1:1);if(target>=0&&target<state.items.length){move(i,target);wrap.querySelectorAll('.child-line')[target].focus();}}else if(e.key==='Enter'||e.key===' '){e.preventDefault();item.open=!item.open;draw();wrap.querySelectorAll('.child-line')[i].focus();}};
+   line.ondragstart=e=>{if(document.activeElement?.isContentEditable){e.preventDefault();return;}dragged=i;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(i));row.classList.add('dragging');};
+   line.ondragend=()=>{dragged=null;wrap.querySelectorAll('.child').forEach(r=>r.classList.remove('dragging','drop-target'));};
+   row.ondragover=e=>{if(dragged===null)return;e.preventDefault();row.classList.add('drop-target');};
+   row.ondragleave=()=>row.classList.remove('drop-target');
+   row.ondrop=e=>{e.preventDefault();if(dragged!==null){move(dragged,i);dragged=null;}};
+   const check=document.createElement('button');check.className='check';check.textContent=item.done?'✓':'';check.setAttribute('aria-label',`${item.done?'Reopen':'Complete'} ${item.title}`);check.onclick=e=>{e.stopPropagation();item.done=!item.done;draw();};line.append(check);
+   if(state.ordered){const n=document.createElement('span');n.className='number';n.textContent=`${i+1}.`;line.prepend(n);}
+   const text=document.createElement('div');text.className='child-text';const label=document.createElement('span');label.className='label';label.textContent=item.title;edit(label,item,'title');text.append(label);line.append(text);row.append(line);
+   if(item.open){const details=document.createElement('div');details.className='child-details';const body=document.createElement('p');body.textContent=item.details||'Add details…';edit(body,item,'details');details.append(body);const actions=document.createElement('div');actions.className='child-actions';actions.innerHTML=Object.entries(icons).map(([name,svg])=>`<span class="icon" title="${name}"><svg viewBox="0 0 24 24">${svg}</svg></span>`).join('');details.append(actions);row.append(details);}
+   return row;
+  }));
+ }
+ draw();document.getElementById('examples').append(wrap);
+}
+</script>
+</html>

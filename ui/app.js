@@ -12,9 +12,25 @@ let groupBy = store.get("groupBy", "time");
 let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 first instead of P0
 let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
 if (!["all", "desk", "done"].includes(view)) view = "all";
-let pinned = false;
+const noteId = Number(new URLSearchParams(location.search).get("task")) || null;
+if (noteId != null) {
+  document.body.classList.add("sticky-note");
+  $("note-handle").hidden = false;
+}
+const properties = { id: false, agent: true, chat: true, priority: true, due: true, added: true, completed: true, details: false };
+try {
+  const saved = JSON.parse(store.get("properties", "{}"));
+  for (const key of Object.keys(properties)) if (typeof saved?.[key] === "boolean") properties[key] = saved[key];
+} catch {}
+let collapsedGroups = new Set();
+try {
+  const saved = JSON.parse(store.get("collapsedGroups", "[]"));
+  if (Array.isArray(saved)) collapsedGroups = new Set(saved.filter(k => typeof k === "string"));
+} catch {}
 let tasks = [];
 let lastJson = "";
+const childrenOf = (id) => tasks.filter(t => t.parent_id === id).sort((a, b) => a.position - b.position || a.id - b.id);
+let draggingSubtask = null;
 
 // ---- time ----
 const DAY = 86400;
@@ -82,21 +98,43 @@ function source(t, { icon = true, chat = true } = {}) {
   return el;
 }
 
-function row(t) {
+function row(t, parent = null, index = 0) {
   const li = tpl.content.firstElementChild.cloneNode(true);
+  li.dataset.taskId = t.id;
   const done = t.done_at != null;
   li.classList.toggle("done", done);
-  li.classList.toggle("open", expanded.has(t.id));
-  li.querySelector(".title").textContent = t.title;
+  li.classList.toggle("open", noteId === t.id || expanded.has(t.id));
+  li.classList.toggle("subtask", parent != null);
+  if (parent?.ordered) {
+    const number = Object.assign(document.createElement("span"), { className: "subtask-number", textContent: `${index + 1}.` });
+    number.setAttribute("aria-hidden", "true");
+    li.querySelector(".line").prepend(number);
+  }
+  const titleText = li.querySelector(".title-text");
+  titleText.textContent = t.title;
+  const editText = (el, field) => {
+    el.onclick = (e) => { e.stopPropagation(); if (!suppressSubtaskClick) startEdit(li, t, field); };
+    el.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (!suppressSubtaskClick) startEdit(li, t, field); }
+    };
+  };
+  editText(titleText, "title");
+  editText(li.querySelector(".body"), "details");
+  const preview = li.querySelector(".preview");
+  preview.textContent = t.details;
+  preview.hidden = !properties.details || !t.details || noteId != null;
+  const id = li.querySelector(".task-id");
+  id.textContent = `#${t.id}`;
+  id.hidden = !properties.id;
 
   // A row leaves out whatever its group header already says (Completed has no headers).
-  const by = view === "done" ? "" : groupBy;
-  const showIcon = done || (by !== "chat" && by !== "agent");
-  const showChat = done || by !== "chat";
+  const by = view === "done" || noteId != null || parent ? "" : groupBy;
+  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : done || (by !== "chat" && by !== "agent"));
+  const showChat = properties.chat && (parent ? t.chat !== parent.chat : done || by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
-  if (t.priority != null && by !== "priority") {
+  if (properties.priority && t.priority != null && by !== "priority") {
     pill.hidden = false;
     pill.dataset.p = t.priority;
     pill.textContent = `P${t.priority}`;
@@ -104,7 +142,7 @@ function row(t) {
   const due = li.querySelector(".due");
   // Grouped by due date, only the Today and Tomorrow headers name the day; other rows keep it.
   const headerSaysDay = by === "due" && t.due && [0, 1].includes(daysUntil(t.due));
-  if (t.due && !done && !headerSaysDay) {
+  if (properties.due && t.due && !done && !headerSaysDay) {
     due.hidden = false;
     due.lastChild.textContent = dueText(t.due);
     const n = daysUntil(t.due);
@@ -128,29 +166,51 @@ function row(t) {
 
   const when = done ? t.done_at : t.created_at;
   const time = li.querySelector(".time");
-  time.textContent = li.querySelector(".time-sub").textContent = short(when);
-  time.title = `${done ? "Done" : "Added"} ${full(when)}`;
-
-  const added = t.agent ? `From ${agentInfo(t.agent).name}, ${full(t.created_at)}` : `Added ${full(t.created_at)}`;
-  li.querySelector(".stamp").textContent = added + (done ? `. Done ${full(t.done_at)}` : "");
-  li.querySelector(".body").textContent = t.details;
+  time.textContent = li.querySelector(".time-sub").textContent = !parent && properties[done ? "completed" : "added"] ? short(when) : "";
+  time.title = li.querySelector(".time-sub").title = done ? `Done ${full(when)}\nAdded ${full(t.created_at)}` : `Added ${full(when)}`;
+  li.querySelector(".body").textContent = t.details || "Add details…";
+  li.querySelector(".body").classList.toggle("placeholder", !t.details);
 
   const check = li.querySelector(".check");
   check.title = done ? "Mark not done" : "Mark done";
+  const children = childrenOf(t.id);
+  if (children.length && !done) {
+    const count = children.filter(child => child.done_at != null).length;
+    check.classList.add("has-progress");
+    check.style.setProperty("--progress", `${count / children.length * 100}%`);
+    check.title = `${count} of ${children.length} subtasks complete. Complete task and subtasks.`;
+  }
+  check.setAttribute("aria-label", check.title);
   check.onclick = async (e) => {
     e.stopPropagation();
-    if (!done) {
+    if (!done && !parent) {
       li.classList.add("checking");
       await new Promise((r) => setTimeout(r, 550));
     }
     act("set_done", { id: t.id, done: !done });
   };
 
-  li.querySelector(".line").onclick = () => {
+  const line = li.querySelector(".line");
+  line.tabIndex = 0;
+  line.setAttribute("aria-label", `${t.title}: task details`);
+  line.setAttribute("aria-expanded", noteId === t.id || expanded.has(t.id));
+  li.querySelector(".details").id = `task-details-${t.id}`;
+  line.setAttribute("aria-controls", `task-details-${t.id}`);
+  line.onclick = () => {
+    if (noteId === t.id || suppressSubtaskClick) return;
     const open = !expanded.has(t.id);
     open ? expanded.add(t.id) : expanded.delete(t.id);
     li.classList.toggle("open", open);
+    line.setAttribute("aria-expanded", open);
     if (open) setTimeout(() => li.scrollIntoView({ block: "nearest", behavior: "smooth" }), 170);
+  };
+  line.onkeydown = (e) => {
+    if (e.target !== line) return;
+    if (parent && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+      e.preventDefault();
+      const to = index + (e.key === "ArrowUp" ? -1 : 1);
+      if (to >= 0 && to < childrenOf(parent.id).length) moveSubtask(parent.id, t.id, to, true);
+    } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); line.onclick(); }
   };
 
   const link = li.querySelector(".open-link");
@@ -166,9 +226,134 @@ function row(t) {
   } else {
     link.remove();
   }
-  li.querySelector(".delete").onclick = async () => act("delete_task", { id: t.id });
-  li.querySelector(".edit").onclick = () => startEdit(li, t);
+  const deleteButton = li.querySelector(".delete");
+  if (children.length) deleteButton.title = "Delete task and its subtasks";
+  deleteButton.onclick = async () => act("delete_task", { id: t.id });
+  const note = li.querySelector(".open-note");
+  note.hidden = noteId === t.id;
+  note.onclick = async () => {
+    note.disabled = true;
+    try { await invoke("open_note", { id: t.id }); }
+    catch (e) { notice(String(e)); }
+    finally { note.disabled = false; }
+  };
+  if (t.parent_id == null) {
+    const section = li.querySelector(".subtasks");
+    section.hidden = false;
+    const mode = section.querySelector(".mode-chip");
+    mode.setAttribute("aria-pressed", !!t.ordered);
+    mode.title = t.ordered ? "Switch to checklist" : "Switch to ordered steps";
+    mode.onclick = () => act("set_subtask_mode", { id: t.id, ordered: !t.ordered });
+    section.querySelector(".add-subtask").onclick = () => startNewSubtask(t.id);
+    section.querySelector(".subtask-list").append(...children.map((child, i) => row(child, t, i)));
+  }
+  if (parent) {
+    line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
+    line.onpointerdown = (e) => beginSubtaskDrag(e, line, t.id, parent.id);
+  }
   return li;
+}
+
+// Pointer dragging works consistently in desktop webviews and doesn't launch an OS text drag.
+let suppressSubtaskClick = false;
+function beginSubtaskDrag(event, line, id, parentId) {
+  if (event.button !== 0 || editingId != null || event.target.closest("button, input, textarea")) return;
+  const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
+  let destination = null;
+  const move = (e) => {
+    if (e.pointerId !== start.pointer) return;
+    if (!line.isConnected) { end({ pointerId: start.pointer, type: "pointercancel" }); return; }
+    if (!draggingSubtask && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5) return;
+    e.preventDefault();
+    if (!draggingSubtask) {
+      draggingSubtask = { id, parentId };
+      line.setPointerCapture(start.pointer);
+      line.parentElement.classList.add("dragging");
+    }
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".task.subtask");
+    const siblings = childrenOf(parentId);
+    destination = target ? siblings.findIndex(t => t.id === Number(target.dataset.taskId)) : -1;
+    document.querySelectorAll(".drop-target").forEach(el => el.classList.remove("drop-target"));
+    if (destination >= 0 && Number(target.dataset.taskId) !== id) target.classList.add("drop-target");
+    const main = $("main"), bounds = main.getBoundingClientRect();
+    if (e.clientY > bounds.bottom - 24) main.scrollBy(0, 12);
+    else if (e.clientY < bounds.top + 24) main.scrollBy(0, -12);
+  };
+  const end = (e) => {
+    if (e.pointerId !== start.pointer) return;
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", end);
+    document.removeEventListener("pointercancel", end);
+    const dragged = draggingSubtask != null;
+    draggingSubtask = null;
+    if (line.hasPointerCapture(start.pointer)) line.releasePointerCapture(start.pointer);
+    document.querySelectorAll(".dragging, .drop-target").forEach(el => el.classList.remove("dragging", "drop-target"));
+    if (dragged) {
+      suppressSubtaskClick = true;
+      setTimeout(() => { suppressSubtaskClick = false; }, 0);
+      if (e.type === "pointerup" && destination != null && destination >= 0) moveSubtask(parentId, id, destination);
+      else render();
+    }
+  };
+  document.addEventListener("pointermove", move, { passive: false });
+  document.addEventListener("pointerup", end);
+  document.addEventListener("pointercancel", end);
+}
+
+async function moveSubtask(parentId, id, position, focus = false) {
+  const ids = childrenOf(parentId).map(t => t.id);
+  const from = ids.indexOf(id);
+  if (editingId != null) return;
+  if (from < 0 || from === position) { render(); return; }
+  ids.splice(from, 1);
+  ids.splice(position, 0, id);
+  await act("reorder_subtasks", { parentId, ids });
+  if (focus) document.querySelector(`.task[data-task-id="${id}"] > .line`)?.focus();
+}
+
+async function startNewSubtask(parentId) {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  const parentRow = document.querySelector(`.task[data-task-id="${parentId}"]`);
+  if (!parentRow) return;
+  expanded.add(parentId);
+  parentRow.classList.add("open");
+  const draft = document.createElement("li");
+  draft.className = "subtask new-subtask";
+  draft.innerHTML = '<form class="line"><span class="check"></span><input maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></form>';
+  parentRow.querySelector(".subtask-list").append(draft);
+  const field = draft.querySelector("input");
+  const editKey = `new:${parentId}`;
+  editingId = editKey;
+  let saving = false;
+  const finish = async (save) => {
+    if (saving || editingId !== editKey || finishEditing !== finish) return false;
+    const title = field.value.trim();
+    if (!save || !title) { editingId = null; render(); return true; }
+    saving = true;
+    field.readOnly = true;
+    try {
+      let list = await invoke("add_subtask", { parentId, title });
+      if (noteId != null) list = await invoke("list_note", { id: noteId });
+      editingId = null;
+      update(list);
+      return true;
+    } catch (e) {
+      saving = false;
+      field.readOnly = false;
+      notice(`Couldn't add subtask: ${e}`);
+      field.focus();
+      return false;
+    }
+  };
+  finishEditing = finish;
+  draft.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const title = field.value.trim();
+    if (await finish(true) && title) startNewSubtask(parentId);
+  };
+  field.onkeydown = (e) => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
+  field.onblur = () => setTimeout(() => { if (document.activeElement !== field) finish(true); });
+  field.focus();
 }
 
 // ---- groups ----
@@ -205,37 +390,53 @@ function groupsOf(open) {
 
 const VIEWS = {
   all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
-  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
+  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && (t.mydesk || childrenOf(t.id).some(c => c.mydesk && c.done_at == null)) },
   done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
 };
 
 function render() {
+  if (editingId != null || draggingSubtask != null) return;
   const v = VIEWS[view];
-  const open = tasks.filter(v.show);
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasks.filter(t => t.parent_id == null && v.show(t));
   // Completed is one list, most recently finished first; the others use the group-by choice.
-  const groups = view === "done" ? [{ label: "", items: open }] : groupsOf(open);
-  const headers = groupBy !== "time" || groups.length > 1;
+  const groups = view === "done" || noteId != null ? [{ label: "", items: open }] : groupsOf(open);
+  const headers = view !== "done" && noteId == null;
 
   $("open").replaceChildren(
-    ...groups.map((g) => {
+    ...groups.map((g, index) => {
       const sec = document.createElement("section");
-      if (headers && g.label) {
+      const ul = document.createElement("ul");
+      ul.id = `group-items-${index}`;
+      if (headers) {
         const h = document.createElement("h2");
-        h.className = "group-head";
+        const toggle = document.createElement("button");
+        toggle.className = "group-head";
+        const key = JSON.stringify([view, groupBy, g.k]);
+        ul.hidden = collapsedGroups.has(key);
+        toggle.setAttribute("aria-expanded", !ul.hidden);
+        toggle.setAttribute("aria-controls", ul.id);
+        toggle.setAttribute("aria-label", `${g.label || "Personal"}, ${g.items.length} tasks`);
         if (groupBy === "priority" && g.k !== 9) {
-          h.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
-          h.lastChild.dataset.p = g.k;
+          toggle.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
+          toggle.lastChild.dataset.p = g.k;
         } else if (groupBy === "chat" || groupBy === "agent") {
-          h.appendChild(agentIcon(g.sample.agent));
+          toggle.appendChild(agentIcon(g.sample.agent));
         }
         // Overdue and Today read in the same red and orange as the due dates on rows.
-        if (groupBy === "due" && g.k <= 1) h.dataset.when = g.k === 0 ? "late" : "today";
-        const text = groupBy === "priority" && g.k !== 9 ? "" : g.label; // the pill already says P1
-        h.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
+        if (groupBy === "due" && g.k <= 1) toggle.dataset.when = g.k === 0 ? "late" : "today";
+        const text = groupBy === "priority" && g.k !== 9 ? "" : g.label || "Personal";
+        toggle.append(text, Object.assign(document.createElement("span"), { className: "n", textContent: g.items.length }));
+        toggle.appendChild(Object.assign(document.createElement("span"), { className: "group-chevron", textContent: "›" }));
+        toggle.onclick = () => {
+          ul.hidden = !ul.hidden;
+          toggle.setAttribute("aria-expanded", !ul.hidden);
+          ul.hidden ? collapsedGroups.add(key) : collapsedGroups.delete(key);
+          store.set("collapsedGroups", JSON.stringify([...collapsedGroups]));
+        };
+        h.appendChild(toggle);
         sec.appendChild(h);
       }
-      const ul = document.createElement("ul");
-      ul.append(...g.items.map(row));
+      ul.append(...g.items.map(t => row(t)));
       sec.appendChild(ul);
       return sec;
     })
@@ -244,60 +445,77 @@ function render() {
   $("problem").hidden = !problem;
   $("problem").querySelector("p").textContent = problem;
   $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
-  $("empty").textContent = v.empty;
-  $("heading").textContent = v.name;
+  $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
+  $("heading").textContent = noteId != null ? "Sticky note" : v.name;
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", b.dataset.view === view);
-    b.querySelector(".n").textContent = tasks.filter(VIEWS[b.dataset.view].show).length || "";
+    b.querySelector(".n").textContent = tasks.filter(t => t.parent_id == null && VIEWS[b.dataset.view].show(t)).length || "";
   }
   for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
   document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
   $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority", due: "due date" }[groupBy]}`;
+  for (const b of document.querySelectorAll("[data-property]")) b.setAttribute("aria-pressed", properties[b.dataset.property]);
 }
 
 // ---- editing a task in place ----
 // While one is being edited, incoming changes wait so they don't wipe out what you're typing.
 let editingId = null;
-function startEdit(li, t) {
+let finishEditing = null;
+async function startEdit(li, t, field) {
+  if (editingId != null) {
+    if (!await finishEditing?.(true)) return;
+    li = document.querySelector(`.task[data-task-id="${t.id}"]`);
+    t = tasks.find(task => task.id === t.id);
+    if (!li || !t) return;
+  }
   editingId = t.id;
   li.classList.add("editing");
-  // Both fields wrap and grow with their text, so long titles stay readable.
-  const title = Object.assign(document.createElement("textarea"), { className: "edit-title", value: t.title, maxLength: 300, rows: 1 });
-  title.setAttribute("aria-label", "Task");
-  li.querySelector(".title").replaceChildren(title);
-  const details = Object.assign(document.createElement("textarea"), { className: "edit-details", value: t.details, placeholder: "Details", rows: 2 });
-  details.setAttribute("aria-label", "Details");
-  li.querySelector(".body").replaceWith(details);
-  li.querySelector(".stamp").textContent = "Click away to save. Esc cancels.";
-  const grow = () => {
-    for (const f of [title, details]) { f.style.height = "auto"; f.style.height = `${f.scrollHeight}px`; }
-  };
-  title.oninput = details.oninput = grow;
-  grow();
-
-  const finish = (save) => {
-    if (editingId !== t.id) return;
-    editingId = null;
-    const changed = title.value.trim() !== t.title || details.value.trimEnd() !== t.details;
-    if (save && changed && title.value.trim()) act("edit_task", { id: t.id, title: title.value, details: details.value });
-    else render();
-  };
-  title.onclick = (e) => e.stopPropagation(); // don't fold the row up
-  title.onkeydown = (e) => {
-    if (e.key === "Enter") { e.preventDefault(); finish(true); }
-    if (e.key === "Escape") finish(false);
-  };
-  details.onkeydown = (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) finish(true);
-    if (e.key === "Escape") finish(false);
-  };
-  // Save once focus leaves both fields (moving between them doesn't count).
-  title.onblur = details.onblur = () => setTimeout(() => {
-    if (!li.contains(document.activeElement)) finish(true);
+  const target = li.querySelector(field === "title" ? ".title" : ".body");
+  const input = Object.assign(document.createElement("textarea"), {
+    className: field === "title" ? "edit-title" : "edit-details",
+    value: t[field], rows: 1,
   });
-  title.focus();
-  title.setSelectionRange(title.value.length, title.value.length);
+  if (field === "title") input.maxLength = 300;
+  input.setAttribute("aria-label", field === "title" ? "Task title" : "Task details");
+  target.replaceChildren(input);
+  input.title = "Click away to save. Esc cancels.";
+  input.oninput = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
+  input.oninput();
+  let saving = false;
+  const finish = async (save) => {
+    if (saving || editingId !== t.id || finishEditing !== finish) return false;
+    const value = field === "title" ? input.value.trim() : input.value.trimEnd();
+    if (!save || value === t[field]) { editingId = null; render(); return true; }
+    if (field === "title" && !value) { notice("A task needs a title. Esc cancels."); input.focus(); return false; }
+    saving = true;
+    input.readOnly = true;
+    try {
+      // Send only the field being edited, preserving concurrent agent changes to other fields.
+      let list = await invoke("edit_task", { id: t.id, [field]: value });
+      if (noteId != null) list = await invoke("list_note", { id: noteId });
+      editingId = null;
+      $("notice").hidden = true;
+      update(list);
+      return true;
+    } catch (e) {
+      saving = false;
+      input.readOnly = false;
+      notice(`Couldn't save: ${e}`);
+      input.focus();
+      return false;
+    }
+  };
+  finishEditing = finish;
+  input.onclick = (e) => e.stopPropagation();
+  input.onkeydown = (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter" && (field === "title" || e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); }
+    if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  };
+  input.onblur = () => setTimeout(() => { if (document.activeElement !== input) finish(true); });
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 
 // Set when the list can't be read (say, its synced folder is offline). Shown instead of the list.
@@ -312,7 +530,7 @@ function update(list) {
 
 async function refresh() {
   try {
-    const list = await invoke("list");
+    const list = await invoke(noteId != null ? "list_note" : "list", noteId != null ? { id: noteId } : undefined);
     if (problem || JSON.stringify(list) !== lastJson) update(list);
   } catch (e) {
     problem = String(e);
@@ -325,8 +543,10 @@ async function refresh() {
 // Changes go through here so a failure (the file went missing mid-way) shows up too.
 async function act(cmd, args) {
   try {
-    update(await invoke(cmd, args));
-  } catch {
+    const list = await invoke(cmd, args);
+    update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
+  } catch (e) {
+    notice(String(e));
     refresh();
   }
 }
@@ -361,7 +581,7 @@ const setViewMenu = (open) => {
 };
 $("view").onclick = async (e) => {
   e.stopPropagation();
-  setMenu(false);
+  setMenu(false); setDisplayMenu(false); closeFloating();
   if (!viewMenu.hidden) return setViewMenu(false);
   const loc = await invoke("location");
   $("where").textContent = loc.short;
@@ -384,6 +604,16 @@ function notice(text) {
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => ($("notice").hidden = true), 6000);
 }
+async function closeNote() {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  invoke("close_note").catch(e => notice(String(e)));
+}
+$("close-note").onclick = closeNote;
+$("note-handle").onmousedown = (e) => {
+  if (e.button !== 0 || e.target.closest("button")) return;
+  e.preventDefault();
+  invoke("drag_note").catch(e => notice(String(e)));
+};
 async function pickFolder() {
   setViewMenu(false);
   try {
@@ -400,11 +630,24 @@ $("open-file").onclick = () => {
   setViewMenu(false);
   invoke("open_file").catch((e) => notice(String(e)));
 };
-$("pin").onclick = async () => {
-  pinned = !pinned;
-  await invoke("set_pinned", { pinned });
-  $("pin").setAttribute("aria-pressed", pinned);
-  $("pin").title = pinned ? "Stop keeping on top" : "Keep on top";
+const displayMenu = $("display-menu");
+function setDisplayMenu(open) {
+  displayMenu.hidden = !open;
+  $("display").setAttribute("aria-expanded", open);
+}
+$("display").onclick = (e) => {
+  e.stopPropagation();
+  setMenu(false); setViewMenu(false); closeFloating();
+  setDisplayMenu(displayMenu.hidden);
+};
+displayMenu.onclick = (e) => {
+  const b = e.target.closest("[data-property]");
+  if (!b) return;
+  const key = b.dataset.property;
+  properties[key] = !properties[key];
+  b.setAttribute("aria-pressed", properties[key]);
+  store.set("properties", JSON.stringify(properties));
+  render();
 };
 
 const menu = $("group-menu");
@@ -412,7 +655,7 @@ const setMenu = (open) => {
   menu.hidden = !open;
   $("group").setAttribute("aria-expanded", open);
 };
-$("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setMenu(menu.hidden); };
+$("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setDisplayMenu(false); closeFloating(); setMenu(menu.hidden); };
 menu.onclick = (e) => {
   const b = e.target.closest("[data-group]");
   if (!b) return;
@@ -511,17 +754,32 @@ dueMenu.onclick = async (e) => {
 };
 
 document.addEventListener("click", (e) => {
+  if (!displayMenu.hidden && !displayMenu.contains(e.target)) setDisplayMenu(false);
   if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
   if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);
   if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
   if (!dueMenu.hidden && !dueMenu.contains(e.target)) dueMenu.hidden = true;
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setMenu(false); setViewMenu(false); closeFloating(); }
+  if (e.key === "Escape") { setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating(); }
 });
+document.addEventListener("keydown", (e) => {
+  if (noteId != null && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w") {
+    e.preventDefault(); e.stopPropagation(); closeNote();
+  }
+}, true);
 $("main").addEventListener("scroll", closeFloating);
 
 listen("tasks-changed", refresh);
+window.addEventListener("storage", (e) => {
+  if (e.key === "properties") {
+    try {
+      const saved = JSON.parse(e.newValue || "{}");
+      for (const key of Object.keys(properties)) if (typeof saved?.[key] === "boolean") properties[key] = saved[key];
+      render();
+    } catch {}
+  }
+});
 // Coming back to the window: fresh "2h" labels, and yesterday's desk cleared.
 window.addEventListener("focus", () => { if (editingId == null) { render(); refresh(); } });
 refresh();

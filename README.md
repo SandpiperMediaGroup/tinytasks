@@ -4,7 +4,7 @@ A sticky note for the things your AI agents tell **you** to do.
 
 When an agent hands you a to-do ("add the API key in Vercel", "approve the PR"), it drops it on
 TinyTasks over MCP. You get a desktop notification, the tray icon shows how many are open, and you
-check them off. The agent can see what you finished. No projects, no subtasks, no snoozing.
+check them off. The agent can see what you finished. Keep related steps together as subtasks.
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 
@@ -13,8 +13,17 @@ but hasn't been tried yet.
 
 ## Using it
 
-- **Click a task** to see its details and a link back to the chat it came from. The pencil edits
-  the title and details.
+- **Click a task's text** to edit it directly. Click away or press Enter to save a title;
+  use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
+- **Open a sticky note** using the folded-corner note icon in task details. Notes
+  use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
+  metadata, or action strip. Drag the thin top edge to move a note; its quiet close button
+  becomes clearer on hover or keyboard focus. Notes stay above other windows and edits sync with the list.
+  Close a note to dismiss it without deleting the task. Notes last for the current app session;
+  use the note icon again to reopen one.
+- **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
+  chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
+  Hover the row's time indicator for the full added date; completed tasks also show their completion date.
 - **+** adds your own task. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the details)
   or by the agent.
@@ -23,6 +32,20 @@ but hasn't been tried yet.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
 - **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
+  Click a group header to collapse or expand it; each view remembers collapsed groups.
+- **Subtasks** live in a task's details. Use the **+** beside Subtasks to add one. Click its
+  text to edit, or the rest of its row to open its own details, priority, due date, and sticky note.
+  Use the small **1 / •** chip to switch between numbered steps and a checklist.
+- **Drag subtasks** to reorder them, or focus a subtask row and press Alt+Up/Down. Both modes
+  remember the same order. Numbers stay muted; the parent's circle shows completion progress.
+  Checking a parent completes its remaining subtasks. Checking a subtask leaves the parent
+  open; reopening a child also reopens its parent. Deleting a parent deletes its subtasks.
+- **Hover controls**: group chevrons appear over their header; the subtask **+** and mode chip
+  appear over the Subtasks header. Keyboard focus reveals them too, and touch devices keep
+  them visible. Actions inside expanded details remain visible.
+
+Subtasks support one level of nesting. Completed steps stay under their parent, and list/tray
+counts count top-level tasks. A subtask on My desk brings its parent into that view for context.
 
 ## Build
 
@@ -58,13 +81,20 @@ Anything else that takes an MCP config:
 ```
 
 Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_tasks` and
-`set_desk`. Then tell your agent to use them, e.g. in `CLAUDE.md` or `AGENTS.md`:
+`set_desk`, plus `reorder_subtasks`. Then tell your agent to use them, e.g. in `CLAUDE.md` or `AGENTS.md`:
 
 > When you give me something I have to do myself, add it to TinyTasks with `add_tasks` (name
 > this chat in `chat`, add a link back if you have one). When resuming, check `list_tasks` for
 > what I've finished. When I ask what to focus on, put a few tasks on my desk with `set_desk`.
 
 A chat that was already open when you added TinyTasks won't see the tools; start a new one.
+
+To add steps, call `add_tasks` with an existing `parent_id` and a `tasks` array. Array order
+becomes the sibling order, and the parent supplies the chat and default conversation link.
+Set `ordered: true` for numbered steps, or change the parent's mode later with `update_task`.
+Read `list_tasks` with `parent_id` to get all children in saved order (including older completed
+steps), then call `reorder_subtasks` with `parent_id` and every child ID exactly once in `ids`.
+Stale, duplicate, missing, or unrelated IDs are rejected without changing the file.
 
 ## Your list is a markdown file
 
@@ -95,9 +125,23 @@ missing (the sync app isn't running), TinyTasks says so rather than starting a n
 | `@link(url)` | Back to the chat |
 | `@added`, `@done` | When, as `YYYY-MM-DD HH:MM` |
 | `@id(n)` | Unique; filled in for tasks you type yourself |
+| `@parent(id)` | The parent task's ID; one level of subtasks |
+| `@position(n)` | Zero-based sibling order, used in both checklist and numbered modes |
+| `@subtasks(ordered)` | On the parent: display its children as numbered steps |
 
 TinyTasks keeps anything it doesn't use (other `@tags`, notes) exactly as you wrote it, and
 grouping and sorting in the window never reorder the file.
+Subtasks remain top-level checkbox lines in the file; the parent/position attributes describe
+their hierarchy. Indented lines remain task details. A missing, self-referencing, or nested
+parent link is recovered as an ordinary task so it cannot disappear from the list.
+
+## Checks
+
+`cargo test --offline` covers markdown round trips and subtask behavior. After `cargo build`,
+run `python3 scripts/mcp-smoke.py` for the real agent protocol with temporary task/state folders.
+With Playwright installed, `node scripts/ui-smoke.cjs` exercises the UI with a mocked desktop
+bridge. `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` may point to an existing install.
+`TINYTASKS_DATA_DIR` overrides the local settings/lock folder for isolated development checks.
 
 ## Contributing
 

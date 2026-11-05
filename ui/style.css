@@ -420,3 +420,22 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
   .row-status { padding-right: 27px; }
   .row-status .more { opacity: 1; pointer-events: auto; }
 }
+
+/* A compact reference above the theme grid, expanded only when needed. */
+.shortcut-guide { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 9px; }
+.shortcut-guide summary { display: flex; align-items: center; gap: 8px; padding: 10px; list-style: none; cursor: pointer; font-size: 12px; font-weight: 600; border-radius: 8px; }
+.shortcut-guide summary::-webkit-details-marker { display: none; }
+.shortcut-guide summary:hover { background: var(--bg-hover); }
+.shortcut-guide summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.shortcut-guide summary svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
+.shortcut-guide .guide-chevron { margin-left: auto; width: 12px; height: 12px; }
+.shortcut-guide[open] .guide-chevron { transform: rotate(90deg); }
+.shortcut-content { padding: 0 10px 12px; }
+.shortcut-content h3 { margin: 15px 0 6px; font-size: 11px; font-weight: 650; color: var(--soft); }
+.shortcut-content h3:first-child { margin-top: 5px; }
+.shortcut-content p { font-size: 11px; line-height: 1.5; color: var(--soft); margin: 6px 0; }
+.shortcut-list { margin: 0; }
+.shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.shortcut-list dt { font-size: 12px; min-width: 0; }
+.shortcut-list dd { display: flex; align-items: center; flex: none; gap: 3px; margin: 0; font-size: 10px; color: var(--muted); }
+.shortcut-list kbd { display: inline-block; padding: 1px 4px; min-width: 19px; text-align: center; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg-menu); color: var(--ink); font: 10px/17px system-ui, sans-serif; white-space: nowrap; }

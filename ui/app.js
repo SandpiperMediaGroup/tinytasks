@@ -877,6 +877,13 @@ taskMenu.onkeydown = e => menuKeys(e, taskMenu);
 
 // ---- settings ----
 const settings = $("settings");
+const macKeyboard = /Mac|iPhone|iPad/.test(navigator.platform);
+for (const key of settings.querySelectorAll("[data-key]")) {
+  const primary = key.dataset.key === "primary";
+  key.textContent = primary ? (macKeyboard ? "⌘" : "Ctrl") : (macKeyboard ? "⌥" : "Alt");
+  key.setAttribute("aria-label", primary ? (macKeyboard ? "Command" : "Control") : (macKeyboard ? "Option" : "Alt"));
+}
+
 for (const theme of tinyThemes.catalog) {
   const card = document.createElement("label");
   card.className = "theme-card";

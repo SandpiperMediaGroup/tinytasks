@@ -25,7 +25,8 @@ but hasn't been tried yet.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
   Hover the row’s action button for the full added date; completed tasks also show their completion date.
-- **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Choose Solarized Light or Dark,
+- **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Expand **Keyboard shortcuts**
+  for a guide to navigation, editing, task actions, subtask ordering, and sticky notes. Choose Solarized Light or Dark,
   Parchment, Paper, Forest, or Midnight with live palette previews. System follows the computer’s
   light/dark appearance. The choice saves automatically and updates open sticky notes on this computer.
 - **+** adds your own task. The entry field wraps and grows as you type; Enter saves and Escape cancels. Subtask entry works the same way. Agents see those too.

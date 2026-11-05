@@ -518,7 +518,7 @@ function render() {
   for (const [id, field, reversed, grouping] of [["group-direction", groupBy, groupDescending, true], ["order-direction", orderBy, orderDescending, false]]) {
     const button = $(id);
     button.disabled = field === "none";
-    button.textContent = reversed ? "↓" : "↑";
+    button.dataset.descending = String(reversed);
     button.title = field === "none" ? "No grouping" : `${directionLabel(field, reversed, grouping)}. Click to reverse.`;
     button.setAttribute("aria-label", `${grouping ? "Group" : "Task"} order: ${button.title}`);
   }

@@ -335,6 +335,12 @@ async function moveSubtask(parentId, id, position, focus = false) {
   if (focus) document.querySelector(`.task[data-task-id="${id}"] > .line`)?.focus();
 }
 
+function fitEntry(field) {
+  if (!field.getClientRects().length) return;
+  field.style.height = "auto";
+  field.style.height = `${field.scrollHeight}px`;
+}
+
 async function startNewSubtask(parentId) {
   if (editingId != null && !await finishEditing?.(true)) return;
   const parentRow = document.querySelector(`.task[data-task-id="${parentId}"]`);
@@ -344,9 +350,11 @@ async function startNewSubtask(parentId) {
   parentRow.querySelector(".subtasks").hidden = false;
   const draft = document.createElement("li");
   draft.className = "subtask new-subtask";
-  draft.innerHTML = '<form class="line"><span class="check"></span><input maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></form>';
+  draft.innerHTML = '<form class="line"><span class="check"></span><textarea rows="1" maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></textarea></form>';
   parentRow.querySelector(".subtask-list").append(draft);
-  const field = draft.querySelector("input");
+  const field = draft.querySelector("textarea");
+  field.oninput = () => fitEntry(field);
+  fitEntry(field);
   const editKey = `new:${parentId}`;
   editingId = editKey;
   let saving = false;
@@ -376,7 +384,11 @@ async function startNewSubtask(parentId) {
     const title = field.value.trim();
     if (await finish(true) && title) startNewSubtask(parentId);
   };
-  field.onkeydown = (e) => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
+  field.onkeydown = e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); draft.querySelector("form").requestSubmit(); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+  };
   field.onblur = () => setTimeout(() => { if (document.activeElement !== field) finish(true); });
   field.focus();
 }
@@ -528,7 +540,7 @@ async function startEdit(li, t, field) {
   input.setAttribute("aria-label", field === "title" ? "Task title" : "Task details");
   target.replaceChildren(input);
   input.title = "Click away to save. Esc cancels.";
-  input.oninput = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
+  input.oninput = () => fitEntry(input);
   input.oninput();
   let saving = false;
   const finish = async (save) => {
@@ -557,6 +569,7 @@ async function startEdit(li, t, field) {
   finishEditing = finish;
   input.onclick = (e) => e.stopPropagation();
   input.onkeydown = (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
     e.stopPropagation();
     if (e.key === "Enter" && (field === "title" || e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); }
     if (e.key === "Escape") { e.preventDefault(); finish(false); }
@@ -602,10 +615,19 @@ async function act(cmd, args) {
 // ---- adding your own task ----
 const form = $("new-task");
 const input = $("new-title");
-const closeNew = () => { input.value = ""; form.hidden = true; };
+const closeNew = () => { input.value = ""; input.style.height = ""; form.hidden = true; };
+input.oninput = () => fitEntry(input);
+let entryWidth = 0;
+new ResizeObserver(() => {
+  const width = $("main").clientWidth;
+  if (width === entryWidth) return;
+  entryWidth = width;
+  $("main").querySelectorAll("textarea").forEach(fitEntry);
+}).observe($("main"));
 $("add").onclick = () => {
   if (view === "done") { view = "all"; store.set("view", view); useViewLayout(); render(); }
   form.hidden = false;
+  fitEntry(input);
   $("empty").hidden = true;
   $("main").scrollTop = 0;
   input.focus();
@@ -615,9 +637,14 @@ form.onsubmit = async (e) => {
   const title = input.value.trim();
   if (!title) return closeNew();
   input.value = ""; // stay open for the next one
+  fitEntry(input);
   act("add_task", { title, mydesk: view === "desk" });
 };
-input.onkeydown = (e) => { if (e.key === "Escape") { closeNew(); render(); } };
+input.onkeydown = e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === "Enter") { e.preventDefault(); form.requestSubmit(); }
+  if (e.key === "Escape") { e.preventDefault(); closeNew(); render(); }
+};
 input.onblur = () => { if (input.value.trim()) form.requestSubmit(); closeNew(); render(); };
 
 // ---- header tools ----

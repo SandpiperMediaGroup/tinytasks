@@ -302,12 +302,13 @@ section:first-child .group-head { padding-top: 16px; }
 
 /* The line you type a new task into. */
 #new-task {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 14px; border-bottom: 1px solid var(--line);
 }
 #new-task[hidden] { display: none; }
 #new-task .check { cursor: default; border-style: dashed; }
 #new-title {
+  resize: none; overflow: hidden; display: block; margin: 0; line-height: inherit;
   flex: 1; min-width: 0; border: 0; outline: 0; padding: 0;
   background: none; color: var(--ink); font: inherit;
 }
@@ -362,8 +363,8 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .subtask.dragging { opacity: .4; }
 .subtask.drop-target { box-shadow: 0 -2px var(--accent); }
 .new-subtask .check { border-style: dashed; }
-.new-subtask input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; }
-.new-subtask input::placeholder { color: var(--muted); }
+.new-subtask textarea { resize: none; overflow: hidden; display: block; margin: 0; line-height: inherit; width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; }
+.new-subtask textarea::placeholder { color: var(--muted); }
 .new-subtask .line:focus-within { box-shadow: 0 1px var(--accent); }
 
 /* Reserve the space; controls also appear for keyboard users and stay visible on touch. */

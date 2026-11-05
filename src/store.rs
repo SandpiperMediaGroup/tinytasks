@@ -223,6 +223,22 @@ fn write_error(e: std::io::Error, p: &Path) -> String {
 /// Shown to anyone (any agent) who opens the raw file; markdown viewers hide it.
 const HEADER: &str = "<!-- TinyTasks: the user's to-do list. You may edit this file directly.
 - [ ] is an open task, - [x] a done one. A \"## Heading\" is the chat the tasks under it came from.
+Use the actual originating conversation title as its ## Heading whenever available; reuse it consistently.
+If unavailable, use a concise descriptive fallback.
+Use priority sparingly: omit it by default; set it only for clear urgency or an explicit user request.
+@priority(0-3): 0 is most urgent. @due(YYYY-MM-DD). @mydesk(YYYY-MM-DD): on the user's desk (their focus) that day only;
+write @mydesk(today) and TinyTasks fills in the date.
+@from(agent): who added it. @link(url): back to that chat. @added/@done(YYYY-MM-DD HH:MM).
+@id(n): unique, never change it. TinyTasks fills in @id and @added when you leave them out.
+Use subtasks for related steps toward one outcome; keep independent actions separate.
+Use numbered steps when sequence matters and a checklist otherwise.
+@parent(id) and @position(0-based): a subtask and its sibling order. Keep these as top-level task lines.
+@subtasks(ordered): show a parent's subtasks as numbered steps. One level of subtasks is supported.
+Details go on lines indented two spaces under the task. Leave everything else as it is. -->";
+
+// Only upgrade our exact prior header; preserve any user-customized guidance.
+const LEGACY_HEADER: &str = "<!-- TinyTasks: the user's to-do list. You may edit this file directly.
+- [ ] is an open task, - [x] a done one. A \"## Heading\" is the chat the tasks under it came from.
 @priority(0-3): 0 is most urgent. @due(YYYY-MM-DD). @mydesk(YYYY-MM-DD): on the user's desk (their focus) that day only;
 write @mydesk(today) and TinyTasks fills in the date.
 @from(agent): who added it. @link(url): back to that chat. @added/@done(YYYY-MM-DD HH:MM).
@@ -651,6 +667,10 @@ impl List {
                 Block::Task(e) => lines.extend(e.lines()),
             }
         }
+        let legacy_len = LEGACY_HEADER.lines().count();
+        if lines.iter().take(legacy_len).map(String::as_str).eq(LEGACY_HEADER.lines()) {
+            lines.splice(..legacy_len, HEADER.lines().map(String::from));
+        }
         if lines.is_empty() {
             return String::new();
         }
@@ -926,6 +946,19 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = "# My list\n\nSome notes I keep here.\n\n- [ ] Mine @added(2026-11-04 09:00) @id(3)\n\n## Billing\n\n- [ ] Add key @priority(1) @repeat(weekly) #ops @from(claude-code) @link(https://x.com/a_(b)) @added(2026-11-04 10:12) @id(7)\n  Line one (with parens)\n\n  Line three\n- [x] Approve PR @from(codex) @added(2026-11-04 09:49) @done(2026-11-04 10:12) @id(4)\n\n## Other\n\nfree text\n";
+
+    #[test]
+    fn upgrades_only_the_exact_managed_header() {
+        for newline in ["\n", "\r\n"] {
+            let old = format!("{LEGACY_HEADER}\n\n{SAMPLE}").replace('\n', newline);
+            let expected = format!("{HEADER}\n\n{SAMPLE}").replace('\n', newline);
+            let upgraded = parse(&old).render();
+            assert_eq!(upgraded, expected);
+            assert_eq!(parse(&upgraded).render(), expected);
+        }
+        let custom = format!("{}\n\n{SAMPLE}", LEGACY_HEADER.replace("You may edit", "Ask before editing"));
+        assert_eq!(parse(&custom).render(), custom);
+    }
 
     #[test]
     fn untouched_files_round_trip() {

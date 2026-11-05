@@ -28,7 +28,7 @@ but hasn't been tried yet.
 - **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Choose Solarized Light or Dark,
   Parchment, Paper, Forest, or Midnight with live palette previews. System follows the computer’s
   light/dark appearance. The choice saves automatically and updates open sticky notes on this computer.
-- **+** adds your own task. Agents see those too.
+- **+** adds your own task. The entry field wraps and grows as you type; Enter saves and Escape cancels. Subtask entry works the same way. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the task menu)
   or by the agent.
 - **Your desk** is what you're focusing on today. Ask an agent "what should I focus on?" and it
@@ -96,7 +96,12 @@ Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_t
 `set_desk`, plus `reorder_subtasks`. Then tell your agent to use them, e.g. in `CLAUDE.md` or `AGENTS.md`:
 
 > When you give me something I have to do myself, add it to TinyTasks with `add_tasks` (name
-> this chat in `chat`, add a link back if you have one). When resuming, check `list_tasks` for
+> the actual originating conversation title in `chat` whenever available, and add a link back if you have one).
+> Reuse that title consistently; if it is unavailable, use a concise descriptive fallback.
+> Use priority sparingly: omit it by default and set it only for clear urgency or my explicit request.
+> Use subtasks for related steps toward one outcome, ordered when sequence matters and a checklist otherwise.
+> Keep independent actions separate. Create the parent first, then add its steps using `parent_id`.
+> When resuming, check `list_tasks` for
 > what I've finished. When I ask what to focus on, put a few tasks on my desk with `set_desk`.
 
 A chat that was already open when you added TinyTasks won't see the tools; start a new one.

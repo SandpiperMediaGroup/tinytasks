@@ -112,6 +112,14 @@ function row(t, parent = null, index = 0) {
   }
   const titleText = li.querySelector(".title-text");
   titleText.textContent = t.title;
+  if (!parent && view === "desk" && noteId == null && t.parent_id != null) {
+    const origin = tasks.find(task => task.id === t.parent_id);
+    const context = li.querySelector(".parent-context");
+    context.hidden = false;
+    context.querySelector("span").textContent = origin?.title || `Task #${t.parent_id}`;
+    context.title = `Subtask of ${origin?.title || `task #${t.parent_id}`}`;
+    context.setAttribute("aria-label", context.title);
+  }
   const editText = (el, field) => {
     el.onclick = (e) => { e.stopPropagation(); if (!suppressSubtaskClick) startEdit(li, t, field); };
     el.onkeydown = (e) => {
@@ -238,17 +246,20 @@ function row(t, parent = null, index = 0) {
     finally { note.disabled = false; }
   };
   if (t.parent_id == null) {
+    // A child selected for My desk has its own row there; don't render a duplicate inside its parent.
+    const nestedChildren = children.map((child, i) => ({ child, i })).filter(({ child }) =>
+      !(view === "desk" && noteId == null && child.mydesk && child.done_at == null));
     const section = li.querySelector(".subtasks");
-    section.hidden = children.length === 0;
+    section.hidden = nestedChildren.length === 0;
     const firstSubtask = li.querySelector(".first-subtask");
-    firstSubtask.hidden = children.length > 0;
+    firstSubtask.hidden = nestedChildren.length > 0;
     firstSubtask.onclick = () => startNewSubtask(t.id);
     const mode = section.querySelector(".mode-chip");
     mode.setAttribute("aria-pressed", !!t.ordered);
     mode.title = t.ordered ? "Switch to checklist" : "Switch to ordered steps";
     mode.onclick = () => act("set_subtask_mode", { id: t.id, ordered: !t.ordered });
     section.querySelector(".add-subtask").onclick = () => startNewSubtask(t.id);
-    section.querySelector(".subtask-list").append(...children.map((child, i) => row(child, t, i)));
+    section.querySelector(".subtask-list").append(...nestedChildren.map(({ child, i }) => row(child, t, i)));
   }
   if (parent) {
     line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
@@ -395,14 +406,15 @@ function groupsOf(open) {
 
 const VIEWS = {
   all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
-  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && (t.mydesk || childrenOf(t.id).some(c => c.mydesk && c.done_at == null)) },
+  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
   done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
 };
+const tasksForView = (name) => tasks.filter(t => (name === "desk" || t.parent_id == null) && VIEWS[name].show(t));
 
 function render() {
   if (editingId != null || draggingSubtask != null) return;
   const v = VIEWS[view];
-  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasks.filter(t => t.parent_id == null && v.show(t));
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view);
   // Completed is one list, most recently finished first; the others use the group-by choice.
   const groups = view === "done" || noteId != null ? [{ label: "", items: open }] : groupsOf(open);
   const headers = view !== "done" && noteId == null;
@@ -455,7 +467,7 @@ function render() {
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", b.dataset.view === view);
-    b.querySelector(".n").textContent = tasks.filter(t => t.parent_id == null && VIEWS[b.dataset.view].show(t)).length || "";
+    b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
   }
   for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
   document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";

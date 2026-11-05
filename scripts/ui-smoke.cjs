@@ -270,6 +270,53 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await note.setViewportSize({ width: 340, height: 360 });
     await note.mouse.move(0, 0);
     await note.screenshot({ path: '/tmp/tinytasks-paper-note.png' });
+
+    // My desk selects individual subtasks, with parent context instead of an implicit parent card.
+    const desk = await context.newPage();
+    desk.on('pageerror', e => errors.push(e.message));
+    await desk.goto(url);
+    await desk.evaluate(fixture => {
+      testState.tasks.splice(0, testState.tasks.length, ...fixture);
+      testState.tasks.find(t => t.id === 4).mydesk = true;
+      testState.emit();
+    }, fixture);
+    await desk.locator('#view').click();
+    assert.equal(await desk.locator('[data-view="desk"] .n').innerText(), '2');
+    await desk.locator('[data-view="desk"]').click();
+    const deskChild = desk.locator('#open > section > ul > .task[data-task-id="4"]');
+    assert.equal(await desk.locator('.task[data-task-id="1"], .task[data-task-id="3"], .task[data-task-id="5"]').count(), 0);
+    assert.equal(await desk.locator('#count').innerText(), '2');
+    assert.equal(await deskChild.locator('.parent-context').innerText(), 'Connect the payment flow');
+    assert.equal(await deskChild.locator('.parent-context svg').count(), 1);
+    assert.equal(await deskChild.locator('.subtask-number').count(), 0);
+    await deskChild.locator('.parent-context').click();
+    assert.equal(await deskChild.locator('.body').innerText(), 'Open the environment settings. Add STRIPE_KEY, then redeploy.');
+    assert.equal(await deskChild.locator('.first-subtask').isVisible(), false);
+    await deskChild.locator('.title-text').click();
+    await deskChild.locator('textarea').fill('Add the production secret');
+    await deskChild.locator('textarea').press('Enter');
+    assert.equal(await desk.evaluate(() => testState.tasks.find(t => t.id === 1).title), 'Connect the payment flow');
+    await desk.setViewportSize({ width: 360, height: 520 });
+    await desk.screenshot({ path: '/tmp/tinytasks-desk-subtask.png' });
+    await desk.setViewportSize({ width: 280, height: 520 });
+    assert.equal(await desk.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await deskChild.locator('.set-desk').click();
+    assert.equal(await deskChild.count(), 0);
+    assert.equal(await desk.locator('#count').innerText(), '1');
+    await desk.evaluate(() => {
+      testState.tasks.find(t => t.id === 4).mydesk = true;
+      testState.tasks.find(t => t.id === 1).mydesk = true;
+      testState.emit();
+    });
+    await desk.locator('.task[data-task-id="1"] > .line').focus();
+    await desk.keyboard.press('Enter');
+    assert.equal(await desk.locator('.task[data-task-id="4"]').count(), 1);
+    assert.equal(await desk.locator('#count').innerText(), '3');
+    await deskChild.locator(':scope > .line > .check').click();
+    await deskChild.waitFor({ state: 'detached' });
+    assert.equal(await desk.evaluate(() => testState.tasks.find(t => t.id === 1).done_at), null);
+    assert.equal(await desk.evaluate(() => testState.tasks.find(t => t.id === 5).done_at), null);
+
     await task(4).locator('.delete').click();
     assert.equal(await sub.locator('.subtask').count(), 2);
     await sub.evaluate(() => { testState.tasks.splice(2); testState.emit(); });

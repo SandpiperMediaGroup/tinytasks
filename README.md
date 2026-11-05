@@ -46,7 +46,9 @@ but hasn't been tried yet.
   them visible. Actions inside expanded details remain visible.
 
 Subtasks support one level of nesting. Completed steps stay under their parent, and list/tray
-counts count top-level tasks. A subtask on My desk brings its parent into that view for context.
+counts count top-level tasks. My desk counts and shows the individual tasks and subtasks selected
+for it. A selected subtask appears on its own with a curved branch arrow and its parent's name;
+its parent and siblings are not automatically added to the desk.
 
 ## Build
 

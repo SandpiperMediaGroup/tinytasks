@@ -183,6 +183,9 @@ section:first-child .group-head { padding-top: 16px; }
 .title-text, .body { cursor: text; }
 .title-text { user-select: text; -webkit-user-select: text; }
 .placeholder { color: var(--muted); }
+.parent-context { display: flex; align-items: center; gap: 5px; min-width: 0; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.parent-context svg { flex: none; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.parent-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview { color: var(--soft); font-size: 12px; margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .task-id { flex: none; }
 .sub:not(:has(.src:not(:empty), .due:not([hidden]), .task-id:not([hidden]), .time-sub:not(:empty))) { display: none; }

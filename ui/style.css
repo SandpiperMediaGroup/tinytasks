@@ -415,7 +415,6 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 #task-menu button svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
 #task-menu button::after { display: none; }
 #task-menu button:focus { background: var(--bg-hover); }
-#task-menu .delete, #task-menu .delete svg { color: var(--danger); }
 @media (hover: none) {
   .row-status { padding-right: 27px; }
   .row-status .more { opacity: 1; pointer-events: auto; }

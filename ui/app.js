@@ -229,13 +229,13 @@ function row(t, parent = null, index = 0) {
   const deleteButton = li.querySelector(".delete");
   if (children.length) deleteButton.title = "Delete task and its subtasks";
   deleteButton.onclick = async () => act("delete_task", { id: t.id });
-  const pin = li.querySelector(".pin-task");
-  pin.hidden = noteId === t.id;
-  pin.onclick = async () => {
-    pin.disabled = true;
+  const note = li.querySelector(".open-note");
+  note.hidden = noteId === t.id;
+  note.onclick = async () => {
+    note.disabled = true;
     try { await invoke("open_note", { id: t.id }); }
     catch (e) { notice(String(e)); }
-    finally { pin.disabled = false; }
+    finally { note.disabled = false; }
   };
   if (t.parent_id == null) {
     const section = li.querySelector(".subtasks");

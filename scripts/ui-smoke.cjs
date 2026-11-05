@@ -124,7 +124,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.evaluate(() => { testState.failSave = false; });
     await first.locator('textarea').press('Enter');
     await page.waitForFunction(() => document.querySelector('.title-text')?.textContent === 'Retry this edit');
-    await first.locator('.pin-task').click();
+    await first.locator('.open-note').click();
     assert.equal(await page.evaluate(() => testState.calls.filter(c => c.cmd === 'open_note' && c.args.id === 1).length), 1);
 
     await page.locator('#display').click();
@@ -139,7 +139,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await note.locator('.task').count(), 1);
     assert.equal(await note.locator('header').isVisible(), false);
     assert.equal(await note.locator('.body').isVisible(), true);
-    assert.equal(await note.locator('.pin-task').isVisible(), false);
+    assert.equal(await note.locator('.open-note').isVisible(), false);
     assert.equal(await note.locator('.meta').isVisible(), false);
     assert.equal(await note.locator('.sub').isVisible(), false);
     assert.equal(await note.locator('.subtasks-head').isVisible(), false);
@@ -236,7 +236,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await sub.setViewportSize({ width: 280, height: 620 });
     assert.equal(await sub.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.equal(await task(4).locator('.actions').evaluate(el => getComputedStyle(el).opacity), '1');
-    await task(4).locator('.pin-task').click();
+    await task(4).locator('.open-note').click();
     assert.equal(await sub.evaluate(() => testState.calls.filter(c => c.cmd === 'open_note' && c.args.id === 4).length), 1);
     // New-subtask drafts survive external refresh and failed saves.
     await head.hover();
@@ -248,7 +248,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await sub.getByRole('textbox', { name: 'New subtask', exact: true }).press('Escape');
     assert.equal(await sub.locator('.subtask').count(), 3);
     await sub.evaluate(() => { testState.failSave = false; });
-    // A pinned parent includes its children, and pinned children remain independent notes.
+    // A parent note includes its children, and child notes remain independent.
     await sub.evaluate(() => { window.noteFixture = structuredClone(testState.tasks); });
     const fixture = await sub.evaluate(() => noteFixture);
     await note.goto(`${url}?task=1`);

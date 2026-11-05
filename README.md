@@ -15,12 +15,12 @@ but hasn't been tried yet.
 
 - **Click a task's text** to edit it directly. Click away or press Enter to save a title;
   use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
-- **Pin a task** from its details to open an individual sticky note on your desktop. Notes
+- **Open a sticky note** using the folded-corner note icon in task details. Notes
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
   metadata, or action strip. Drag the thin top edge to move a note; its quiet close button
   becomes clearer on hover or keyboard focus. Notes stay above other windows and edits sync with the list.
   Close a note to dismiss it without deleting the task. Notes last for the current app session;
-  pin again to reopen one.
+  use the note icon again to reopen one.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
   Hover the row's time indicator for the full added date; completed tasks also show their completion date.
@@ -34,7 +34,7 @@ but hasn't been tried yet.
 - **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
   Click a group header to collapse or expand it; each view remembers collapsed groups.
 - **Subtasks** live in a task's details. Use the **+** beside Subtasks to add one. Click its
-  text to edit, or the rest of its row to open its own details, priority, due date, and pin.
+  text to edit, or the rest of its row to open its own details, priority, due date, and sticky note.
   Use the small **1 / •** chip to switch between numbered steps and a checklist.
 - **Drag subtasks** to reorder them, or focus a subtask row and press Alt+Up/Down. Both modes
   remember the same order. Numbers stay muted; the parent's circle shows completion progress.

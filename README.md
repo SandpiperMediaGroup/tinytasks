@@ -31,8 +31,11 @@ but hasn't been tried yet.
   puts a few tasks there, or use the lamp in a task's details. The desk clears overnight.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
-- **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
-  Click a group header to collapse or expand it; each view remembers collapsed groups.
+- **Grouping and ordering** share a compact two-row menu. Group by date added, chat, agent,
+  priority, due date, or choose No grouping. Order tasks within each group by priority, due date,
+  date added, or name; Completed also offers date completed. Each row has a direction control.
+  Missing dates and priorities stay last. Tasks, My desk, and Completed remember their own
+  choices and collapsed groups. Subtasks keep their saved order.
 - **Subtasks** live in a task's details. Use the **+** beside the sticky-note icon to add the
   first one; the Subtasks header appears once needed, with its own **+** for more. Click its
   text to edit, or the rest of its row to open its own details, priority, due date, and sticky note.

@@ -8,10 +8,31 @@ const store = {
   get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
-let groupBy = store.get("groupBy", "time");
-let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 first instead of P0
 let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
 if (!["all", "desk", "done"].includes(view)) view = "all";
+const groupLabels = { none: "No grouping", chat: "Chat", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added" };
+const orderLabels = { priority: "Priority", due: "Due date", added: "Date added", name: "Name", completed: "Date completed" };
+const legacyGroup = Object.hasOwn(groupLabels, store.get("groupBy", "time")) ? store.get("groupBy", "time") : "time";
+const layouts = {};
+let savedLayouts = {};
+try { savedLayouts = JSON.parse(store.get("listLayouts", "{}")) || {}; } catch {}
+for (const name of ["all", "desk", "done"]) {
+  const saved = savedLayouts[name] || {};
+  const grouping = Object.hasOwn(groupLabels, saved.groupBy) ? saved.groupBy : name === "done" ? "none" : legacyGroup;
+  const ordering = Object.hasOwn(orderLabels, saved.orderBy) && (saved.orderBy !== "completed" || name === "done")
+    ? saved.orderBy : name === "done" ? "completed" : grouping === "due" ? "due" : "added";
+  layouts[name] = { groupBy: grouping, orderBy: ordering,
+    groupDescending: typeof saved.groupDescending === "boolean" ? saved.groupDescending : grouping === "priority" && store.get("lowFirst", "0") === "1",
+    orderDescending: typeof saved.orderDescending === "boolean" ? saved.orderDescending : ["added", "completed"].includes(ordering) };
+}
+let groupBy, orderBy, groupDescending, orderDescending;
+function useViewLayout() { ({ groupBy, orderBy, groupDescending, orderDescending } = layouts[view]); }
+function saveLayout() {
+  layouts[view] = { groupBy, orderBy, groupDescending, orderDescending };
+  store.set("listLayouts", JSON.stringify(layouts));
+  render();
+}
+useViewLayout();
 const noteId = Number(new URLSearchParams(location.search).get("task")) || null;
 if (noteId != null) {
   document.body.classList.add("sticky-note");
@@ -135,10 +156,10 @@ function row(t, parent = null, index = 0) {
   id.textContent = `#${t.id}`;
   id.hidden = !properties.id;
 
-  // A row leaves out whatever its group header already says (Completed has no headers).
-  const by = view === "done" || noteId != null || parent ? "" : groupBy;
-  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : done || (by !== "chat" && by !== "agent"));
-  const showChat = properties.chat && (parent ? t.chat !== parent.chat : done || by !== "chat");
+  // A row leaves out whatever its group header already says.
+  const by = noteId != null || parent ? "" : groupBy;
+  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : by !== "chat" && by !== "agent");
+  const showChat = properties.chat && (parent ? t.chat !== parent.chat : by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
@@ -373,7 +394,25 @@ async function startNewSubtask(parentId) {
 }
 
 // ---- groups ----
+const compareText = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+function orderedTasks(items) {
+  const value = t => ({ priority: t.priority, due: t.due, added: t.created_at, completed: t.done_at, name: t.title })[orderBy];
+  return [...items].sort((a, b) => {
+    const av = value(a), bv = value(b);
+    if (av == null || bv == null) return (av == null) - (bv == null) || a.id - b.id;
+    const comparison = typeof av === "number" ? av - bv : compareText(av, bv);
+    return comparison * (orderDescending ? -1 : 1) || a.id - b.id;
+  });
+}
+function directionLabel(field, reverse, grouping = false) {
+  if (field === "priority") return reverse ? "P3 first" : "P0 first";
+  if (field === "due") return reverse ? "Latest first" : "Earliest first";
+  if (grouping && field === "time") return reverse ? "Oldest first" : "Newest first";
+  if (["added", "completed"].includes(field)) return reverse ? "Newest first" : "Oldest first";
+  return reverse ? "Z to A" : "A to Z";
+}
 function groupsOf(open) {
+  if (groupBy === "none") return [{ k: "", label: "", items: orderedTasks(open) }];
   const key = {
     time: (t) => timeBucket(t.created_at),
     chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : t.agent ? ["a:" + agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
@@ -390,17 +429,10 @@ function groupsOf(open) {
     map.get(k).items.push(t);
   }
   const groups = [...map.values()];
-  // Time groups in calendar order; others by their newest task (tasks arrive newest-first).
-  if (groupBy === "time") groups.sort((a, b) => a.k - b.k);
-  else if (groupBy === "due") {
-    groups.sort((a, b) => a.k - b.k);
-    for (const g of groups) g.items.sort((a, b) => (a.due || "").localeCompare(b.due || ""));
-  }
-  else if (groupBy === "priority") {
-    // "No priority" (k = 9) stays last either way.
-    groups.sort((a, b) => (a.k === 9) - (b.k === 9) || (lowFirst ? b.k - a.k : a.k - b.k));
-  }
-  else groups.sort((a, b) => (a.label ? 1 : 0) - (b.label ? 1 : 0)); // unlabeled (yours) first
+  const missing = g => ["priority", "due"].includes(groupBy) ? g.k === 9 : !g.label;
+  groups.sort((a, b) => Number(missing(a)) - Number(missing(b)) ||
+    (typeof a.k === "number" ? a.k - b.k : compareText(a.label, b.label)) * (groupDescending ? -1 : 1));
+  for (const group of groups) group.items = orderedTasks(group.items);
   return groups;
 }
 
@@ -415,9 +447,8 @@ function render() {
   if (editingId != null || draggingSubtask != null) return;
   const v = VIEWS[view];
   const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view);
-  // Completed is one list, most recently finished first; the others use the group-by choice.
-  const groups = view === "done" || noteId != null ? [{ label: "", items: open }] : groupsOf(open);
-  const headers = view !== "done" && noteId == null;
+  const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
+  const headers = groupBy !== "none" && noteId == null;
 
   $("open").replaceChildren(
     ...groups.map((g, index) => {
@@ -469,9 +500,18 @@ function render() {
     b.setAttribute("aria-checked", b.dataset.view === view);
     b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
   }
-  for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
-  document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
-  $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority", due: "due date" }[groupBy]}`;
+  $("group-field").value = groupBy;
+  $("order-field").value = orderBy;
+  const completedOption = $("order-field").querySelector('[value="completed"]');
+  completedOption.hidden = completedOption.disabled = view !== "done";
+  for (const [id, field, reversed, grouping] of [["group-direction", groupBy, groupDescending, true], ["order-direction", orderBy, orderDescending, false]]) {
+    const button = $(id);
+    button.disabled = field === "none";
+    button.textContent = reversed ? "↓" : "↑";
+    button.title = field === "none" ? "No grouping" : `${directionLabel(field, reversed, grouping)}. Click to reverse.`;
+    button.setAttribute("aria-label", `${grouping ? "Group" : "Task"} order: ${button.title}`);
+  }
+  $("group").title = `Grouping: ${groupLabels[groupBy]}. Ordering: ${orderLabels[orderBy]}, ${directionLabel(orderBy, orderDescending).toLowerCase()}.`;
   for (const b of document.querySelectorAll("[data-property]")) b.setAttribute("aria-pressed", properties[b.dataset.property]);
 }
 
@@ -573,7 +613,7 @@ const form = $("new-task");
 const input = $("new-title");
 const closeNew = () => { input.value = ""; form.hidden = true; };
 $("add").onclick = () => {
-  if (view === "done") { view = "all"; store.set("view", view); render(); }
+  if (view === "done") { view = "all"; store.set("view", view); useViewLayout(); render(); }
   form.hidden = false;
   $("empty").hidden = true;
   $("main").scrollTop = 0;
@@ -610,6 +650,7 @@ viewMenu.onclick = (e) => {
   if (!b) return;
   view = b.dataset.view;
   store.set("view", view);
+  useViewLayout();
   setViewMenu(false);
   render();
   $("main").scrollTop = 0;
@@ -670,19 +711,18 @@ displayMenu.onclick = (e) => {
 const menu = $("group-menu");
 const setMenu = (open) => {
   menu.hidden = !open;
+  if (open) menu.style.top = `${$("group").getBoundingClientRect().bottom + 5}px`;
   $("group").setAttribute("aria-expanded", open);
 };
 $("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setDisplayMenu(false); closeFloating(); setMenu(menu.hidden); };
-menu.onclick = (e) => {
-  const b = e.target.closest("[data-group]");
-  if (!b) return;
-  // Picking Priority again flips the order.
-  if (b.dataset.group === "priority" && groupBy === "priority") store.set("lowFirst", (lowFirst = !lowFirst) ? "1" : "0");
-  groupBy = b.dataset.group;
-  store.set("groupBy", groupBy);
-  setMenu(false);
-  render();
+$("group-field").onchange = () => { groupBy = $("group-field").value; groupDescending = false; saveLayout(); };
+$("order-field").onchange = () => {
+  orderBy = $("order-field").value;
+  orderDescending = ["added", "completed"].includes(orderBy);
+  saveLayout();
 };
+$("group-direction").onclick = () => { groupDescending = !groupDescending; saveLayout(); };
+$("order-direction").onclick = () => { orderDescending = !orderDescending; saveLayout(); };
 
 // ---- priority picker (one floating menu, placed next to whichever task's button) ----
 const prioMenu = $("prio-menu");

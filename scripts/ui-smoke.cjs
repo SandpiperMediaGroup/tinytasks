@@ -323,7 +323,110 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await head.waitFor({ state: 'hidden' });
     assert.equal(await head.isVisible(), false);
     assert.equal(await firstSubtask.isVisible(), true);
+    // Grouping and ordering are independent, persisted per view, and never reorder stored subtasks.
+    const layout = await context.newPage();
+    layout.on('pageerror', e => errors.push(e.message));
+    await layout.goto(url);
+    await layout.evaluate(() => localStorage.clear());
+    await layout.reload();
+    await layout.evaluate(() => {
+      const base = testState.tasks[0], now = Date.now() / 1000;
+      const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+      const make = (id, title, extra) => ({ ...base, id, title, details: '', parent_id: null, created_at: now - id * 100, done_at: null, mydesk: true, ...extra });
+      testState.tasks.splice(0, testState.tasks.length,
+        make(11, 'Gamma', { chat: 'Alpha', priority: 1, due: day(-1) }),
+        make(12, 'Alpha', { chat: 'Alpha', priority: 2, due: day(5) }),
+        make(13, 'Zeta', { chat: 'Beta', priority: 0, due: day(1) }),
+        make(14, 'Delta', { chat: 'Alpha', priority: null, due: null }),
+        make(15, 'Finished earlier', { done_at: now - 100 }),
+        make(16, 'Finished later', { done_at: now - 10 }),
+        make(17, 'A step', { parent_id: 11, position: 1, mydesk: false }),
+        make(18, 'Z step', { parent_id: 11, position: 0, mydesk: false }));
+      testState.emit();
+      window.originalLayoutTasks = JSON.stringify(testState.tasks);
+    });
+    const roots = () => layout.locator('#open > section > ul > .task').evaluateAll(els => els.map(el => Number(el.dataset.taskId)));
+    await layout.locator('#group').click();
+    assert.equal(await layout.locator('#group-menu .layout-setting').count(), 2);
+    await layout.selectOption('#group-field', 'none');
+    assert.equal(await layout.locator('.group-head').count(), 0);
+    assert.equal(await layout.locator('#group-direction').isDisabled(), true);
+    await layout.selectOption('#order-field', 'priority');
+    assert.deepEqual(await roots(), [13, 11, 12, 14]);
+    await layout.locator('#order-direction').click();
+    assert.deepEqual(await roots(), [12, 11, 13, 14]);
+    await layout.selectOption('#order-field', 'due');
+    assert.deepEqual(await roots(), [11, 13, 12, 14]);
+    await layout.locator('#order-direction').click();
+    assert.deepEqual(await roots(), [12, 13, 11, 14]);
+    await layout.selectOption('#order-field', 'name');
+    assert.deepEqual(await roots(), [12, 14, 11, 13]);
+    await layout.locator('#order-direction').click();
+    assert.deepEqual(await roots(), [13, 11, 14, 12]);
+    await layout.selectOption('#order-field', 'added');
+    assert.deepEqual(await roots(), [11, 12, 13, 14]);
+    await layout.locator('#order-direction').click();
+    assert.deepEqual(await roots(), [14, 13, 12, 11]);
+    await layout.selectOption('#group-field', 'priority');
+    assert.deepEqual(await roots(), [13, 11, 12, 14]);
+    await layout.locator('#group-direction').click();
+    assert.deepEqual(await roots(), [12, 11, 13, 14]);
+    await layout.selectOption('#group-field', 'chat');
+    await layout.selectOption('#order-field', 'due');
+    assert.deepEqual(await roots(), [11, 12, 14, 13]);
+    await layout.locator('#group-direction').click();
+    assert.deepEqual(await roots(), [13, 11, 12, 14]);
+    await layout.keyboard.press('Escape');
+    await layout.locator('.task[data-task-id="11"] > .line').focus();
+    await layout.keyboard.press('Enter');
+    const steps = () => layout.locator('.task[data-task-id="11"] .subtask').evaluateAll(els => els.map(el => Number(el.dataset.taskId)));
+    assert.deepEqual(await steps(), [18, 17]);
+    await layout.locator('#group').click();
+    await layout.selectOption('#order-field', 'name');
+    assert.deepEqual(await steps(), [18, 17]);
+    await layout.locator('#order-direction').click();
+    assert.deepEqual(await steps(), [18, 17]);
+    await layout.setViewportSize({ width: 280, height: 520 });
+    const bounds = await layout.locator('#group-menu').boundingBox();
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 280);
+    await layout.setViewportSize({ width: 360, height: 560 });
+    await layout.screenshot({ path: '/tmp/tinytasks-grouping-ordering.png' });
+    await layout.locator('#view').click();
+    await layout.locator('[data-view="desk"]').click();
+    assert.equal(await layout.locator('#group-field').inputValue(), 'time');
+    await layout.locator('#group').click();
+    await layout.selectOption('#group-field', 'none');
+    await layout.selectOption('#order-field', 'priority');
+    await layout.locator('#view').click();
+    await layout.locator('[data-view="done"]').click();
+    assert.equal(await layout.locator('#group-field').inputValue(), 'none');
+    assert.equal(await layout.locator('#order-field').inputValue(), 'completed');
+    assert.deepEqual(await roots(), [16, 15]);
+    await layout.locator('#group').click();
+    await layout.locator('#order-direction').click();
+    assert.deepEqual(await roots(), [15, 16]);
+    await layout.selectOption('#group-field', 'chat');
+    assert.equal(await layout.locator('.group-head').count(), 1);
+    await layout.locator('#view').click();
+    await layout.locator('[data-view="all"]').click();
+    assert.equal(await layout.locator('#group-field').inputValue(), 'chat');
+    assert.equal(await layout.locator('#order-field').inputValue(), 'name');
+    assert.equal(await layout.locator('#group-direction').innerText(), '↓');
+    assert.equal(await layout.locator('#order-direction').innerText(), '↓');
+    assert.equal(await layout.evaluate(() => JSON.stringify(testState.tasks) === originalLayoutTasks), true);
+    await layout.reload();
+    assert.equal(await layout.locator('#group-field').inputValue(), 'chat');
+    assert.equal(await layout.locator('#order-field').inputValue(), 'name');
+    assert.equal(await layout.locator('#order-direction').innerText(), '↓');
+    await layout.evaluate(() => {
+      localStorage.setItem('listLayouts', '{invalid');
+      localStorage.setItem('groupBy', 'priority');
+      localStorage.setItem('lowFirst', '1');
+    });
+    await layout.reload();
+    assert.equal(await layout.locator('#group-field').inputValue(), 'priority');
+    assert.equal(await layout.locator('#group-direction').innerText(), '↓');
     assert.deepEqual(errors, []);
-    console.log('PASS: display/group persistence, editing and retry, notes, subtasks, drag/keyboard order, mode persistence, progress, compact alignment, hover/focus controls, narrow layout.');
+    console.log('PASS: display/group persistence, editing and retry, notes, subtasks, My desk, drag/keyboard order, grouping and ordering in both directions, per-view layouts, preference migration, progress, compact alignment, hover/focus controls, narrow layout.');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TinyTasks</title>
+<script src="themes.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -25,6 +26,8 @@
         <div id="where"></div>
         <button id="change-folder" role="menuitem"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Change folder…</button>
         <button id="open-file" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4"/></svg>Open tasks.md</button>
+        <div class="menu-sep"></div>
+        <button id="settings-open" role="menuitem"><svg viewBox="0 0 24 24"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3z"/><circle cx="12" cy="12" r="3"/></svg>Settings<span class="shortcut">⌘,</span></button>
       </div>
     </div>
     <div class="tools">
@@ -32,16 +35,21 @@
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       </button>
       <div class="menu-wrap">
-        <button id="group" class="icon" title="Group by" aria-haspopup="menu" aria-expanded="false">
+        <button id="group" class="icon" title="Grouping and ordering" aria-label="Grouping and ordering" aria-haspopup="dialog" aria-expanded="false">
           <svg viewBox="0 0 24 24"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5"/></svg>
         </button>
-        <div id="group-menu" class="menu" role="menu" hidden>
-          <div class="menu-label">Group by</div>
-          <button role="menuitemradio" data-group="time">Time added</button>
-          <button role="menuitemradio" data-group="chat">Chat</button>
-          <button role="menuitemradio" data-group="agent">Agent</button>
-          <button role="menuitemradio" data-group="priority">Priority</button>
-          <button role="menuitemradio" data-group="due">Due date</button>
+        <div id="group-menu" class="menu" role="dialog" aria-label="Grouping and ordering" hidden>
+          <div class="layout-setting">
+            <label for="group-field">Grouping</label>
+            <button id="group-direction" class="direction" aria-label="Reverse group order"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sort-arrow" d="M6 19V5m-3 3 3-3 3 3"/><path d="M13 6h3M13 12h5M13 18h8"/></svg></button>
+            <button id="group-field" class="layout-picker" aria-haspopup="menu" aria-expanded="false" aria-controls="layout-options"><span class="choice-label"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          </div>
+          <div class="layout-setting">
+            <label for="order-field">Ordering</label>
+            <button id="order-direction" class="direction" aria-label="Reverse task order"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sort-arrow" d="M6 19V5m-3 3 3-3 3 3"/><path d="M13 6h3M13 12h5M13 18h8"/></svg></button>
+            <button id="order-field" class="layout-picker" aria-haspopup="menu" aria-expanded="false" aria-controls="layout-options"><span class="choice-label"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+          </div>
+          <div id="layout-options" class="menu floating" role="menu" hidden></div>
         </div>
       </div>
       <div class="menu-wrap">
@@ -69,7 +77,7 @@
   <main id="main">
     <form id="new-task" hidden autocomplete="off">
       <span class="check"></span>
-      <input id="new-title" maxlength="300" placeholder="Add a task" aria-label="New task">
+      <textarea id="new-title" rows="1" maxlength="300" placeholder="Add a task" aria-label="New task"></textarea>
     </form>
     <div id="open"></div>
     <p id="empty" hidden>All clear.</p>
@@ -78,6 +86,16 @@
       <button class="pick-folder">Choose a folder…</button>
     </div>
   </main>
+
+  <div id="task-menu" class="menu floating" role="menu" aria-label="Task actions" hidden>
+    <button class="open-note" data-action="open-note" role="menuitem"><svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg><span>Open as sticky note</span></button>
+    <button class="first-subtask" data-action="first-subtask" role="menuitem"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Add subtask</span></button>
+    <button class="set-desk" data-action="set-desk" role="menuitem"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg><span>Put on my desk</span></button>
+    <button class="set-due" data-action="set-due" role="menuitem" aria-haspopup="dialog"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span>Due date</span></button>
+    <button class="set-prio" data-action="set-prio" role="menuitem" aria-haspopup="menu"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Priority</span></button>
+    <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open conversation</span></button>
+    <button class="delete" data-action="delete" role="menuitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Delete task</span></button>
+  </div>
 
   <div id="prio-menu" class="menu floating" role="menu" hidden>
     <div class="menu-label">Priority</div>
@@ -102,17 +120,70 @@
     </div>
   </div>
 
+  <dialog id="settings" aria-labelledby="settings-title">
+    <div class="settings-header">
+      <button id="settings-close" class="icon" aria-label="Back to tasks" autofocus><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+      <h1 id="settings-title">Settings</h1>
+    </div>
+    <div class="settings-body">
+      <details id="shortcut-guide" class="shortcut-guide">
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10"/></svg><span>Keyboard shortcuts</span><svg class="guide-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></summary>
+        <div class="shortcut-content">
+          <h3>Getting around</h3>
+          <dl class="shortcut-list">
+            <div><dt>Next control</dt><dd><kbd>Tab</kbd></dd></div>
+            <div><dt>Previous control</dt><dd><kbd>Shift</kbd><kbd>Tab</kbd></dd></div>
+            <div><dt>Open Settings</dt><dd><kbd data-key="primary">⌘</kbd><kbd>,</kbd></dd></div>
+            <div><dt>Close Settings or menu</dt><dd><kbd>Esc</kbd></dd></div>
+            <div><dt>Close a sticky note</dt><dd><kbd data-key="primary">⌘</kbd><kbd>W</kbd></dd></div>
+          </dl>
+          <h3>Tasks</h3>
+          <p>Tab to a row, text, or control first.</p>
+          <dl class="shortcut-list">
+            <div><dt>Expand or collapse a row</dt><dd><kbd>Enter</kbd><span>or</span><kbd>Space</kbd></dd></div>
+            <div><dt>Edit focused task text</dt><dd><kbd>Enter</kbd><span>or</span><kbd>Space</kbd></dd></div>
+            <div><dt>Open task actions</dt><dd><kbd>Shift</kbd><kbd>F10</kbd></dd></div>
+            <div><dt>Move a subtask up or down</dt><dd><kbd data-key="alt">⌥</kbd><kbd>↑</kbd><span>or</span><kbd>↓</kbd></dd></div>
+          </dl>
+          <p>On some Mac keyboards, hold Fn with F10.</p>
+          <h3>While editing</h3>
+          <dl class="shortcut-list">
+            <div><dt>Save a title or new task</dt><dd><kbd>Enter</kbd></dd></div>
+            <div><dt>Save details</dt><dd><kbd data-key="primary">⌘</kbd><kbd>Enter</kbd></dd></div>
+            <div><dt>New line in details</dt><dd><kbd>Enter</kbd></dd></div>
+            <div><dt>Cancel the edit</dt><dd><kbd>Esc</kbd></dd></div>
+          </dl>
+          <h3>Choosing options</h3>
+          <p>In task actions, priority, and grouping/ordering choices:</p>
+          <dl class="shortcut-list">
+            <div><dt>Move between options</dt><dd><kbd>↑</kbd><span>or</span><kbd>↓</kbd></dd></div>
+            <div><dt>First or last option</dt><dd><kbd>Home</kbd><span>or</span><kbd>End</kbd></dd></div>
+            <div><dt>Choose focused option</dt><dd><kbd>Enter</kbd><span>or</span><kbd>Space</kbd></dd></div>
+          </dl>
+          <p>For themes, use the arrow keys after focusing a palette. For other controls, use Tab, then Enter or Space.</p>
+        </div>
+      </details>
+      <h2 id="theme-heading">Theme</h2>
+      <p class="settings-description">A little change of atmosphere.</p>
+      <div id="themes" role="radiogroup" aria-labelledby="theme-heading"></div>
+      <p class="settings-footnote">Applies to your tasks and sticky notes on this Mac. Saved automatically.</p>
+    </div>
+  </dialog>
+
   <template id="row">
     <li class="task">
       <div class="line">
         <button class="check" title="Mark done"><svg viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"/></svg></button>
         <div class="text">
           <div class="title"><span class="title-text" role="button" tabindex="0" aria-label="Edit task title"></span></div>
+          <div class="parent-context" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 10-4-4 4-4M5 6h8a6 6 0 0 1 6 6v8"/></svg><span></span></div>
           <div class="preview" hidden></div>
           <div class="sub"><span class="task-id" hidden></span><span class="src"></span><span class="due" hidden><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span></span></span><span class="time-sub"></span></div>
         </div>
-        <span class="prio" hidden></span>
-        <span class="time"></span>
+        <div class="row-status">
+          <span class="prio" hidden></span><span class="time"></span>
+          <button class="icon more" aria-label="Task actions" title="Task actions" aria-haspopup="menu" aria-controls="task-menu" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        </div>
       </div>
       <div class="details">
         <div class="details-inner">
@@ -126,31 +197,7 @@
               </div>
               <ul class="subtask-list"></ul>
             </div>
-            <div class="meta">
-              <span class="actions">
-                <button class="icon open-note" title="Open as sticky note" aria-label="Open as sticky note">
-                  <svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg>
-                </button>
-                <button class="icon first-subtask" title="Add subtask" aria-label="Add subtask" hidden>
-                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                </button>
-                <button class="icon set-desk" title="Put on my desk" aria-pressed="false">
-                  <svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>
-                </button>
-                <button class="icon set-due" title="Set a due date" aria-haspopup="dialog">
-                  <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>
-                </button>
-                <button class="icon set-prio" title="Priority" aria-haspopup="menu">
-                  <svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>
-                </button>
-                <button class="icon open-link" title="Back to the conversation">
-                  <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-                </button>
-                <button class="icon delete" title="Delete task">
-                  <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
-                </button>
-              </span>
-            </div>
+
           </div>
         </div>
       </div>

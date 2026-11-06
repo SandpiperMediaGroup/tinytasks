@@ -8,10 +8,31 @@ const store = {
   get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
-let groupBy = store.get("groupBy", "time");
-let lowFirst = store.get("lowFirst", "0") === "1"; // grouped by priority: P3 first instead of P0
 let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
 if (!["all", "desk", "done"].includes(view)) view = "all";
+const groupLabels = { none: "No grouping", chat: "Chat", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added" };
+const orderLabels = { priority: "Priority", due: "Due date", added: "Date added", name: "Name", completed: "Date completed" };
+const legacyGroup = Object.hasOwn(groupLabels, store.get("groupBy", "time")) ? store.get("groupBy", "time") : "time";
+const layouts = {};
+let savedLayouts = {};
+try { savedLayouts = JSON.parse(store.get("listLayouts", "{}")) || {}; } catch {}
+for (const name of ["all", "desk", "done"]) {
+  const saved = savedLayouts[name] || {};
+  const grouping = Object.hasOwn(groupLabels, saved.groupBy) ? saved.groupBy : name === "done" ? "none" : legacyGroup;
+  const ordering = Object.hasOwn(orderLabels, saved.orderBy) && (saved.orderBy !== "completed" || name === "done")
+    ? saved.orderBy : name === "done" ? "completed" : grouping === "due" ? "due" : "added";
+  layouts[name] = { groupBy: grouping, orderBy: ordering,
+    groupDescending: typeof saved.groupDescending === "boolean" ? saved.groupDescending : grouping === "priority" && store.get("lowFirst", "0") === "1",
+    orderDescending: typeof saved.orderDescending === "boolean" ? saved.orderDescending : ["added", "completed"].includes(ordering) };
+}
+let groupBy, orderBy, groupDescending, orderDescending;
+function useViewLayout() { ({ groupBy, orderBy, groupDescending, orderDescending } = layouts[view]); }
+function saveLayout() {
+  layouts[view] = { groupBy, orderBy, groupDescending, orderDescending };
+  store.set("listLayouts", JSON.stringify(layouts));
+  render();
+}
+useViewLayout();
 const noteId = Number(new URLSearchParams(location.search).get("task")) || null;
 if (noteId != null) {
   document.body.classList.add("sticky-note");
@@ -112,6 +133,14 @@ function row(t, parent = null, index = 0) {
   }
   const titleText = li.querySelector(".title-text");
   titleText.textContent = t.title;
+  if (!parent && view === "desk" && noteId == null && t.parent_id != null) {
+    const origin = tasks.find(task => task.id === t.parent_id);
+    const context = li.querySelector(".parent-context");
+    context.hidden = false;
+    context.querySelector("span").textContent = origin?.title || `Task #${t.parent_id}`;
+    context.title = `Subtask of ${origin?.title || `task #${t.parent_id}`}`;
+    context.setAttribute("aria-label", context.title);
+  }
   const editText = (el, field) => {
     el.onclick = (e) => { e.stopPropagation(); if (!suppressSubtaskClick) startEdit(li, t, field); };
     el.onkeydown = (e) => {
@@ -127,10 +156,10 @@ function row(t, parent = null, index = 0) {
   id.textContent = `#${t.id}`;
   id.hidden = !properties.id;
 
-  // A row leaves out whatever its group header already says (Completed has no headers).
-  const by = view === "done" || noteId != null || parent ? "" : groupBy;
-  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : done || (by !== "chat" && by !== "agent"));
-  const showChat = properties.chat && (parent ? t.chat !== parent.chat : done || by !== "chat");
+  // A row leaves out whatever its group header already says.
+  const by = noteId != null || parent ? "" : groupBy;
+  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : by !== "chat" && by !== "agent");
+  const showChat = properties.chat && (parent ? t.chat !== parent.chat : by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
@@ -149,21 +178,6 @@ function row(t, parent = null, index = 0) {
     if (n <= 0) due.dataset.when = n < 0 ? "late" : "today";
     due.title = `Due ${dueLong(t.due)}`;
   }
-  const dueBtn = li.querySelector(".set-due");
-  dueBtn.classList.toggle("on", !!t.due);
-  dueBtn.title = t.due ? `Due ${dueLong(t.due)}` : "Set a due date";
-  dueBtn.onclick = (e) => { e.stopPropagation(); openDueMenu(dueBtn, t); };
-
-  const deskBtn = li.querySelector(".set-desk");
-  deskBtn.setAttribute("aria-pressed", t.mydesk);
-  deskBtn.title = t.mydesk ? "Take off my desk" : "Put on my desk";
-  deskBtn.onclick = async () => act("set_desk", { id: t.id, on: !t.mydesk });
-
-  const prioBtn = li.querySelector(".set-prio");
-  if (t.priority != null) prioBtn.dataset.p = t.priority;
-  prioBtn.title = t.priority != null ? `Priority: P${t.priority}` : "Set priority";
-  prioBtn.onclick = (e) => { e.stopPropagation(); openPrioMenu(prioBtn, t); };
-
   const when = done ? t.done_at : t.created_at;
   const time = li.querySelector(".time");
   time.textContent = li.querySelector(".time-sub").textContent = !parent && properties[done ? "completed" : "added"] ? short(when) : "";
@@ -204,6 +218,17 @@ function row(t, parent = null, index = 0) {
     line.setAttribute("aria-expanded", open);
     if (open) setTimeout(() => li.scrollIntoView({ block: "nearest", behavior: "smooth" }), 170);
   };
+  li.querySelector(".details").onclick = async (e) => {
+    // Only this task's blank gutter/footer: child rows, text, and controls handle their own clicks.
+    if (e.target.closest(".task") !== li || !e.target.matches(".details, .details-inner, .details-pad")) return;
+    if (noteId === t.id || suppressSubtaskClick || !expanded.has(t.id)) return;
+    e.stopPropagation();
+    if (editingId != null && !await finishEditing?.(true)) return;
+    expanded.delete(t.id);
+    const current = document.querySelector(`.task[data-task-id="${t.id}"]`);
+    current?.classList.remove("open");
+    current?.querySelector(".line").setAttribute("aria-expanded", "false");
+  };
   line.onkeydown = (e) => {
     if (e.target !== line) return;
     if (parent && e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
@@ -213,42 +238,38 @@ function row(t, parent = null, index = 0) {
     } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); line.onclick(); }
   };
 
-  const link = li.querySelector(".open-link");
-  if (t.link) {
-    link.title = `Back to the conversation\n${t.link}`;
-    // No alert(): it's a no-op in macOS webviews. Say it on the button instead.
-    link.onclick = () =>
-      invoke("open_link", { id: t.id }).catch((err) => {
-        link.title = String(err);
-        link.classList.add("failed");
-        setTimeout(() => link.classList.remove("failed"), 1500);
-      });
-  } else {
-    link.remove();
-  }
-  const deleteButton = li.querySelector(".delete");
-  if (children.length) deleteButton.title = "Delete task and its subtasks";
-  deleteButton.onclick = async () => act("delete_task", { id: t.id });
-  const note = li.querySelector(".open-note");
-  note.hidden = noteId === t.id;
-  note.onclick = async () => {
-    note.disabled = true;
-    try { await invoke("open_note", { id: t.id }); }
-    catch (e) { notice(String(e)); }
-    finally { note.disabled = false; }
+  const more = li.querySelector(".more");
+  more.title = `Task actions\n${time.title}`;
+  more.onpointerdown = e => { if (editingId != null && e.button === 0) e.preventDefault(); };
+  more.onclick = e => {
+    e.stopPropagation();
+    if (suppressSubtaskClick) return;
+    if (!taskMenu.hidden && taskMenuId === t.id) closeTaskMenu(true);
+    else openTaskMenu(t.id);
   };
+  li.oncontextmenu = e => {
+    if (e.target.closest(".task") !== li || e.target.closest('input, textarea, [contenteditable="true"]')) return;
+    e.preventDefault(); e.stopPropagation();
+    openTaskMenu(t.id, { x: e.clientX, y: e.clientY });
+  };
+  li.addEventListener("keydown", e => {
+    if (e.target.closest(".task") !== li || e.target.closest('input, textarea, [contenteditable="true"]')) return;
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault(); e.stopPropagation(); openTaskMenu(t.id);
+    }
+  });
   if (t.parent_id == null) {
+    // A child selected for My desk has its own row there; don't render a duplicate inside its parent.
+    const nestedChildren = children.map((child, i) => ({ child, i })).filter(({ child }) =>
+      !(view === "desk" && noteId == null && child.mydesk && child.done_at == null));
     const section = li.querySelector(".subtasks");
-    section.hidden = children.length === 0;
-    const firstSubtask = li.querySelector(".first-subtask");
-    firstSubtask.hidden = children.length > 0;
-    firstSubtask.onclick = () => startNewSubtask(t.id);
+    section.hidden = nestedChildren.length === 0;
     const mode = section.querySelector(".mode-chip");
     mode.setAttribute("aria-pressed", !!t.ordered);
     mode.title = t.ordered ? "Switch to checklist" : "Switch to ordered steps";
     mode.onclick = () => act("set_subtask_mode", { id: t.id, ordered: !t.ordered });
     section.querySelector(".add-subtask").onclick = () => startNewSubtask(t.id);
-    section.querySelector(".subtask-list").append(...children.map((child, i) => row(child, t, i)));
+    section.querySelector(".subtask-list").append(...nestedChildren.map(({ child, i }) => row(child, t, i)));
   }
   if (parent) {
     line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
@@ -314,6 +335,12 @@ async function moveSubtask(parentId, id, position, focus = false) {
   if (focus) document.querySelector(`.task[data-task-id="${id}"] > .line`)?.focus();
 }
 
+function fitEntry(field) {
+  if (!field.getClientRects().length) return;
+  field.style.height = "auto";
+  field.style.height = `${field.scrollHeight}px`;
+}
+
 async function startNewSubtask(parentId) {
   if (editingId != null && !await finishEditing?.(true)) return;
   const parentRow = document.querySelector(`.task[data-task-id="${parentId}"]`);
@@ -321,12 +348,13 @@ async function startNewSubtask(parentId) {
   expanded.add(parentId);
   parentRow.classList.add("open");
   parentRow.querySelector(".subtasks").hidden = false;
-  parentRow.querySelector(".first-subtask").hidden = true;
   const draft = document.createElement("li");
   draft.className = "subtask new-subtask";
-  draft.innerHTML = '<form class="line"><span class="check"></span><input maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></form>';
+  draft.innerHTML = '<form class="line"><span class="check"></span><textarea rows="1" maxlength="300" aria-label="New subtask" placeholder="Add a subtask" autocomplete="off"></textarea></form>';
   parentRow.querySelector(".subtask-list").append(draft);
-  const field = draft.querySelector("input");
+  const field = draft.querySelector("textarea");
+  field.oninput = () => fitEntry(field);
+  fitEntry(field);
   const editKey = `new:${parentId}`;
   editingId = editKey;
   let saving = false;
@@ -356,13 +384,35 @@ async function startNewSubtask(parentId) {
     const title = field.value.trim();
     if (await finish(true) && title) startNewSubtask(parentId);
   };
-  field.onkeydown = (e) => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
+  field.onkeydown = e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); draft.querySelector("form").requestSubmit(); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+  };
   field.onblur = () => setTimeout(() => { if (document.activeElement !== field) finish(true); });
   field.focus();
 }
 
 // ---- groups ----
+const compareText = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+function orderedTasks(items) {
+  const value = t => ({ priority: t.priority, due: t.due, added: t.created_at, completed: t.done_at, name: t.title })[orderBy];
+  return [...items].sort((a, b) => {
+    const av = value(a), bv = value(b);
+    if (av == null || bv == null) return (av == null) - (bv == null) || a.id - b.id;
+    const comparison = typeof av === "number" ? av - bv : compareText(av, bv);
+    return comparison * (orderDescending ? -1 : 1) || a.id - b.id;
+  });
+}
+function directionLabel(field, reverse, grouping = false) {
+  if (field === "priority") return reverse ? "P3 first" : "P0 first";
+  if (field === "due") return reverse ? "Latest first" : "Earliest first";
+  if (grouping && field === "time") return reverse ? "Oldest first" : "Newest first";
+  if (["added", "completed"].includes(field)) return reverse ? "Newest first" : "Oldest first";
+  return reverse ? "Z to A" : "A to Z";
+}
 function groupsOf(open) {
+  if (groupBy === "none") return [{ k: "", label: "", items: orderedTasks(open) }];
   const key = {
     time: (t) => timeBucket(t.created_at),
     chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : t.agent ? ["a:" + agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
@@ -379,33 +429,27 @@ function groupsOf(open) {
     map.get(k).items.push(t);
   }
   const groups = [...map.values()];
-  // Time groups in calendar order; others by their newest task (tasks arrive newest-first).
-  if (groupBy === "time") groups.sort((a, b) => a.k - b.k);
-  else if (groupBy === "due") {
-    groups.sort((a, b) => a.k - b.k);
-    for (const g of groups) g.items.sort((a, b) => (a.due || "").localeCompare(b.due || ""));
-  }
-  else if (groupBy === "priority") {
-    // "No priority" (k = 9) stays last either way.
-    groups.sort((a, b) => (a.k === 9) - (b.k === 9) || (lowFirst ? b.k - a.k : a.k - b.k));
-  }
-  else groups.sort((a, b) => (a.label ? 1 : 0) - (b.label ? 1 : 0)); // unlabeled (yours) first
+  const missing = g => ["priority", "due"].includes(groupBy) ? g.k === 9 : !g.label;
+  groups.sort((a, b) => Number(missing(a)) - Number(missing(b)) ||
+    (typeof a.k === "number" ? a.k - b.k : compareText(a.label, b.label)) * (groupDescending ? -1 : 1));
+  for (const group of groups) group.items = orderedTasks(group.items);
   return groups;
 }
 
 const VIEWS = {
   all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
-  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && (t.mydesk || childrenOf(t.id).some(c => c.mydesk && c.done_at == null)) },
+  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
   done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
 };
+const tasksForView = (name) => tasks.filter(t => (name === "desk" || t.parent_id == null) && VIEWS[name].show(t));
 
 function render() {
   if (editingId != null || draggingSubtask != null) return;
+  if (taskMenuId != null) closeFloating();
   const v = VIEWS[view];
-  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasks.filter(t => t.parent_id == null && v.show(t));
-  // Completed is one list, most recently finished first; the others use the group-by choice.
-  const groups = view === "done" || noteId != null ? [{ label: "", items: open }] : groupsOf(open);
-  const headers = view !== "done" && noteId == null;
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view);
+  const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
+  const headers = groupBy !== "none" && noteId == null;
 
   $("open").replaceChildren(
     ...groups.map((g, index) => {
@@ -455,11 +499,22 @@ function render() {
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", b.dataset.view === view);
-    b.querySelector(".n").textContent = tasks.filter(t => t.parent_id == null && VIEWS[b.dataset.view].show(t)).length || "";
+    b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
   }
-  for (const b of document.querySelectorAll("[data-group]")) b.setAttribute("aria-checked", b.dataset.group === groupBy);
-  document.querySelector('[data-group="priority"]').dataset.order = lowFirst ? "P3 first" : "P0 first";
-  $("group").title = `Group by: ${{ time: "time added", chat: "chat", agent: "agent", priority: "priority", due: "due date" }[groupBy]}`;
+  for (const [id, value, label, name] of [["group-field", groupBy, groupLabels[groupBy], "Grouping"], ["order-field", orderBy, orderBy === "completed" ? "Completed" : orderLabels[orderBy], "Ordering"]]) {
+    const button = $(id);
+    button.dataset.value = value;
+    button.querySelector(".choice-label").textContent = label;
+    button.setAttribute("aria-label", `${name}: ${label}`);
+  }
+  for (const [id, field, reversed, grouping] of [["group-direction", groupBy, groupDescending, true], ["order-direction", orderBy, orderDescending, false]]) {
+    const button = $(id);
+    button.disabled = field === "none";
+    button.dataset.descending = String(reversed);
+    button.title = field === "none" ? "No grouping" : `${directionLabel(field, reversed, grouping)}. Click to reverse.`;
+    button.setAttribute("aria-label", `${grouping ? "Group" : "Task"} order: ${button.title}`);
+  }
+  $("group").title = `Grouping: ${groupLabels[groupBy]}. Ordering: ${orderLabels[orderBy]}, ${directionLabel(orderBy, orderDescending).toLowerCase()}.`;
   for (const b of document.querySelectorAll("[data-property]")) b.setAttribute("aria-pressed", properties[b.dataset.property]);
 }
 
@@ -485,7 +540,7 @@ async function startEdit(li, t, field) {
   input.setAttribute("aria-label", field === "title" ? "Task title" : "Task details");
   target.replaceChildren(input);
   input.title = "Click away to save. Esc cancels.";
-  input.oninput = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
+  input.oninput = () => fitEntry(input);
   input.oninput();
   let saving = false;
   const finish = async (save) => {
@@ -514,6 +569,7 @@ async function startEdit(li, t, field) {
   finishEditing = finish;
   input.onclick = (e) => e.stopPropagation();
   input.onkeydown = (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
     e.stopPropagation();
     if (e.key === "Enter" && (field === "title" || e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); }
     if (e.key === "Escape") { e.preventDefault(); finish(false); }
@@ -559,10 +615,19 @@ async function act(cmd, args) {
 // ---- adding your own task ----
 const form = $("new-task");
 const input = $("new-title");
-const closeNew = () => { input.value = ""; form.hidden = true; };
+const closeNew = () => { input.value = ""; input.style.height = ""; form.hidden = true; };
+input.oninput = () => fitEntry(input);
+let entryWidth = 0;
+new ResizeObserver(() => {
+  const width = $("main").clientWidth;
+  if (width === entryWidth) return;
+  entryWidth = width;
+  $("main").querySelectorAll("textarea").forEach(fitEntry);
+}).observe($("main"));
 $("add").onclick = () => {
-  if (view === "done") { view = "all"; store.set("view", view); render(); }
+  if (view === "done") { view = "all"; store.set("view", view); useViewLayout(); render(); }
   form.hidden = false;
+  fitEntry(input);
   $("empty").hidden = true;
   $("main").scrollTop = 0;
   input.focus();
@@ -572,9 +637,14 @@ form.onsubmit = async (e) => {
   const title = input.value.trim();
   if (!title) return closeNew();
   input.value = ""; // stay open for the next one
+  fitEntry(input);
   act("add_task", { title, mydesk: view === "desk" });
 };
-input.onkeydown = (e) => { if (e.key === "Escape") { closeNew(); render(); } };
+input.onkeydown = e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === "Enter") { e.preventDefault(); form.requestSubmit(); }
+  if (e.key === "Escape") { e.preventDefault(); closeNew(); render(); }
+};
 input.onblur = () => { if (input.value.trim()) form.requestSubmit(); closeNew(); render(); };
 
 // ---- header tools ----
@@ -598,6 +668,7 @@ viewMenu.onclick = (e) => {
   if (!b) return;
   view = b.dataset.view;
   store.set("view", view);
+  useViewLayout();
   setViewMenu(false);
   render();
   $("main").scrollTop = 0;
@@ -656,21 +727,195 @@ displayMenu.onclick = (e) => {
 };
 
 const menu = $("group-menu");
+const layoutOptions = $("layout-options");
+let layoutOwner = null;
+function closeLayoutOptions(focus = false) {
+  layoutOptions.hidden = true;
+  layoutOwner?.setAttribute("aria-expanded", "false");
+  if (focus) layoutOwner?.focus();
+  layoutOwner = null;
+}
+function openLayoutOptions(button, last = false) {
+  if (layoutOwner === button && !layoutOptions.hidden) { closeLayoutOptions(true); return; }
+  const grouping = button.id === "group-field";
+  const labels = grouping ? groupLabels : orderLabels;
+  const selected = grouping ? groupBy : orderBy;
+  layoutOptions.replaceChildren(...Object.entries(labels)
+    .filter(([value]) => value !== "completed" || view === "done")
+    .map(([value, label]) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = label;
+      item.dataset.value = value;
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", value === selected);
+      item.tabIndex = -1;
+      return item;
+    }));
+  place(layoutOptions, button);
+  layoutOwner = button;
+  button.setAttribute("aria-expanded", "true");
+  layoutOptions.setAttribute("aria-label", grouping ? "Grouping" : "Ordering");
+  const items = [...layoutOptions.querySelectorAll("button")];
+  (last ? items.at(-1) : layoutOptions.querySelector('[aria-checked="true"]') || items[0]).focus();
+}
+layoutOptions.onclick = (e) => {
+  e.stopPropagation();
+  const item = e.target.closest("button[data-value]");
+  if (!item || !layoutOwner) return;
+  if (layoutOwner.id === "group-field") { groupBy = item.dataset.value; groupDescending = false; }
+  else { orderBy = item.dataset.value; orderDescending = ["added", "completed"].includes(orderBy); }
+  closeLayoutOptions(true);
+  saveLayout();
+};
+layoutOptions.onkeydown = (e) => {
+  const items = [...layoutOptions.querySelectorAll("button")];
+  const index = items.indexOf(document.activeElement);
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+    e.preventDefault(); e.stopPropagation();
+    const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  } else if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation(); closeLayoutOptions(true);
+  } else if (e.key === "Tab") { closeLayoutOptions(true); }
+};
 const setMenu = (open) => {
   menu.hidden = !open;
+  if (!open) closeLayoutOptions();
+  if (open) menu.style.top = `${$("group").getBoundingClientRect().bottom + 5}px`;
   $("group").setAttribute("aria-expanded", open);
 };
 $("group").onclick = (e) => { e.stopPropagation(); setViewMenu(false); setDisplayMenu(false); closeFloating(); setMenu(menu.hidden); };
-menu.onclick = (e) => {
-  const b = e.target.closest("[data-group]");
-  if (!b) return;
-  // Picking Priority again flips the order.
-  if (b.dataset.group === "priority" && groupBy === "priority") store.set("lowFirst", (lowFirst = !lowFirst) ? "1" : "0");
-  groupBy = b.dataset.group;
-  store.set("groupBy", groupBy);
-  setMenu(false);
-  render();
+for (const id of ["group-field", "order-field"]) {
+  const button = $(id);
+  button.onclick = (e) => { e.stopPropagation(); openLayoutOptions(button); };
+  button.onkeydown = (e) => {
+    if (["ArrowDown", "ArrowUp"].includes(e.key)) { e.preventDefault(); openLayoutOptions(button, e.key === "ArrowUp"); }
+  };
+}
+$("group-direction").onclick = () => { groupDescending = !groupDescending; saveLayout(); };
+$("order-direction").onclick = () => { orderDescending = !orderDescending; saveLayout(); };
+
+// ---- shared task actions: row overflow and context menu ----
+const taskMenu = $("task-menu");
+let taskMenuId = null;
+let actionReturnId = null;
+function focusTask(id) {
+  (document.querySelector(`.task[data-task-id="${id}"] > .line`) || document.querySelector(".task > .line") || $("view")).focus();
+}
+function closeTaskMenu(focus = false) {
+  const id = taskMenuId;
+  taskMenu.hidden = true;
+  document.querySelectorAll('.more[aria-expanded="true"]').forEach(b => b.setAttribute("aria-expanded", "false"));
+  taskMenuId = null;
+  if (actionReturnId === id) actionReturnId = null;
+  if (focus && id != null) focusTask(id);
+}
+async function openTaskMenu(id, point = null) {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  const task = tasks.find(t => t.id === id);
+  const anchor = document.querySelector(`.task[data-task-id="${id}"] > .line .more`);
+  if (!task || !anchor) return;
+  setMenu(false); setViewMenu(false); setDisplayMenu(false);
+  const set = (action, label, hidden = false) => {
+    const b = taskMenu.querySelector(`[data-action="${action}"]`);
+    b.hidden = hidden;
+    b.querySelector("span").textContent = label;
+  };
+  set("open-note", "Open as sticky note", noteId === id);
+  set("first-subtask", "Add subtask", task.parent_id != null);
+  set("set-desk", task.mydesk ? "Remove from My desk" : "Put on My desk");
+  set("set-due", task.due ? `Due date · ${dueText(task.due)}` : "Due date");
+  set("set-prio", task.priority != null ? `Priority · P${task.priority}` : "Priority");
+  set("open-link", "Open conversation", !task.link);
+  set("delete", childrenOf(id).length ? "Delete task and subtasks" : "Delete task");
+  place(taskMenu, anchor);
+  taskMenuId = id;
+  actionReturnId = id;
+  anchor.setAttribute("aria-expanded", "true");
+  if (point) {
+    taskMenu.style.right = "auto";
+    taskMenu.style.left = `${Math.max(8, Math.min(point.x, innerWidth - taskMenu.offsetWidth - 8))}px`;
+    taskMenu.style.top = `${Math.max(8, Math.min(point.y, innerHeight - taskMenu.offsetHeight - 8))}px`;
+  }
+  taskMenu.querySelector('button:not([hidden])').focus();
+}
+taskMenu.onclick = async e => {
+  const button = e.target.closest("button[data-action]");
+  if (!button) return;
+  e.stopPropagation();
+  const t = tasks.find(t => t.id === taskMenuId);
+  if (!t) return closeTaskMenu();
+  const anchor = document.querySelector(`.task[data-task-id="${t.id}"] > .line .more`);
+  const action = button.dataset.action;
+  if (action === "set-prio") { openPrioMenu(anchor, t); prioMenu.querySelector('[aria-checked="true"]').focus(); return; }
+  if (action === "set-due") { openDueMenu(anchor, t); dueMenu.querySelector('[data-quick="0"]').focus(); return; }
+  closeTaskMenu(); actionReturnId = null;
+  if (action === "first-subtask") return startNewSubtask(t.id);
+  if (action === "set-desk") await act("set_desk", { id: t.id, on: !t.mydesk });
+  else if (action === "delete") await act("delete_task", { id: t.id });
+  else {
+    try { await invoke(action === "open-note" ? "open_note" : "open_link", { id: t.id }); }
+    catch (err) { notice(String(err)); }
+  }
+  focusTask(t.id);
 };
+function menuKeys(e, popup) {
+  const items = [...popup.querySelectorAll('button:not([hidden]):not(:disabled)')];
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+    e.preventDefault(); e.stopPropagation();
+    const index = items.indexOf(document.activeElement);
+    const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
+  } else if (e.key === "Tab") {
+    const id = actionReturnId;
+    closeFloating();
+    if (id != null) focusTask(id);
+  }
+}
+taskMenu.onkeydown = e => menuKeys(e, taskMenu);
+
+// ---- settings ----
+const settings = $("settings");
+const macKeyboard = /Mac|iPhone|iPad/.test(navigator.platform);
+for (const key of settings.querySelectorAll("[data-key]")) {
+  const primary = key.dataset.key === "primary";
+  key.textContent = primary ? (macKeyboard ? "⌘" : "Ctrl") : (macKeyboard ? "⌥" : "Alt");
+  key.setAttribute("aria-label", primary ? (macKeyboard ? "Command" : "Control") : (macKeyboard ? "Option" : "Alt"));
+}
+
+for (const theme of tinyThemes.catalog) {
+  const card = document.createElement("label");
+  card.className = "theme-card";
+  card.innerHTML = '<input type="radio" name="theme"><span class="theme-preview" aria-hidden="true"><span class="theme-selected">✓</span><span class="theme-sample"><i></i><b></b></span><span class="theme-sample"><i></i><b></b></span></span><span class="theme-name"></span><span class="theme-description"></span>';
+  const input = card.querySelector("input");
+  input.value = theme.id;
+  input.setAttribute("aria-label", theme.name);
+  input.onchange = () => { if (input.checked) tinyThemes.select(theme.id); };
+  card.querySelector(".theme-name").textContent = theme.name;
+  card.querySelector(".theme-description").textContent = theme.description;
+  $("themes").appendChild(card);
+}
+function updateThemes() {
+  for (const card of $("themes").children) {
+    const input = card.querySelector("input");
+    input.checked = input.value === tinyThemes.current;
+    tinyThemes.paint(card.querySelector(".theme-preview"), tinyThemes.catalog.find(t => t.id === input.value));
+  }
+}
+window.addEventListener("themechange", updateThemes);
+updateThemes();
+function openSettings() {
+  if (noteId != null || settings.open) return;
+  setMenu(false); setViewMenu(false); setDisplayMenu(false); closeFloating();
+  settings.showModal();
+}
+$("settings-open").onclick = openSettings;
+$("settings-close").onclick = () => settings.close();
+settings.addEventListener("close", () => $("view").focus());
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "," && noteId == null) { e.preventDefault(); openSettings(); }
+});
 
 // ---- priority picker (one floating menu, placed next to whichever task's button) ----
 const prioMenu = $("prio-menu");
@@ -681,17 +926,22 @@ function openPrioMenu(btn, t) {
     b.setAttribute("aria-checked", b.dataset.p === (t.priority == null ? "" : String(t.priority)));
   }
   place(prioMenu, btn);
+  actionReturnId = t.id;
 }
 function place(menu, btn) {
-  closeFloating();
-  menu.hidden = false;
   const r = btn.getBoundingClientRect();
+  closeFloating();
+  menu.style.left = "auto";
+  menu.hidden = false;
   const h = menu.offsetHeight;
   menu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
   // Open downward if it fits, otherwise upward.
   menu.style.top = r.bottom + 4 + h < innerHeight ? `${r.bottom + 4}px` : `${Math.max(8, r.top - 4 - h)}px`;
 }
 function closeFloating() {
+  closeTaskMenu();
+  actionReturnId = null;
+  closeLayoutOptions();
   prioMenu.hidden = true;
   dueMenu.hidden = true;
 }
@@ -700,8 +950,12 @@ prioMenu.onclick = async (e) => {
   if (!b || !prioTask) return;
   prioMenu.hidden = true;
   const priority = b.dataset.p === "" ? null : Number(b.dataset.p);
-  act("set_priority", { id: prioTask.id, priority });
+  const id = prioTask.id; actionReturnId = null;
+  await act("set_priority", { id, priority });
+  focusTask(id);
 };
+
+prioMenu.onkeydown = e => menuKeys(e, prioMenu);
 
 // ---- due date picker ----
 const dueMenu = $("due-menu");
@@ -721,6 +975,7 @@ function openDueMenu(btn, t) {
   month = new Date(base.getFullYear(), base.getMonth(), 1);
   drawMonth();
   place(dueMenu, btn);
+  actionReturnId = t.id;
 }
 function drawMonth() {
   $("cal-title").textContent = month.toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -755,18 +1010,27 @@ dueMenu.onclick = async (e) => {
   const q = b.dataset.quick;
   const due = b.dataset.date || (q === "clear" ? null : daysFrom(Number(q)));
   dueMenu.hidden = true;
-  act("set_due", { id: dueTask.id, due });
+  const id = dueTask.id; actionReturnId = null;
+  await act("set_due", { id, due });
+  focusTask(id);
 };
 
 document.addEventListener("click", (e) => {
+  if (!taskMenu.hidden && !taskMenu.contains(e.target)) closeTaskMenu();
+  if (!layoutOptions.hidden && !layoutOptions.contains(e.target) && !layoutOwner?.contains(e.target)) closeLayoutOptions();
   if (!displayMenu.hidden && !displayMenu.contains(e.target)) setDisplayMenu(false);
   if (!menu.hidden && !menu.contains(e.target)) setMenu(false);
   if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);
   if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
   if (!dueMenu.hidden && !dueMenu.contains(e.target)) dueMenu.hidden = true;
+  if (taskMenu.hidden && prioMenu.hidden && dueMenu.hidden) actionReturnId = null;
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating(); }
+  if (e.key === "Escape") {
+    const id = actionReturnId;
+    setDisplayMenu(false); setMenu(false); setViewMenu(false); closeFloating();
+    if (id != null) { e.preventDefault(); focusTask(id); }
+  }
 });
 document.addEventListener("keydown", (e) => {
   if (noteId != null && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w") {

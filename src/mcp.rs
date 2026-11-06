@@ -38,6 +38,11 @@ pub fn run() {
                     "serverInfo": { "name": "tinytasks", "version": env!("CARGO_PKG_VERSION") },
                     "instructions": "TinyTasks is the user's desktop to-do list for things THEY must do. \
                         Whenever you ask the user to do something you cannot do yourself, add it with add_tasks. \
+                        Use priority sparingly: omit it by default; set it only for clear urgency or an explicit user request. \
+                        Use the actual originating conversation title as chat whenever available, and reuse it consistently. \
+                        If the title is unavailable, use a concise descriptive fallback, not a made-up exact title. \
+                        Use subtasks for related steps toward one outcome; use ordered steps when sequence matters and a checklist otherwise. \
+                        Create the parent first, then use its returned ID as parent_id in add_tasks; keep unrelated actions separate. \
                         Use list_tasks to see what they have checked off before relying on it. \
                         When the user asks what to focus on, pick a few open tasks and put them on their desk with set_desk."
                 }))
@@ -68,6 +73,8 @@ fn tools() -> Value {
                 Call this whenever you hand the user something they must do themselves (e.g. 'Approve the PR', \
                 'Add the STRIPE_KEY secret in Vercel'), so it doesn't get lost as the chat scrolls. \
                 Not for your own todo items. The user gets a desktop notification. \
+                Use priority sparingly and prefer the actual originating conversation title for chat. \
+                Group related steps under a parent task rather than creating a flat list; keep independent actions separate. \
                 Set parent_id to append subtasks to an existing top-level task in the array's order. \
                 Use ordered=true for numbered steps; otherwise subtasks are a checklist.",
             "inputSchema": {
@@ -82,7 +89,7 @@ fn tools() -> Value {
                                 "title": { "type": "string", "description": "Short imperative action, under ~80 chars." },
                                 "details": { "type": "string", "description": "Optional context: why, exact steps, commands, values. Shown when the user opens the task." },
                                 "link": { "type": "string", "description": "Optional URL back to where this came up (conversation, thread, PR, ticket). Overrides the top-level link." },
-                                "priority": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Optional urgency: 0 = drop everything, 1 = today, 2 = soon, 3 = whenever. Leave out if unsure." },
+                                "priority": { "type": "integer", "enum": [0, 1, 2, 3], "description": "Optional urgency: 0 = drop everything, 1 = today, 2 = soon, 3 = whenever. Use sparingly; omit by default. Set only for clear urgency or an explicit user request." },
                                 "due": { "type": "string", "description": "Optional due date, YYYY-MM-DD. Only when there's a real deadline." },
                                 "mydesk": { "type": "boolean", "description": "Optional. Put it straight on the user's desk (what they focus on today)." }
                             },
@@ -91,7 +98,7 @@ fn tools() -> Value {
                     },
                     "parent_id": { "type": "integer", "description": "Optional existing top-level task ID. Every item becomes its subtask; chat and default link come from the parent. One level only." },
                     "ordered": { "type": "boolean", "description": "Optional subtask mode: true = numbered steps, false = checklist. Applies to parent_id when supplied, otherwise to each new top-level task." },
-                    "chat": { "type": "string", "description": "Conversation name, reused for calls in the same conversation. Omit when adding subtasks via parent_id." },
+                    "chat": { "type": "string", "description": "Use the actual originating conversation title whenever available; reuse it for calls in that conversation. If unavailable, use a concise descriptive fallback. Omit when adding subtasks via parent_id." },
                     "link": { "type": "string", "description": "Optional URL back to this conversation, applied to every task." },
                     "agent": { "type": "string", "description": "Optional. Which agent you are; normally detected automatically, so leave it out." }
                 },
@@ -130,8 +137,8 @@ fn tools() -> Value {
                     "title": { "type": "string" },
                     "details": { "type": "string" },
                     "link": { "type": "string" },
-                    "chat": { "type": "string" },
-                    "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0 = most urgent ... 3 = whenever; null clears it." },
+                    "chat": { "type": "string", "description": "Prefer the actual originating conversation title; use a concise descriptive fallback only if unavailable." },
+                    "priority": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "Use priority sparingly, only for clear urgency or an explicit user request. 0 = most urgent ... 3 = whenever; null clears it. Omit to preserve the current value." },
                     "due": { "type": ["string", "null"], "description": "YYYY-MM-DD; null clears it." },
                     "mydesk": { "type": "boolean", "description": "On the user's desk (for today) or not." },
                     "ordered": { "type": "boolean", "description": "For a top-level task: show its subtasks as numbered steps (true) or a checklist (false). Preserves their saved order." }

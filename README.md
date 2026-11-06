@@ -8,8 +8,16 @@ check them off. The agent can see what you finished. Keep related steps together
 
 ![TinyTasks in light and dark mode](docs/screenshot.png)
 
-Built with Rust + [Tauri](https://tauri.app). Tested on Windows; macOS builds from the same code
-but hasn't been tried yet.
+Built with Rust + [Tauri](https://tauri.app). Runs on macOS and Windows.
+
+## Download for Mac
+
+Download the universal Mac ZIP from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
+unzip it, and move **TinyTasks.app** to **Applications** before opening it. The release is Developer ID
+signed and notarized by Apple, and supports Apple silicon and Intel Macs. Windows users can build from source below.
+
+For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
+See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the Mac release guide](docs/RELEASING.md).
 
 ## Using it
 

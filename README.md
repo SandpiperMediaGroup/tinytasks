@@ -6,9 +6,25 @@ When an agent hands you a to-do ("add the API key in Vercel", "approve the PR"),
 TinyTasks over MCP. You get a desktop notification, the tray icon shows how many are open, and you
 check them off. The agent can see what you finished. Keep related steps together as subtasks.
 
-![TinyTasks in light and dark mode](docs/screenshot.png)
+Built with Rust + [Tauri](https://tauri.app). Runs on Windows and macOS. The current subtask
+and sticky-note interactions have been checked on macOS; Windows still needs that regression pass.
 
-Built with Rust + [Tauri](https://tauri.app). Runs on macOS and Windows.
+## Set it up with your agent
+
+Give your Dot, Claude, Codex, or other agent this repository URL and ask:
+
+> Set up TinyTasks for me: https://github.com/SandpiperMediaGroup/tinytasks
+> Follow its agent setup guide, ask where I want to keep my task list, connect the agents I use,
+> and remember when to use TinyTasks for my action items.
+
+**Agents: start with the [agent setup guide](docs/agent-setup.md).** It covers installation,
+choosing the task folder, connecting tools, checking access, and saving a durable usage instruction.
+Do not assume the user wants the default folder or that every agent has the same configuration.
+
+For multiple computers, we recommend a dedicated **TinyTasks folder in a cloud-synced drive**
+you already use, such as Google Drive, Dropbox, OneDrive, or iCloud Drive. Each computer runs
+its own app and selects its local copy of that shared folder. A local-only folder works too.
+This folder holds your `tasks.md`; you do not need to keep the source-code checkout there.
 
 ## Download for Mac
 
@@ -19,6 +35,34 @@ The app supports Apple silicon and Intel Macs. Windows users can build from sour
 
 For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
 See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the Mac release guide](docs/RELEASING.md).
+
+## A look inside
+
+Task lists, ordered subtasks, and quiet task menus. These previews use sample tasks.
+
+| Parchment · Light | Midnight · Dark |
+| --- | --- |
+| ![Parchment light task list with ordered subtasks](docs/screenshots/tasks-light.png) | ![Midnight dark task list with ordered subtasks](docs/screenshots/tasks-dark.png) |
+
+### Themes and Settings
+
+Choose **Parchment, Solarized, Paper, Forest, or Midnight**, then choose **Auto, Light, or Dark**
+independently. Every theme supports both appearances. Auto follows your computer; changes update
+both your task list and sticky notes. Settings opens in its own window and includes a keyboard
+shortcut guide, creator credits, and links to this repository and TimeCal.
+
+| Settings | Solarized sticky note |
+| --- | --- |
+| ![Separate Settings window with appearance modes, five themes, and About](docs/screenshots/settings.png) | ![Solarized sticky note with sample ordered subtasks](docs/screenshots/sticky-note.png) |
+
+### Compact controls
+
+Group and order your list, choose which properties appear, and open task actions from **⋯**
+or a right-click. Group headers collapse on click; hover reveals the less-used controls.
+
+| Grouping and ordering | Task actions |
+| --- | --- |
+| ![Grouping and ordering menu](docs/screenshots/grouping.png) | ![Custom task actions menu](docs/screenshots/task-menu.png) |
 
 ## Using it
 
@@ -78,7 +122,8 @@ its parent and siblings are not automatically added to the desk.
 
 ## Build
 
-Needs [Rust](https://rustup.rs).
+Needs [Rust](https://rustup.rs) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+for your operating system.
 
 ```bash
 cargo build --release
@@ -89,39 +134,51 @@ need a bundled `.app`), use `cargo install tauri-cli --version "^2"` then `cargo
 
 ## Connect your agents
 
-The same binary is the MCP server: `tinytasks mcp`. Agents start the app for you if it isn't running.
+The same binary is the MCP server: `tinytasks mcp`, using local stdio transport. Adding tasks
+through MCP starts the app if it isn't running. Use the installed executable's absolute path.
+For a macOS app installed in Applications, that is
+`/Applications/TinyTasks.app/Contents/MacOS/tinytasks`; on Windows, use the installed `tinytasks.exe`.
+The GitHub URL is the setup entry point, not an MCP server endpoint.
 
 Claude Code:
 
 ```bash
-claude mcp add tinytasks -s user -- /path/to/tinytasks mcp
+claude mcp add --scope user tinytasks -- /absolute/path/to/tinytasks mcp
 ```
 
 Codex:
 
 ```bash
-codex mcp add tinytasks -- /path/to/tinytasks mcp
+codex mcp add tinytasks -- /absolute/path/to/tinytasks mcp
 ```
 
-Anything else that takes an MCP config:
+Dot, Claude Desktop, and other clients: use the client's local MCP settings and the same command
+and `mcp` argument. Discover its supported setup flow; the Claude Code command above does not
+configure Claude Desktop. For clients accepting the `mcpServers` JSON format:
 
 ```json
-{ "mcpServers": { "tinytasks": { "command": "/path/to/tinytasks", "args": ["mcp"] } } }
+{ "mcpServers": { "tinytasks": { "command": "/absolute/path/to/tinytasks", "args": ["mcp"] } } }
 ```
 
 Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_tasks` and
-`set_desk`, plus `reorder_subtasks`. Then tell your agent to use them, e.g. in `CLAUDE.md` or `AGENTS.md`:
+`set_desk`, plus `reorder_subtasks`. Tool access and remembering to use it are separate steps.
+Save the following in each agent's supported persistent memory or instructions (for example,
+`CLAUDE.md` or `AGENTS.md`, at the scope where you want it to apply):
 
-> When you give me something I have to do myself, add it to TinyTasks with `add_tasks` (name
-> the actual originating conversation title in `chat` whenever available, and add a link back if you have one).
-> Reuse that title consistently; if it is unavailable, use a concise descriptive fallback.
+> Use TinyTasks for action items I, the human, need to do. Check existing tasks first to avoid
+> duplicates. Keep your own agent work plan elsewhere. Use the actual originating conversation
+> title in `chat` whenever available and include a real conversation link if you have one.
+> Reuse that title consistently; if unavailable, use a concise descriptive fallback.
 > Use priority sparingly: omit it by default and set it only for clear urgency or my explicit request.
-> Use subtasks for related steps toward one outcome, ordered when sequence matters and a checklist otherwise.
-> Keep independent actions separate. Create the parent first, then add its steps using `parent_id`.
-> When resuming, check `list_tasks` for
-> what I've finished. When I ask what to focus on, put a few tasks on my desk with `set_desk`.
+> Use subtasks for related steps toward one outcome, ordered when sequence matters and a checklist
+> otherwise. Keep independent actions separate. Create the parent first, then add its steps with
+> `parent_id`. When resuming, use `list_tasks` to see what I've finished. Only mark tasks complete
+> when I say they're done or you have verified the outcome. When I ask what to focus on, use
+> `set_desk` for a few relevant tasks; the desk resets each day. Report a failed write rather
+> than claiming success.
 
-A chat that was already open when you added TinyTasks won't see the tools; start a new one.
+After connecting a client, start a new chat or reload its tools, then verify `list_tasks` works.
+See the [setup guide](docs/agent-setup.md) for cloud-file-only agents and a complete setup check.
 
 To add steps, call `add_tasks` with an existing `parent_id` and a `tasks` array. Array order
 becomes the sibling order, and the parent supplies the chat and default conversation link.
@@ -136,6 +193,11 @@ Tasks live in `~/.tinytasks/tasks.md`. To keep them somewhere else, like a Googl
 click the title and choose **Change folder…**. Your list moves there, or, if that folder already
 has one (from your other computer, say), TinyTasks uses it. Each computer notifies you once per
 new task.
+
+Keep the shared folder available offline on each computer and let sync finish before switching
+between them. TinyTasks locks writes on one machine; cloud sync does not coordinate simultaneous
+writes from different computers. Conflicted copies need reconciliation. Local settings and locks
+stay in `~/.tinytasks`; sync the chosen task-data folder, not that settings directory.
 
 Agents that can read your Drive but can't run the MCP server can then read and update the list
 too: the file starts with a short comment explaining the format to them. If the folder goes
@@ -176,6 +238,9 @@ run `python3 scripts/mcp-smoke.py` for the real agent protocol with temporary ta
 With Playwright installed, `node scripts/ui-smoke.cjs` exercises the UI with a mocked desktop
 bridge. `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` may point to an existing install.
 `TINYTASKS_DATA_DIR` overrides the local settings/lock folder for isolated development checks.
+
+`node scripts/docs-screenshots.cjs` refreshes the README previews from the current UI using fictional
+tasks. It uses the same Playwright overrides and does not open or modify your real task list.
 
 ## Contributing
 

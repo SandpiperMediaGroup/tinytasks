@@ -5,6 +5,26 @@ const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 
+// Browser captures do not include AppKit chrome. Recreate the macOS controls only
+// in these documentation previews, matching the app's 44px title bar and 16px inset.
+// Sticky notes intentionally have no native traffic lights.
+async function addMacWindowControls(page) {
+  await page.evaluate(() => {
+    document.body.classList.add('mac-titlebar');
+    const controls = document.createElement('div');
+    controls.className = 'docs-window-controls';
+    controls.setAttribute('aria-hidden', 'true');
+    controls.innerHTML = '<i></i><i></i><i></i>';
+    document.body.appendChild(controls);
+  });
+  await page.addStyleTag({ content: `
+    .docs-window-controls { position: fixed; left: 16px; top: 15px; display: flex; gap: 9px; z-index: 1000; pointer-events: none; }
+    .docs-window-controls i { display: block; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 0.5px #0002; background: #ff5f57; }
+    .docs-window-controls i:nth-child(2) { background: #febc2e; }
+    .docs-window-controls i:nth-child(3) { background: #28c840; }
+  ` });
+}
+
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE });
   try {
@@ -41,6 +61,7 @@ const fs = require('node:fs/promises');
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(ui);
+    await addMacWindowControls(page);
     const parent = page.locator('.task[data-task-id="1"]');
     await parent.locator(':scope > .line').focus();
     await page.keyboard.press('Enter');
@@ -58,6 +79,7 @@ const fs = require('node:fs/promises');
     settings.on('pageerror', error => errors.push(error.message));
     await settings.setViewportSize({ width: 420, height: 900 });
     await settings.goto(pathToFileURL(path.resolve(__dirname, '../ui/settings.html')).href);
+    await addMacWindowControls(settings);
     await settings.evaluate(() => { tinyThemes.select('solarized'); tinyThemes.setMode('light'); });
     await settings.screenshot({ animations: 'disabled', path: path.join(output, 'settings.png') });
     const note = await context.newPage();

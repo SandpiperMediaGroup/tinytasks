@@ -1,9 +1,9 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "Drag the main window from the compact toolbar",
+  "description": "Drag the main and Settings windows from their compact title bars",
   "windows": [
-    "main"
+    "main", "settings"
   ],
   "permissions": [
     "core:window:allow-start-dragging"

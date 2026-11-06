@@ -38,7 +38,8 @@ Drag the empty header space to move the window.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
   Hover the row’s action button for the full added date; completed tasks also show their completion date.
-- **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Expand **Keyboard shortcuts**
+- **Settings** opens in its own window from the Tasks menu (⌘, on Mac; Ctrl+, elsewhere).
+  Your task list stays visible; reopening Settings brings the existing window forward. Expand **Keyboard shortcuts**
   for a guide to navigation, editing, task actions, subtask ordering, and sticky notes. Choose Auto, Light, or Dark separately from the theme colors:
   Parchment, Solarized, Paper, Forest, or Midnight. Every palette has both light and dark modes;
   Auto follows the computer’s appearance while keeping your selected palette. The choice saves automatically and updates open sticky notes on this computer.

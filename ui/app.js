@@ -884,6 +884,17 @@ taskMenu.onkeydown = e => menuKeys(e, taskMenu);
 
 // ---- settings ----
 const settings = $("settings");
+for (const link of settings.querySelectorAll("[data-about-link]")) {
+  link.onclick = async e => {
+    e.preventDefault();
+    $("about-error").hidden = true;
+    try { await invoke("open_about_link", { destination: link.dataset.aboutLink }); }
+    catch (err) {
+      $("about-error").textContent = `Couldn't open the link: ${String(err)}`;
+      $("about-error").hidden = false;
+    }
+  };
+}
 const macKeyboard = /Mac|iPhone|iPad/.test(navigator.platform);
 for (const key of settings.querySelectorAll("[data-key]")) {
   const primary = key.dataset.key === "primary";

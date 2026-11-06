@@ -400,6 +400,12 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .theme-name { display: block; font-size: 12px; font-weight: 600; margin-top: 7px; }
 .theme-description { display: block; font-size: 11px; color: var(--soft); margin-top: 1px; }
 .settings-footnote { font-size: 11px; color: var(--soft); line-height: 1.5; margin: 20px 0 0; }
+.settings-about { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.settings-about p { font-size: 12px; line-height: 1.5; color: var(--soft); margin: 6px 0; }
+.about-links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+.about-links a { font-size: 12px; color: var(--ink); text-decoration: none; }
+.about-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.about-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 
 /* Overflow actions occupy the badge slot without adding height or moving task text. */
 .row-status { position: relative; display: flex; align-items: flex-start; gap: 8px; flex: none; min-width: 26px; min-height: 20px; }

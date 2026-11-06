@@ -640,6 +640,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await themeNote.goto(`${url}?task=1`);
     await appearance.keyboard.press('Meta+,');
     assert.equal(await appearance.locator('#settings').isVisible(), true);
+    for (const destination of ['source', 'timecal']) {
+      await appearance.locator(`[data-about-link="${destination}"]`).click();
+      assert.equal(appearance.url(), url, 'About links must open externally, not replace the task list');
+      assert.equal(await appearance.evaluate(destination => window.testState.calls.some(call =>
+        call.cmd === 'open_about_link' && call.args.destination === destination), destination), true);
+    }
     assert.equal(await appearance.getByRole('radio').count(), 8);
     assert.equal(await appearance.getByRole('radio', { name: 'Auto', exact: true }).isChecked(), true);
     const selectTheme = async id => appearance.locator(`.theme-card:has(input[value="${id}"])`).click();

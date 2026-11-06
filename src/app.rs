@@ -369,7 +369,7 @@ async fn open_note(app: AppHandle, id: i64) -> Res<()> {
         .title(format!("{} — TinyTasks", task.title))
         .inner_size(340.0, 300.0)
         .min_inner_size(280.0, 180.0)
-        .always_on_top(true)
+        .always_on_top(false)
         .decorations(false)
         .shadow(true)
         .disable_drag_drop_handler()

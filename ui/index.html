@@ -9,15 +9,16 @@
 </head>
 <body>
   <div id="note-handle" hidden title="Drag to move note">
+    <div id="note-complete"></div>
     <button id="close-note" class="icon" tabindex="0" aria-label="Close sticky note" title="Close note"><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
   </div>
-  <header>
+  <header data-tauri-drag-region="deep">
     <div class="menu-wrap">
       <h1><button id="view" class="view-btn" title="Choose what to show" aria-haspopup="menu" aria-expanded="false">
         <span id="heading">Tasks</span><span id="count"></span>
         <svg class="chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
       </button></h1>
-      <div id="view-menu" class="menu" role="menu" hidden>
+      <div id="view-menu" data-tauri-drag-region="false" class="menu" role="menu" hidden>
         <button role="menuitemradio" data-view="all"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Tasks <span class="n"></span></button>
         <button role="menuitemradio" data-view="desk"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>My desk <span class="n"></span></button>
         <button role="menuitemradio" data-view="done"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>Completed <span class="n"></span></button>
@@ -38,7 +39,7 @@
         <button id="group" class="icon" title="Grouping and ordering" aria-label="Grouping and ordering" aria-haspopup="dialog" aria-expanded="false">
           <svg viewBox="0 0 24 24"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5"/></svg>
         </button>
-        <div id="group-menu" class="menu" role="dialog" aria-label="Grouping and ordering" hidden>
+        <div id="group-menu" data-tauri-drag-region="false" class="menu" role="dialog" aria-label="Grouping and ordering" hidden>
           <div class="layout-setting">
             <label for="group-field">Grouping</label>
             <button id="group-direction" class="direction" aria-label="Reverse group order"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sort-arrow" d="M6 19V5m-3 3 3-3 3 3"/><path d="M13 6h3M13 12h5M13 18h8"/></svg></button>
@@ -56,7 +57,7 @@
         <button id="display" class="icon" title="Display properties" aria-label="Display properties" aria-haspopup="dialog" aria-expanded="false">
           <svg viewBox="0 0 24 24"><path d="M4 7h4M12 7h8M4 17h8M16 17h4M8 4v6M16 14v6"/></svg>
         </button>
-        <div id="display-menu" class="menu" role="dialog" aria-label="Display properties" hidden>
+        <div id="display-menu" data-tauri-drag-region="false" class="menu" role="dialog" aria-label="Display properties" hidden>
           <div class="menu-label">Display properties</div>
           <div class="property-options">
             <button data-property="id" aria-pressed="false">ID</button>
@@ -93,7 +94,7 @@
     <button class="set-desk" data-action="set-desk" role="menuitem"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg><span>Put on my desk</span></button>
     <button class="set-due" data-action="set-due" role="menuitem" aria-haspopup="dialog"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span>Due date</span></button>
     <button class="set-prio" data-action="set-prio" role="menuitem" aria-haspopup="menu"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Priority</span></button>
-    <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open conversation</span></button>
+    <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open link</span></button>
     <button class="delete" data-action="delete" role="menuitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Delete task</span></button>
   </div>
 
@@ -121,7 +122,7 @@
   </div>
 
   <dialog id="settings" aria-labelledby="settings-title">
-    <div class="settings-header">
+    <div class="settings-header" data-tauri-drag-region="deep">
       <button id="settings-close" class="icon" aria-label="Back to tasks" autofocus><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
       <h1 id="settings-title">Settings</h1>
     </div>
@@ -163,7 +164,14 @@
           <p>For themes, use the arrow keys after focusing a palette. For other controls, use Tab, then Enter or Space.</p>
         </div>
       </details>
-      <h2 id="theme-heading">Theme</h2>
+      <h2 id="appearance-heading">Appearance</h2>
+      <p class="settings-description">Follow your Mac or choose a mode.</p>
+      <div id="appearance-modes" role="radiogroup" aria-labelledby="appearance-heading">
+        <label class="appearance-mode"><input type="radio" name="appearance" value="auto" aria-label="Auto"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Auto</span></label>
+        <label class="appearance-mode"><input type="radio" name="appearance" value="light" aria-label="Light"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>Light</span></label>
+        <label class="appearance-mode"><input type="radio" name="appearance" value="dark" aria-label="Dark"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14a8 8 0 0 1-10-10 8 8 0 1 0 10 10z"/></svg>Dark</span></label>
+      </div>
+      <h2 id="theme-heading">Theme colors</h2>
       <p class="settings-description">A little change of atmosphere.</p>
       <div id="themes" role="radiogroup" aria-labelledby="theme-heading"></div>
       <p class="settings-footnote">Applies to your tasks and sticky notes on this Mac. Saved automatically.</p>

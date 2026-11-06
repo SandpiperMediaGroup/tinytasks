@@ -883,58 +883,13 @@ function menuKeys(e, popup) {
 taskMenu.onkeydown = e => menuKeys(e, taskMenu);
 
 // ---- settings ----
-const settings = $("settings");
-for (const link of settings.querySelectorAll("[data-about-link]")) {
-  link.onclick = async e => {
-    e.preventDefault();
-    $("about-error").hidden = true;
-    try { await invoke("open_about_link", { destination: link.dataset.aboutLink }); }
-    catch (err) {
-      $("about-error").textContent = `Couldn't open the link: ${String(err)}`;
-      $("about-error").hidden = false;
-    }
-  };
-}
-const macKeyboard = /Mac|iPhone|iPad/.test(navigator.platform);
-for (const key of settings.querySelectorAll("[data-key]")) {
-  const primary = key.dataset.key === "primary";
-  key.textContent = primary ? (macKeyboard ? "⌘" : "Ctrl") : (macKeyboard ? "⌥" : "Alt");
-  key.setAttribute("aria-label", primary ? (macKeyboard ? "Command" : "Control") : (macKeyboard ? "Option" : "Alt"));
-}
-
-for (const input of $("appearance-modes").querySelectorAll("input")) {
-  input.onchange = () => { if (input.checked) tinyThemes.setMode(input.value); };
-}
-for (const theme of tinyThemes.catalog) {
-  const card = document.createElement("label");
-  card.className = "theme-card";
-  card.innerHTML = '<input type="radio" name="theme"><span class="theme-preview" aria-hidden="true"><span class="theme-selected">✓</span><span class="theme-sample"><i></i><b></b></span><span class="theme-sample"><i></i><b></b></span></span><span class="theme-name"></span><span class="theme-description"></span>';
-  const input = card.querySelector("input");
-  input.value = theme.id;
-  input.setAttribute("aria-label", theme.name);
-  input.onchange = () => { if (input.checked) tinyThemes.select(theme.id); };
-  card.querySelector(".theme-name").textContent = theme.name;
-  card.querySelector(".theme-description").textContent = theme.description;
-  $("themes").appendChild(card);
-}
-function updateThemes() {
-  for (const input of $("appearance-modes").querySelectorAll("input")) input.checked = input.value === tinyThemes.mode;
-  for (const card of $("themes").children) {
-    const input = card.querySelector("input");
-    input.checked = input.value === tinyThemes.current;
-    tinyThemes.paint(card.querySelector(".theme-preview"), tinyThemes.catalog.find(t => t.id === input.value));
-  }
-}
-window.addEventListener("themechange", updateThemes);
-updateThemes();
-function openSettings() {
-  if (noteId != null || settings.open) return;
+async function openSettings() {
+  if (noteId != null) return;
   setMenu(false); setViewMenu(false); setDisplayMenu(false); closeFloating();
-  settings.showModal();
+  try { await invoke("open_settings"); }
+  catch (err) { notice(String(err)); }
 }
 $("settings-open").onclick = openSettings;
-$("settings-close").onclick = () => settings.close();
-settings.addEventListener("close", () => $("view").focus());
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "," && noteId == null) { e.preventDefault(); openSettings(); }
 });

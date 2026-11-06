@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings — TinyTasks</title>
+<script src="themes.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="settings-window">
+    <div class="settings-header" data-tauri-drag-region="deep">
+      <h1 id="settings-title">Settings</h1>
+    </div>
+    <div class="settings-body">
+      <details id="shortcut-guide" class="shortcut-guide">
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10"/></svg><span>Keyboard shortcuts</span><svg class="guide-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></summary>
+        <div class="shortcut-content">
+          <h3>Getting around</h3>
+          <dl class="shortcut-list">
+            <div><dt>Next control</dt><dd><kbd>Tab</kbd></dd></div>
+            <div><dt>Previous control</dt><dd><kbd>Shift</kbd><kbd>Tab</kbd></dd></div>
+            <div><dt>Open Settings</dt><dd><kbd data-key="primary">⌘</kbd><kbd>,</kbd></dd></div>
+            <div><dt>Close Settings or menu</dt><dd><kbd>Esc</kbd></dd></div>
+            <div><dt>Close Settings or a sticky note</dt><dd><kbd data-key="primary">⌘</kbd><kbd>W</kbd></dd></div>
+          </dl>
+          <h3>Tasks</h3>
+          <p>Tab to a row, text, or control first.</p>
+          <dl class="shortcut-list">
+            <div><dt>Expand or collapse a row</dt><dd><kbd>Enter</kbd><span>or</span><kbd>Space</kbd></dd></div>
+            <div><dt>Edit focused task text</dt><dd><kbd>Enter</kbd><span>or</span><kbd>Space</kbd></dd></div>
+            <div><dt>Open task actions</dt><dd><kbd>Shift</kbd><kbd>F10</kbd></dd></div>
+            <div><dt>Move a subtask up or down</dt><dd><kbd data-key="alt">⌥</kbd><kbd>↑</kbd><span>or</span><kbd>↓</kbd></dd></div>
+          </dl>
+          <p>On some Mac keyboards, hold Fn with F10.</p>
+          <h3>While editing</h3>
+          <dl class="shortcut-list">
+            <div><dt>Save a title or new task</dt><dd><kbd>Enter</kbd></dd></div>
+            <div><dt>Save details</dt><dd><kbd data-key="primary">⌘</kbd><kbd>Enter</kbd></dd></div>
+            <div><dt>New line in details</dt><dd><kbd>Enter</kbd></dd></div>
+            <div><dt>Cancel the edit</dt><dd><kbd>Esc</kbd></dd></div>
+          </dl>
+          <h3>Choosing options</h3>
+          <p>In task actions, priority, and grouping/ordering choices:</p>
+          <dl class="shortcut-list">
+            <div><dt>Move between options</dt><dd><kbd>↑</kbd><span>or</span><kbd>↓</kbd></dd></div>
+            <div><dt>First or last option</dt><dd><kbd>Home</kbd><span>or</span><kbd>End</kbd></dd></div>
+            <div><dt>Choose focused option</dt><dd><kbd>Enter</kbd><span>or</span><kbd>Space</kbd></dd></div>
+          </dl>
+          <p>For themes, use the arrow keys after focusing a palette. For other controls, use Tab, then Enter or Space.</p>
+        </div>
+      </details>
+      <h2 id="appearance-heading">Appearance</h2>
+      <p class="settings-description">Follow your Mac or choose a mode.</p>
+      <div id="appearance-modes" role="radiogroup" aria-labelledby="appearance-heading">
+        <label class="appearance-mode"><input type="radio" name="appearance" value="auto" aria-label="Auto"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Auto</span></label>
+        <label class="appearance-mode"><input type="radio" name="appearance" value="light" aria-label="Light"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>Light</span></label>
+        <label class="appearance-mode"><input type="radio" name="appearance" value="dark" aria-label="Dark"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14a8 8 0 0 1-10-10 8 8 0 1 0 10 10z"/></svg>Dark</span></label>
+      </div>
+      <h2 id="theme-heading">Theme colors</h2>
+      <p class="settings-description">A little change of atmosphere.</p>
+      <div id="themes" role="radiogroup" aria-labelledby="theme-heading"></div>
+      <p class="settings-footnote">Applies to your tasks and sticky notes on this Mac. Saved automatically.</p>
+      <section class="settings-about" aria-labelledby="about-heading">
+        <h2 id="about-heading">About TinyTasks</h2>
+        <p>Made by Evan Olson at Sandpiper Media Group.</p>
+        <p>Open source under the MIT license.</p>
+        <div class="about-links">
+          <a href="https://github.com/SandpiperMediaGroup/tinytasks" data-about-link="source">View source on GitHub ↗</a>
+          <a href="https://trytimecal.com" data-about-link="timecal">Try TimeCal ↗</a>
+        </div>
+        <p id="about-error" role="status" hidden></p>
+      </section>
+    </div>
+
+<script src="settings.js"></script>
+</body>
+</html>

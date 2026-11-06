@@ -34,7 +34,8 @@ pub fn run(background: bool) {
     builder
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
-            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link
+            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
+            open_settings, close_settings
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -364,6 +365,34 @@ fn open_file() -> Res<()> {
         return Err("There's no file yet. It's created with your first task.".into());
     }
     open::that_detached(p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn open_settings(app: AppHandle) -> Res<()> {
+    if let Some(window) = app.get_webview_window("settings") {
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.show().map_err(|e| e.to_string())?;
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    let builder = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("settings.html".into()))
+        .title("Settings — TinyTasks")
+        .inner_size(420.0, 620.0)
+        .min_inner_size(320.0, 400.0)
+        .center()
+        .disable_drag_drop_handler();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(16.0, 25.0));
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_settings(window: tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "settings" { return Err("Only Settings can be closed here.".into()); }
+    window.close().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

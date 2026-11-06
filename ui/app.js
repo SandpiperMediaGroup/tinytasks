@@ -34,6 +34,7 @@ function saveLayout() {
 }
 useViewLayout();
 const noteId = Number(new URLSearchParams(location.search).get("task")) || null;
+if (noteId == null && /Mac/.test(navigator.platform)) document.body.classList.add("mac-titlebar");
 if (noteId != null) {
   document.body.classList.add("sticky-note");
   $("note-handle").hidden = false;

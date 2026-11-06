@@ -13,6 +13,9 @@ but hasn't been tried yet.
 
 ## Using it
 
+On macOS, the task controls share one compact row with the window’s traffic lights.
+Drag the empty header space to move the window.
+
 - **Click a task's text** to edit it directly. Click away or press Enter to save a title;
   use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
   Click the empty gutter or space beneath expanded details to collapse the task again.
@@ -20,7 +23,7 @@ but hasn't been tried yet.
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
   metadata, or action strip. The main completion circle sits at the left of the top strip;
   the title and description stay aligned with the note edge, including while editing. Drag the thin top edge to move a note; its quiet close button
-  becomes clearer on hover or keyboard focus. Notes stay above other windows and edits sync with the list.
+  becomes clearer on hover or keyboard focus. Notes use normal window stacking, and edits sync with the list.
   Close a note to dismiss it without deleting the task. Notes last for the current app session;
   use the menu’s note action again to reopen one.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,

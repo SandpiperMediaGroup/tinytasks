@@ -472,7 +472,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await layout.screenshot({ path: '/tmp/tinytasks-custom-order-light.png' });
     await layout.emulateMedia({ colorScheme: 'dark' });
     await layout.screenshot({ path: '/tmp/tinytasks-custom-order-dark.png' });
-    await layout.locator('header').click({ position: { x: 180, y: 12 } });
+    await layout.locator('header').click({ position: { x: 2, y: 2 } });
     assert.equal(await layout.locator('#layout-options').isVisible(), false);
     assert.equal(await layout.locator('#group-menu').isVisible(), false);
     await layout.locator('#view').click();
@@ -519,6 +519,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await actions.goto(url);
     await actions.evaluate(() => localStorage.clear());
     await actions.reload();
+    await actions.setViewportSize({width:280,height:520});
+    if (await actions.locator('body').evaluate(el => el.classList.contains('mac-titlebar'))) {
+      const controls = await actions.locator('header').evaluate(el => ({
+        height:el.getBoundingClientRect().height,
+        left:document.getElementById('view').getBoundingClientRect().left,
+        viewRight:document.getElementById('view').getBoundingClientRect().right,
+        toolsLeft:el.querySelector('.tools').getBoundingClientRect().left,
+        right:el.querySelector('.tools').getBoundingClientRect().right,
+      }));
+      assert.equal(controls.height,44);
+      assert.ok(controls.left >= 72 && controls.viewRight <= controls.toolsLeft && controls.right <= 280);
+    }
+    await actions.setViewportSize({width:360,height:620});
     const actionTask = actions.locator('.task[data-task-id="1"]');
     const actionLine = actionTask.locator(':scope > .line');
     const more = actionLine.locator('.more');
@@ -541,7 +554,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await more.getAttribute('aria-expanded'), 'false');
     await actionLine.click({ button: 'right' });
     assert.deepEqual(await actions.locator('#task-menu button:not([hidden])').allTextContents(), overflowLabels);
-    await actions.locator('header').click({ position: { x: 180, y: 12 } });
+    await actions.locator('header').click({ position: { x: 2, y: 2 } });
     assert.equal(await actions.locator('#task-menu').isVisible(), false);
     await actionLine.focus();
     await actions.keyboard.press('Shift+F10');

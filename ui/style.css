@@ -455,7 +455,7 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 /* The macOS window controls and app controls share one native title-bar row. */
 .mac-titlebar > header { height: 44px; min-height: 44px; flex: none; padding: 0 10px 0 94px; gap: 8px; }
 .mac-titlebar > header > .menu-wrap { flex: 1; }
-.mac-titlebar .view-btn { max-width: calc(100% + 8px); }
+.mac-titlebar .view-btn { max-width: calc(100% + 8px); transform: translateY(1px); }
 .mac-titlebar #heading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mac-titlebar #count, .mac-titlebar .view-btn .chev, .mac-titlebar .tools { flex-shrink: 0; }
 .mac-titlebar #view-menu { min-width: 190px; max-width: calc(100vw - 86px); }

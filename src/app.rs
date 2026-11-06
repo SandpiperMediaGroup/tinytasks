@@ -34,7 +34,8 @@ pub fn run(background: bool) {
     builder
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
-            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note
+            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
+            open_settings, close_settings
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -303,6 +304,16 @@ fn open_link(id: i64) -> Res<()> {
     open::that_detached(link).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_about_link(destination: &str) -> Res<()> {
+    let url = match destination {
+        "source" => "https://github.com/SandpiperMediaGroup/tinytasks",
+        "timecal" => "https://trytimecal.com",
+        _ => return Err("Unknown About link.".into()),
+    };
+    open::that_detached(url).map_err(|e| e.to_string())
+}
+
 #[derive(serde::Serialize)]
 struct Location {
     /// The folder, in full.
@@ -357,6 +368,34 @@ fn open_file() -> Res<()> {
 }
 
 #[tauri::command]
+async fn open_settings(app: AppHandle) -> Res<()> {
+    if let Some(window) = app.get_webview_window("settings") {
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.show().map_err(|e| e.to_string())?;
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    let builder = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("settings.html".into()))
+        .title("Settings — TinyTasks")
+        .inner_size(420.0, 620.0)
+        .min_inner_size(320.0, 400.0)
+        .center()
+        .disable_drag_drop_handler();
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(16.0, 25.0));
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_settings(window: tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "settings" { return Err("Only Settings can be closed here.".into()); }
+    window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn open_note(app: AppHandle, id: i64) -> Res<()> {
     let task = store::load()?.get(id).ok_or("That task is gone.")?;
     let label = format!("note-{id}");
@@ -369,7 +408,7 @@ async fn open_note(app: AppHandle, id: i64) -> Res<()> {
         .title(format!("{} — TinyTasks", task.title))
         .inner_size(340.0, 300.0)
         .min_inner_size(280.0, 180.0)
-        .always_on_top(true)
+        .always_on_top(false)
         .decorations(false)
         .shadow(true)
         .disable_drag_drop_handler()

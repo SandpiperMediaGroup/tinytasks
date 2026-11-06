@@ -6,8 +6,6 @@ When an agent hands you a to-do ("add the API key in Vercel", "approve the PR"),
 TinyTasks over MCP. You get a desktop notification, the tray icon shows how many are open, and you
 check them off. The agent can see what you finished. Keep related steps together as subtasks.
 
-![TinyTasks in light and dark mode](docs/screenshot.png)
-
 Built with Rust + [Tauri](https://tauri.app). Runs on Windows and macOS. The current subtask
 and sticky-note interactions have been checked on macOS; Windows still needs that regression pass.
 
@@ -28,34 +26,84 @@ you already use, such as Google Drive, Dropbox, OneDrive, or iCloud Drive. Each 
 its own app and selects its local copy of that shared folder. A local-only folder works too.
 This folder holds your `tasks.md`; you do not need to keep the source-code checkout there.
 
-Prebuilt downloads belong on the repository's [Releases page](https://github.com/SandpiperMediaGroup/tinytasks/releases).
-Until a release for your platform is available, use the [source build instructions](#build).
+## Download for Mac
+
+Download the universal Mac DMG from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
+open it, and drag **TinyTasks.app** to **Applications** before launching it. A ZIP download is also available.
+Both the app and DMG are Developer ID signed, notarized by Apple, and carry their notarization tickets.
+The app supports Apple silicon and Intel Macs. Windows users can build from source below.
+
+For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
+See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the Mac release guide](docs/RELEASING.md).
+
+## A look inside
+
+Task lists, ordered subtasks, and quiet task menus. These previews use sample tasks.
+
+| Parchment · Light | Midnight · Dark |
+| --- | --- |
+| ![Parchment light task list with ordered subtasks](docs/screenshots/tasks-light.png) | ![Midnight dark task list with ordered subtasks](docs/screenshots/tasks-dark.png) |
+
+### Themes and Settings
+
+Choose **Parchment, Solarized, Paper, Forest, or Midnight**, then choose **Auto, Light, or Dark**
+independently. Every theme supports both appearances. Auto follows your computer; changes update
+both your task list and sticky notes. Settings opens in its own window and includes a keyboard
+shortcut guide, creator credits, and links to this repository and TimeCal.
+
+| Settings | Solarized sticky note |
+| --- | --- |
+| ![Separate Settings window with appearance modes, five themes, and About](docs/screenshots/settings.png) | ![Solarized sticky note with sample ordered subtasks](docs/screenshots/sticky-note.png) |
+
+### Compact controls
+
+Group and order your list, choose which properties appear, and open task actions from **⋯**
+or a right-click. Group headers collapse on click; hover reveals the less-used controls.
+
+| Grouping and ordering | Task actions |
+| --- | --- |
+| ![Grouping and ordering menu](docs/screenshots/grouping.png) | ![Custom task actions menu](docs/screenshots/task-menu.png) |
 
 ## Using it
 
+On macOS, the task controls share one compact row with the window’s traffic lights.
+Drag the empty header space to move the window.
+
 - **Click a task's text** to edit it directly. Click away or press Enter to save a title;
   use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
-- **Open a sticky note** using the folded-corner note icon in task details. Notes
+  Click the empty gutter or space beneath expanded details to collapse the task again.
+- **Open a sticky note** from the task’s **⋯** menu, using the folded-corner note icon. Notes
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
-  metadata, or action strip. Drag the thin top edge to move a note; its quiet close button
-  becomes clearer on hover or keyboard focus. Notes stay above other windows and edits sync with the list.
+  metadata, or action strip. The main completion circle sits at the left of the top strip;
+  the title and description stay aligned with the note edge, including while editing. Drag the thin top edge to move a note; its quiet close button
+  becomes clearer on hover or keyboard focus. Notes use normal window stacking, and edits sync with the list.
   Close a note to dismiss it without deleting the task. Notes last for the current app session;
-  use the note icon again to reopen one.
+  use the menu’s note action again to reopen one.
 - **Display properties** (the sliders at the top right) lets you show or hide ID, agent,
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
-  Hover the row's time indicator for the full added date; completed tasks also show their completion date.
-- **+** adds your own task. Agents see those too.
-- **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the details)
+  Hover the row’s action button for the full added date; completed tasks also show their completion date.
+- **Settings** opens in its own window from the Tasks menu (⌘, on Mac; Ctrl+, elsewhere).
+  Your task list stays visible; reopening Settings brings the existing window forward. Expand **Keyboard shortcuts**
+  for a guide to navigation, editing, task actions, subtask ordering, and sticky notes. Choose Auto, Light, or Dark separately from the theme colors:
+  Parchment, Solarized, Paper, Forest, or Midnight. Every palette has both light and dark modes;
+  Auto follows the computer’s appearance while keeping your selected palette. The choice saves automatically and updates open sticky notes on this computer.
+  The About section credits Evan Olson and Sandpiper Media Group, links to this open-source repository,
+  and offers a link to [try TimeCal](https://trytimecal.com).
+- **+** adds your own task. The entry field wraps and grows as you type; Enter saves and Escape cancels. Subtask entry works the same way. Agents see those too.
+- **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the task menu)
   or by the agent.
 - **Your desk** is what you're focusing on today. Ask an agent "what should I focus on?" and it
-  puts a few tasks there, or use the lamp in a task's details. The desk clears overnight.
+  puts a few tasks there, or use the lamp action in a task’s menu. The desk clears overnight.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
-- **Group** by time added, chat, agent, priority or due date. Pick Priority again to flip the order.
-  Click a group header to collapse or expand it; each view remembers collapsed groups.
-- **Subtasks** live in a task's details. Use the **+** beside the sticky-note icon to add the
+- **Grouping and ordering** share a compact two-row menu. Group by date added, chat, agent,
+  priority, due date, or choose No grouping. Order tasks within each group by priority, due date,
+  date added, or name; Completed also offers date completed. Each row has a direction control.
+  Missing dates and priorities stay last. Tasks, My desk, and Completed remember their own
+  choices and collapsed groups. Subtasks keep their saved order.
+- **Subtasks** live in a task's details. Use **Add subtask** in the task’s **⋯** menu to add the
   first one; the Subtasks header appears once needed, with its own **+** for more. Click its
-  text to edit, or the rest of its row to open its own details, priority, due date, and sticky note.
+  text to edit, or the rest of its row to open its own details. Its **⋯** menu manages its priority, due date, and sticky note.
   Use the small **1 / •** chip to switch between numbered steps and a checklist.
 - **Drag subtasks** to reorder them, or focus a subtask row and press Alt+Up/Down. Both modes
   remember the same order. Numbers stay muted; the parent's circle shows completion progress.
@@ -63,10 +111,14 @@ Until a release for your platform is available, use the [source build instructio
   open; reopening a child also reopens its parent. Deleting a parent deletes its subtasks.
 - **Hover controls**: group chevrons appear over their header; the subtask **+** and mode chip
   appear over the Subtasks header. Keyboard focus reveals them too, and touch devices keep
-  them visible. Actions inside expanded details remain visible.
+  them visible. Hover or focus a task row to reveal **⋯** in place of its priority/time badges.
+  Click it, right-click a row, or press Shift+F10 for the same custom menu with icons.
+  Expanded details contain only the description and subtasks; editing text keeps the standard text context menu.
 
 Subtasks support one level of nesting. Completed steps stay under their parent, and list/tray
-counts count top-level tasks. A subtask on My desk brings its parent into that view for context.
+counts count top-level tasks. My desk counts and shows the individual tasks and subtasks selected
+for it. A selected subtask appears on its own with a curved branch arrow and its parent's name;
+its parent and siblings are not automatically added to the desk.
 
 ## Build
 
@@ -113,13 +165,17 @@ Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_t
 Save the following in each agent's supported persistent memory or instructions (for example,
 `CLAUDE.md` or `AGENTS.md`, at the scope where you want it to apply):
 
-> Use TinyTasks for action items I, the human, need to do. Check existing tasks before adding
-> one so you don't duplicate it. Use `add_tasks` with a consistent `chat` name and a real
-> conversation link when available. Keep related steps together as subtasks, ordered when
-> sequence matters. Keep your own agent work plan elsewhere. When resuming work, use
-> `list_tasks` to see what I've finished. Only mark tasks complete when I say they're done
-> or you have verified the outcome. When I ask what to focus on, use `set_desk` for a few
-> relevant tasks; the desk resets each day. Report a failed write rather than claiming success.
+> Use TinyTasks for action items I, the human, need to do. Check existing tasks first to avoid
+> duplicates. Keep your own agent work plan elsewhere. Use the actual originating conversation
+> title in `chat` whenever available and include a real conversation link if you have one.
+> Reuse that title consistently; if unavailable, use a concise descriptive fallback.
+> Use priority sparingly: omit it by default and set it only for clear urgency or my explicit request.
+> Use subtasks for related steps toward one outcome, ordered when sequence matters and a checklist
+> otherwise. Keep independent actions separate. Create the parent first, then add its steps with
+> `parent_id`. When resuming, use `list_tasks` to see what I've finished. Only mark tasks complete
+> when I say they're done or you have verified the outcome. When I ask what to focus on, use
+> `set_desk` for a few relevant tasks; the desk resets each day. Report a failed write rather
+> than claiming success.
 
 After connecting a client, start a new chat or reload its tools, then verify `list_tasks` works.
 See the [setup guide](docs/agent-setup.md) for cloud-file-only agents and a complete setup check.
@@ -182,6 +238,9 @@ run `python3 scripts/mcp-smoke.py` for the real agent protocol with temporary ta
 With Playwright installed, `node scripts/ui-smoke.cjs` exercises the UI with a mocked desktop
 bridge. `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` may point to an existing install.
 `TINYTASKS_DATA_DIR` overrides the local settings/lock folder for isolated development checks.
+
+`node scripts/docs-screenshots.cjs` refreshes the README previews from the current UI using fictional
+tasks. It uses the same Playwright overrides and does not open or modify your real task list.
 
 ## Contributing
 

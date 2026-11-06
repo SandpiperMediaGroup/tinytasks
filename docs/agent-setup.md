@@ -16,19 +16,27 @@ Ask the user:
 > I recommend a dedicated TinyTasks folder in a cloud-synced drive you already use. A local
 > folder works too. Which folder, and which agents should I connect?
 
-Use an exact local folder path after the user chooses. Do not guess a cloud provider or path.
+Wait for the user's choice before selecting or moving the task file. Reuse an exact location
+already specified by the user; do not ask again if it is clear. Use an exact local folder path
+after the user chooses. Do not guess a cloud provider or path.
 The task-data folder holds `tasks.md`; the app and optional source checkout are separate.
 If the user already has a list, establish which list is authoritative before changing its location.
 
 ## 2. Install the app
 
-Check the repository's [Releases](https://github.com/SandpiperMediaGroup/tinytasks/releases) for
+Check the repository's [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest) for
 an installer matching the OS and processor. Use the release's installation instructions and
 verify its published checksum when provided. Do not confuse GitHub's source archives with an
 app installer or describe an unnotarized build as notarized.
 
-On macOS, install a released `TinyTasks.app` in a stable location such as `/Applications` and
-open it once. On Windows, use the released installer and locate the installed `tinytasks.exe`.
+The current release provides a universal Mac DMG and ZIP for Apple silicon and Intel. Both the
+app and DMG are Developer ID signed and separately notarized with stapled tickets. On macOS,
+prefer the DMG: open it, copy `TinyTasks.app` to `/Applications`, eject the image, and launch
+`/Applications/TinyTasks.app`. The ZIP contains the same app. Check `SHA256SUMS.txt` against the
+artifact you downloaded. Do not run the MCP server from a mounted DMG or a temporary download folder.
+
+For Windows, check whether a compatible binary has since been released; otherwise build from
+source. Locate the resulting `tinytasks.exe`.
 If no suitable release exists, explain that a source build is currently required and follow
 the [README build instructions](../README.md#build), including the platform prerequisites.
 For macOS source builds, `cargo tauri build --bundles app` produces
@@ -40,14 +48,15 @@ Keep the app installed locally on each computer.
 
 ## 3. Select the task folder
 
-In TinyTasks, click the **Tasks** title, choose **Change folder…**, and select the user's folder.
+Create the chosen folder if it does not exist. In TinyTasks, click the **Tasks** title, choose
+**Change folder…**, and select that folder.
 Use the app's folder picker to configure it; if you cannot operate it, guide the user through
 this step. The app records the location locally for its MCP servers too.
 
-- If the selected folder contains a task list, TinyTasks uses that list; it does not merge
+- If the selected folder contains task entries, TinyTasks uses that list; it does not merge
   it with the previous one. The old list stays in its original file.
-- Otherwise, TinyTasks copies the current list into the selected folder, leaving the old file
-  as a backup, or creates an empty list if necessary.
+- Otherwise, TinyTasks copies the current list into the selected folder, preserving any existing
+  non-task text and leaving the old file as a backup, or creates an empty list if necessary.
 - On another computer, wait for the same cloud folder to sync, install TinyTasks locally, and
   select that computer's local path to the existing list. The paths need not match across computers.
 

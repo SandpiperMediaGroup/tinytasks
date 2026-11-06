@@ -18,7 +18,8 @@ but hasn't been tried yet.
   Click the empty gutter or space beneath expanded details to collapse the task again.
 - **Open a sticky note** from the task’s **⋯** menu, using the folded-corner note icon. Notes
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
-  metadata, or action strip. Drag the thin top edge to move a note; its quiet close button
+  metadata, or action strip. The main completion circle sits at the left of the top strip;
+  the title and description stay aligned with the note edge, including while editing. Drag the thin top edge to move a note; its quiet close button
   becomes clearer on hover or keyboard focus. Notes stay above other windows and edits sync with the list.
   Close a note to dismiss it without deleting the task. Notes last for the current app session;
   use the menu’s note action again to reopen one.
@@ -26,9 +27,9 @@ but hasn't been tried yet.
   chat, priority, due date, added/completed time, and a details preview. Choices are remembered.
   Hover the row’s action button for the full added date; completed tasks also show their completion date.
 - **Settings** is in the Tasks menu (⌘, on Mac; Ctrl+, elsewhere). Expand **Keyboard shortcuts**
-  for a guide to navigation, editing, task actions, subtask ordering, and sticky notes. Choose Solarized Light or Dark,
-  Parchment, Paper, Forest, or Midnight with live palette previews. System follows the computer’s
-  light/dark appearance. The choice saves automatically and updates open sticky notes on this computer.
+  for a guide to navigation, editing, task actions, subtask ordering, and sticky notes. Choose Auto, Light, or Dark separately from the theme colors:
+  Parchment, Solarized, Paper, Forest, or Midnight. Every palette has both light and dark modes;
+  Auto follows the computer’s appearance while keeping your selected palette. The choice saves automatically and updates open sticky notes on this computer.
 - **+** adds your own task. The entry field wraps and grows as you type; Enter saves and Escape cancels. Subtask entry works the same way. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the task menu)
   or by the agent.

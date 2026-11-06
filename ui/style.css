@@ -75,19 +75,11 @@ header > .menu-wrap { min-width: 0; }
 /* Editing a task in place */
 .edit-title, .edit-details {
   width: 100%; border: 0; outline: 0; padding: 0; margin: 0;
-  background: none; color: var(--ink); font: inherit;
+  display: block; resize: none; overflow: hidden;
+  background: none; font: inherit; color: inherit;
   user-select: text; -webkit-user-select: text;
 }
-.edit-title {
-  display: block; resize: none; overflow: hidden; line-height: inherit;
-  border-bottom: 1px solid var(--accent); padding-bottom: 1px;
-}
-.edit-details {
-  display: block; resize: none; overflow: hidden; margin: 2px 0 6px;
-  font-size: 12.5px; line-height: 1.45; color: var(--soft);
-  border-left: 2px solid var(--line); padding-left: 8px;
-}
-.edit-details:focus { border-left-color: var(--accent); }
+.edit-title { border-bottom: 1px solid var(--accent); padding-bottom: 1px; }
 .edit-details::placeholder { color: var(--muted); }
 .task.editing > .line { cursor: default; }
 .task.editing > .line:hover { background: none; }
@@ -350,7 +342,11 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .subtasks-head .add-subtask { margin-left: auto; width: 24px; height: 24px; }
 .subtasks-head .add-subtask svg { width: 16px; height: 16px; }
 .subtask > .line { position: relative; padding: 7px 0; gap: 8px; border-radius: 5px; cursor: grab; }
-.subtask > .line:hover { background: var(--bg-hover); }
+.subtask > .line { isolation: isolate; }
+.subtask > .line:hover { background: none; }
+.subtask > .line::before { content: ""; position: absolute; inset: 0 -8px; z-index: -1; pointer-events: none; border-radius: 5px; }
+.subtask > .line:hover::before, .subtask > .line:focus-within::before { background: var(--bg-hover); }
+.subtask > .line .more { right: 0; }
 .subtask > .line:active { cursor: grabbing; }
 .subtask > .line .title { font-size: 13px; line-height: 1.4; }
 .subtask > .line .title-text { user-select: none; -webkit-user-select: none; }
@@ -438,3 +434,20 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .shortcut-list dt { font-size: 12px; min-width: 0; }
 .shortcut-list dd { display: flex; align-items: center; flex: none; gap: 3px; margin: 0; font-size: 10px; color: var(--muted); }
 .shortcut-list kbd { display: inline-block; padding: 1px 4px; min-width: 19px; text-align: center; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg-menu); color: var(--ink); font: 10px/17px system-ui, sans-serif; white-space: nowrap; }
+
+/* Notes keep the same typography and alignment while editing. */
+.sticky-note .edit-title { border: 0; padding: 0; }
+.sticky-note .note-root > .details > .details-inner > .details-pad { padding-left: 14px; }
+.sticky-note .note-root > .details .subtasks { margin-left: 28px; }
+#note-complete { position: absolute; left: 10px; top: 3px; }
+#note-complete .check { width: 17px; height: 17px; margin: 0; cursor: pointer; }
+#note-complete .check::after { width: 9px; height: 9px; }
+.check.checked { background: var(--accent); border-color: var(--accent); }
+.check.checked svg { opacity: 1; color: var(--bg); }
+#appearance-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 22px; }
+.appearance-mode { position: relative; min-width: 0; cursor: pointer; }
+.appearance-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.appearance-mode > span { display: flex; flex-direction: column; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-menu); padding: 10px 6px; font-size: 12px; }
+.appearance-mode svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.appearance-mode input:checked + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.appearance-mode input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 3px; }

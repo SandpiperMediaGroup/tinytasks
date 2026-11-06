@@ -126,6 +126,7 @@ function row(t, parent = null, index = 0) {
   li.classList.toggle("done", done);
   li.classList.toggle("open", noteId === t.id || expanded.has(t.id));
   li.classList.toggle("subtask", parent != null);
+  li.classList.toggle("note-root", noteId === t.id);
   if (parent?.ordered) {
     const number = Object.assign(document.createElement("span"), { className: "subtask-number", textContent: `${index + 1}.` });
     number.setAttribute("aria-hidden", "true");
@@ -186,6 +187,7 @@ function row(t, parent = null, index = 0) {
   li.querySelector(".body").classList.toggle("placeholder", !t.details);
 
   const check = li.querySelector(".check");
+  check.classList.toggle("checked", done);
   check.title = done ? "Mark not done" : "Mark done";
   const children = childrenOf(t.id);
   if (children.length && !done) {
@@ -201,7 +203,9 @@ function row(t, parent = null, index = 0) {
       li.classList.add("checking");
       await new Promise((r) => setTimeout(r, 550));
     }
-    act("set_done", { id: t.id, done: !done });
+    const restoreNoteFocus = noteId === t.id && document.activeElement === check;
+    await act("set_done", { id: t.id, done: !done });
+    if (restoreNoteFocus) $("note-complete").querySelector(".check")?.focus();
   };
 
   const line = li.querySelector(".line");
@@ -275,6 +279,7 @@ function row(t, parent = null, index = 0) {
     line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
     line.onpointerdown = (e) => beginSubtaskDrag(e, line, t.id, parent.id);
   }
+  if (noteId === t.id) $("note-complete").replaceChildren(check);
   return li;
 }
 
@@ -448,6 +453,7 @@ function render() {
   if (taskMenuId != null) closeFloating();
   const v = VIEWS[view];
   const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view);
+  if (noteId != null) $("note-complete").replaceChildren();
   const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
   const headers = groupBy !== "none" && noteId == null;
 
@@ -827,7 +833,7 @@ async function openTaskMenu(id, point = null) {
   set("set-desk", task.mydesk ? "Remove from My desk" : "Put on My desk");
   set("set-due", task.due ? `Due date · ${dueText(task.due)}` : "Due date");
   set("set-prio", task.priority != null ? `Priority · P${task.priority}` : "Priority");
-  set("open-link", "Open conversation", !task.link);
+  set("open-link", "Open link", !task.link);
   set("delete", childrenOf(id).length ? "Delete task and subtasks" : "Delete task");
   place(taskMenu, anchor);
   taskMenuId = id;
@@ -884,6 +890,9 @@ for (const key of settings.querySelectorAll("[data-key]")) {
   key.setAttribute("aria-label", primary ? (macKeyboard ? "Command" : "Control") : (macKeyboard ? "Option" : "Alt"));
 }
 
+for (const input of $("appearance-modes").querySelectorAll("input")) {
+  input.onchange = () => { if (input.checked) tinyThemes.setMode(input.value); };
+}
 for (const theme of tinyThemes.catalog) {
   const card = document.createElement("label");
   card.className = "theme-card";
@@ -897,6 +906,7 @@ for (const theme of tinyThemes.catalog) {
   $("themes").appendChild(card);
 }
 function updateThemes() {
+  for (const input of $("appearance-modes").querySelectorAll("input")) input.checked = input.value === tinyThemes.mode;
   for (const card of $("themes").children) {
     const input = card.querySelector("input");
     input.checked = input.value === tinyThemes.current;

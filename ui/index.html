@@ -9,6 +9,7 @@
 </head>
 <body>
   <div id="note-handle" hidden title="Drag to move note">
+    <div id="note-complete"></div>
     <button id="close-note" class="icon" tabindex="0" aria-label="Close sticky note" title="Close note"><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
   </div>
   <header>
@@ -93,7 +94,7 @@
     <button class="set-desk" data-action="set-desk" role="menuitem"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg><span>Put on my desk</span></button>
     <button class="set-due" data-action="set-due" role="menuitem" aria-haspopup="dialog"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span>Due date</span></button>
     <button class="set-prio" data-action="set-prio" role="menuitem" aria-haspopup="menu"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Priority</span></button>
-    <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open conversation</span></button>
+    <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open link</span></button>
     <button class="delete" data-action="delete" role="menuitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Delete task</span></button>
   </div>
 
@@ -163,7 +164,14 @@
           <p>For themes, use the arrow keys after focusing a palette. For other controls, use Tab, then Enter or Space.</p>
         </div>
       </details>
-      <h2 id="theme-heading">Theme</h2>
+      <h2 id="appearance-heading">Appearance</h2>
+      <p class="settings-description">Follow your Mac or choose a mode.</p>
+      <div id="appearance-modes" role="radiogroup" aria-labelledby="appearance-heading">
+        <label class="appearance-mode"><input type="radio" name="appearance" value="auto" aria-label="Auto"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>Auto</span></label>
+        <label class="appearance-mode"><input type="radio" name="appearance" value="light" aria-label="Light"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>Light</span></label>
+        <label class="appearance-mode"><input type="radio" name="appearance" value="dark" aria-label="Dark"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14a8 8 0 0 1-10-10 8 8 0 1 0 10 10z"/></svg>Dark</span></label>
+      </div>
+      <h2 id="theme-heading">Theme colors</h2>
       <p class="settings-description">A little change of atmosphere.</p>
       <div id="themes" role="radiogroup" aria-labelledby="theme-heading"></div>
       <p class="settings-footnote">Applies to your tasks and sticky notes on this Mac. Saved automatically.</p>

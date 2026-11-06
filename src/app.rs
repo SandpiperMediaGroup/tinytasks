@@ -34,7 +34,7 @@ pub fn run(background: bool) {
     builder
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
-            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note
+            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -301,6 +301,16 @@ fn open_link(id: i64) -> Res<()> {
         return Err(format!("Won't open {scheme}: links"));
     }
     open::that_detached(link).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_about_link(destination: &str) -> Res<()> {
+    let url = match destination {
+        "source" => "https://github.com/SandpiperMediaGroup/tinytasks",
+        "timecal" => "https://trytimecal.com",
+        _ => return Err("Unknown About link.".into()),
+    };
+    open::that_detached(url).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]

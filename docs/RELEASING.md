@@ -47,13 +47,39 @@ xcrun stapler validate "dist/$VERSION/TinyTasks.app"
 codesign --verify --deep --strict "dist/$VERSION/TinyTasks.app"
 spctl --assess --type execute --verbose=2 "dist/$VERSION/TinyTasks.app"
 ditto -c -k --keepParent "dist/$VERSION/TinyTasks.app" "dist/$VERSION/TinyTasks-$VERSION-universal-macos.zip"
-(cd "dist/$VERSION" && shasum -a 256 "TinyTasks-$VERSION-universal-macos.zip" > SHA256SUMS.txt)
+```
+
+Build the DMG from the **stapled app**, with a link to Applications. Sign and submit the DMG
+separately, retaining its own submission receipt:
+
+```sh
+mkdir "dist/$VERSION/dmg-stage"
+ditto "dist/$VERSION/TinyTasks.app" "dist/$VERSION/dmg-stage/TinyTasks.app"
+ln -s /Applications "dist/$VERSION/dmg-stage/Applications"
+hdiutil create -srcfolder "dist/$VERSION/dmg-stage" -volname TinyTasks -fs HFS+ -format UDZO \
+  "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+codesign --timestamp --sign "$SIGNING_IDENTITY" "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+xcrun notarytool submit "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg" \
+  --keychain-profile "$NOTARY_PROFILE" --output-format json > "dist/$VERSION/dmg-submission.json"
+```
+
+Wait using the DMG submission ID, as above, and require **Accepted** before continuing:
+
+```sh
+xcrun stapler staple "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+xcrun stapler validate "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+codesign --verify --strict "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+hdiutil verify "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+spctl --assess --type open --context context:primary-signature --verbose=2 \
+  "dist/$VERSION/TinyTasks-$VERSION-universal-macos.dmg"
+(cd "dist/$VERSION" && shasum -a 256 "TinyTasks-$VERSION-universal-macos.zip" \
+  "TinyTasks-$VERSION-universal-macos.dmg" > SHA256SUMS.txt)
 ```
 
 Extract the final ZIP to a fresh directory, repeat signature, ticket, and Gatekeeper checks,
-and launch the app for a visual smoke check. Intel compatibility is built into the universal
+mount the DMG read-only to verify its app and Applications link, and launch the app for a visual smoke check. Intel compatibility is built into the universal
 binary; report separately whether an Intel Mac was available for runtime testing.
 
 Publish a GitHub Release tagged `v$VERSION` at the exact source commit, attaching only the
-final ZIP and `SHA256SUMS.txt`. Include installation instructions and any testing limitations
+final DMG, ZIP, and `SHA256SUMS.txt`. Include installation instructions and any testing limitations
 in its notes. Keep submission receipts locally; do not publish credentials or the upload ZIP.

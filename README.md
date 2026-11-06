@@ -12,9 +12,10 @@ Built with Rust + [Tauri](https://tauri.app). Runs on macOS and Windows.
 
 ## Download for Mac
 
-Download the universal Mac ZIP from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
-unzip it, and move **TinyTasks.app** to **Applications** before opening it. The release is Developer ID
-signed and notarized by Apple, and supports Apple silicon and Intel Macs. Windows users can build from source below.
+Download the universal Mac DMG from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
+open it, and drag **TinyTasks.app** to **Applications** before launching it. A ZIP download is also available.
+Both the app and DMG are Developer ID signed, notarized by Apple, and carry their notarization tickets.
+The app supports Apple silicon and Intel Macs. Windows users can build from source below.
 
 For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
 See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the Mac release guide](docs/RELEASING.md).
@@ -41,6 +42,8 @@ Drag the empty header space to move the window.
   for a guide to navigation, editing, task actions, subtask ordering, and sticky notes. Choose Auto, Light, or Dark separately from the theme colors:
   Parchment, Solarized, Paper, Forest, or Midnight. Every palette has both light and dark modes;
   Auto follows the computer’s appearance while keeping your selected palette. The choice saves automatically and updates open sticky notes on this computer.
+  The About section credits Evan Olson and Sandpiper Media Group, links to this open-source repository,
+  and offers a link to [try TimeCal](https://trytimecal.com).
 - **+** adds your own task. The entry field wraps and grows as you type; Enter saves and Escape cancels. Subtask entry works the same way. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the task menu)
   or by the agent.

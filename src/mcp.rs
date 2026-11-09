@@ -310,6 +310,7 @@ fn update_task(args: &Value) -> Result<String, String> {
         Some(v) => Some(Some(v.as_str().filter(|d| store::valid_due(d)).ok_or("`due` must be a date like 2026-11-06, or null")?)),
     };
     let changes = store::Changes {
+        agent: None,
         title: field("title"),
         details: field("details"),
         link: field("link"),

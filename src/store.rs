@@ -287,6 +287,7 @@ pub struct NewTask<'a> {
 #[derive(Default)]
 pub struct Changes<'a> {
     pub title: Option<&'a str>,
+    pub agent: Option<&'a str>,
     pub details: Option<&'a str>,
     pub link: Option<&'a str>,
     pub chat: Option<&'a str>,
@@ -651,6 +652,40 @@ impl List {
         }
     }
 
+    pub fn chats(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for block in &self.blocks {
+            if let Block::Text(text) = block {
+                if let Some(name) = heading(text).filter(|name| !name.is_empty()) {
+                    if !names.contains(&name) { names.push(name); }
+                }
+            }
+        }
+        names
+    }
+
+    pub fn create_chat(&mut self, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 200 || name.contains(['\r', '\n']) || name.ends_with('#') {
+            return Err("Use a list name of 1–200 characters on one line, without a trailing #.".into());
+        }
+        if self.chats().iter().any(|existing| existing.eq_ignore_ascii_case(name)) {
+            return Err("A list with that name already exists.".into());
+        }
+        // The marker keeps an intentionally empty list through tidy() and cloud round trips.
+        self.blocks.extend(["".to_string(), format!("## {name}"), "".to_string(), "<!-- TinyTasks list -->".to_string()].into_iter().map(Block::Text));
+        Ok(())
+    }
+
+    /// A list explicitly used by the desktop stays available after its last task is moved.
+    pub fn preserve_chat(&mut self, name: &str) {
+        let Some(start) = self.blocks.iter().position(|b| matches!(b, Block::Text(text) if heading(text).as_deref() == Some(name))) else { return };
+        let end = self.blocks[start + 1..].iter().position(is_heading).map_or(self.blocks.len(), |offset| start + 1 + offset);
+        if !self.blocks[start + 1..end].iter().any(|b| matches!(b, Block::Text(text) if text == "<!-- TinyTasks list -->")) {
+            self.blocks.insert(start + 1, Block::Text("<!-- TinyTasks list -->".into()));
+        }
+    }
+
     pub fn render(&self) -> String {
         let mut lines: Vec<String> = Vec::new();
         let has_tasks = self.tasks().next().is_some();
@@ -827,6 +862,9 @@ impl List {
         let t = &mut e.task;
         if let Some(v) = c.title {
             t.title = one_line(v);
+        }
+        if let Some(v) = c.agent {
+            t.agent = one_line(v);
         }
         if let Some(v) = c.details {
             t.details = v.trim_end().to_string();
@@ -1130,5 +1168,37 @@ mod tests {
         let list = parse("- [ ] Orphan @parent(99) @id(1)\n- [ ] Self @parent(2) @id(2)\n- [ ] Cycle A @parent(4) @id(3)\n- [ ] Cycle B @parent(3) @id(4)\n");
         assert!(list.tasks().all(|t| t.parent_id.is_none()));
         assert_eq!(for_ui(&list).len(), 4);
+    }
+
+    #[test]
+    fn empty_lists_survive_round_trips_and_moving_the_last_family() {
+        let mut list = parse("");
+        list.create_chat("Launch").unwrap();
+        list.create_chat("Later").unwrap();
+        assert!(list.create_chat(" launch ").is_err());
+        assert!(list.create_chat("Bad\nheading").is_err());
+        let parent = list.add(NewTask { chat: "Launch", ..new_task("Ship") });
+        let child = list.add_subtask(parent, new_task("Review")).unwrap();
+        list.update(parent, Changes { chat: Some("Later"), agent: Some("codex"), ..Default::default() });
+        let restored = parse(&list.render());
+        assert_eq!(restored.chats(), vec!["Launch", "Later"]);
+        assert_eq!(restored.get(parent).unwrap().chat, "Later");
+        assert_eq!(restored.get(child).unwrap().chat, "Later");
+        assert_eq!(restored.get(parent).unwrap().agent, "codex");
+        assert_eq!(restored.children(parent).len(), 1);
+    }
+
+    #[test]
+    fn desktop_moves_preserve_existing_lists_without_duplicate_markers() {
+        let mut list = parse("## Source\n\n- [ ] Move me @id(1)\n\n## Destination\n\n");
+        list.preserve_chat("Source");
+        list.preserve_chat("Source");
+        list.preserve_chat("Destination");
+        list.update(1, Changes { chat: Some("Destination"), ..Default::default() });
+        let text = list.render();
+        assert_eq!(text.matches("<!-- TinyTasks list -->").count(), 2);
+        let restored = parse(&text);
+        assert_eq!(restored.chats(), vec!["Source", "Destination"]);
+        assert_eq!(restored.get(1).unwrap().chat, "Destination");
     }
 }

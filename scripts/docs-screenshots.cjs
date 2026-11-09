@@ -29,7 +29,8 @@ async function addMacWindowControls(page) {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE });
   try {
     const context = await browser.newContext({ viewport: { width: 420, height: 620 }, deviceScaleFactor: 2, timezoneId: 'America/Los_Angeles' });
-    await context.addInitScript(() => {
+    const version = JSON.parse(await fs.readFile(path.resolve(__dirname, '../tauri.conf.json'), 'utf8')).version;
+    await context.addInitScript(version => {
       const now = Math.floor(Date.now() / 1000);
       const day = offset => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
       localStorage.setItem('appearance', JSON.stringify({ theme: 'parchment', mode: 'light' }));
@@ -47,13 +48,16 @@ async function addMacWindowControls(page) {
       ];
       window.__TAURI__ = {
         core: { invoke: async (cmd, args = {}) => {
+          if (cmd === 'app_info') return { version, mcp: { mcpServers: { tinytasks: { command: '/Applications/TinyTasks.app/Contents/MacOS/tinytasks', args: ['mcp'] } } } };
+          if (cmd === 'check_for_updates') return { current_version: version, latest_version: version, update_available: false };
+          if (cmd === 'list_chats') return [...new Set(tasks.map(t => t.chat))];
           if (cmd === 'location') return { short: 'Cloud Drive › TinyTasks', folder: '/example/Cloud Drive/TinyTasks' };
           if (cmd === 'list_note') return tasks.filter(t => t.id === args.id || t.parent_id === args.id);
           return structuredClone(tasks);
         } },
         event: { listen: async () => () => {} },
       };
-    });
+    }, version);
     const output = path.resolve(__dirname, '../docs/screenshots');
     await fs.mkdir(output, { recursive: true });
     const ui = pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;

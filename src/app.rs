@@ -35,7 +35,7 @@ pub fn run(background: bool) {
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
             location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
-            open_settings, close_settings
+            open_settings, close_settings, list_chats, create_list, app_info, check_for_updates
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -222,13 +222,14 @@ fn reorder_subtasks(app: AppHandle, parent_id: i64, ids: Vec<i64>) -> Res<Vec<Ta
     reply(&app)
 }
 
-/// The user typing in their own task: no agent, no chat (so no notification).
+/// User entry keeps the selected list and view's default due date, with no agent notification.
 #[tauri::command]
-fn add_task(app: AppHandle, title: String, mydesk: bool) -> Res<Vec<Task>> {
+fn add_task(app: AppHandle, title: String, mydesk: bool, chat: Option<String>, due: Option<String>) -> Res<Vec<Task>> {
     let title = title.trim();
+    if due.as_deref().is_some_and(|d| !store::valid_due(d)) { return Err("due must be YYYY-MM-DD".into()); }
     if !title.is_empty() {
         store::change(|l| {
-            let t = store::NewTask { title, details: "", agent: "", chat: "", link: "", priority: None, due: None, mydesk };
+            let t = store::NewTask { title, details: "", agent: "", chat: chat.as_deref().unwrap_or(""), link: "", priority: None, due: due.as_deref(), mydesk };
             Ok(l.add(t))
         })?;
     }
@@ -237,17 +238,34 @@ fn add_task(app: AppHandle, title: String, mydesk: bool) -> Res<Vec<Task>> {
 
 /// The user rewording a task or its details (any task, agents' included).
 #[tauri::command]
-fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<String>) -> Res<Vec<Task>> {
+fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<String>, chat: Option<String>, agent: Option<String>) -> Res<Vec<Task>> {
     let title = title.as_deref().map(str::trim);
     if title.is_some_and(str::is_empty) {
         return Err("A task needs a title.".into());
     }
-    let changes = store::Changes { title, details: details.as_deref(), ..Default::default() };
+    let changes = store::Changes { title, details: details.as_deref(), chat: chat.as_deref(), agent: agent.as_deref(), ..Default::default() };
     store::change(|l| {
         if l.get(id).is_none() { return Err("That task is gone.".into()); }
+        if let Some(destination) = chat.as_deref() {
+            let source = l.get(id).unwrap().chat.clone();
+            l.preserve_chat(&source);
+            l.preserve_chat(destination);
+        }
         Ok(l.update(id, changes))
     })?;
     reply(&app)
+}
+
+#[tauri::command]
+fn list_chats() -> Res<Vec<String>> {
+    Ok(store::load()?.chats())
+}
+
+#[tauri::command]
+fn create_list(app: AppHandle, name: String) -> Res<Vec<String>> {
+    store::change(|l| l.create_chat(&name))?;
+    let _ = app.emit("tasks-changed", ());
+    list_chats()
 }
 
 #[tauri::command]
@@ -309,9 +327,28 @@ fn open_about_link(destination: &str) -> Res<()> {
     let url = match destination {
         "source" => "https://github.com/SandpiperMediaGroup/tinytasks",
         "timecal" => "https://trytimecal.com",
+        "releases" => crate::updates::RELEASES_URL,
+        "agent-setup" => "https://github.com/SandpiperMediaGroup/tinytasks/blob/main/docs/agent-setup.md",
         _ => return Err("Unknown About link.".into()),
     };
     open::that_detached(url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn app_info() -> Res<serde_json::Value> {
+    let executable = std::env::current_exe().map_err(|_| "Could not locate the TinyTasks executable.".to_string())?;
+    Ok(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "mcp": { "mcpServers": { "tinytasks": { "command": executable, "args": ["mcp"] } } }
+    }))
+}
+
+#[tauri::command]
+async fn check_for_updates(app: AppHandle, force: bool) -> Res<crate::updates::Status> {
+    let status = tauri::async_runtime::spawn_blocking(move || crate::updates::check(force))
+        .await.map_err(|_| "The update check could not finish.".to_string())??;
+    let _ = app.emit("updates-changed", &status);
+    Ok(status)
 }
 
 #[derive(serde::Serialize)]

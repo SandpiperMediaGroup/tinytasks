@@ -9,25 +9,40 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE });
   try {
     const context = await browser.newContext({ viewport: { width: 360, height: 620 }, colorScheme: 'dark' });
-    await context.addInitScript(() => {
+    const installMock = () => {
       const now = Date.now() / 1000;
       const tasks = [
         { id: 1, title: 'Connect the payment flow', details: 'Add the secret, then test checkout.', agent: 'codex', chat: 'Billing launch', priority: 1, due: '2026-11-06', created_at: now, done_at: null, mydesk: false, link: '' },
         { id: 2, title: 'Review the pricing page', details: '', agent: '', chat: '', priority: 2, due: null, created_at: now - 86400, done_at: null, mydesk: true, link: '' },
       ];
       const listeners = {};
-      window.testState = { tasks, calls: [], failSave: false, emit: () => listeners['tasks-changed']?.() };
+      window.testState = { tasks, chats: ['Billing launch', 'Later'], calls: [], failSave: false, failUpdate: false,
+        update: { current_version: '0.1.0', latest_version: '0.1.0', update_available: false },
+        emit: () => listeners['tasks-changed']?.(), emitUpdate: () => listeners['updates-changed']?.({ payload: structuredClone(testState.update) }) };
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.testClipboard = text; } } });
       window.__TAURI__ = {
         event: { listen: async (event, callback) => { listeners[event] = callback; } },
         core: { invoke: async (cmd, args = {}) => {
           window.testState.calls.push({ cmd, args });
           const t = tasks.find(t => t.id === args.id);
+          if (cmd === 'app_info') return { version: '0.1.0', mcp: { mcpServers: { tinytasks: { command: 'C:\\Program Files\\TinyTasks\\tinytasks.exe', args: ['mcp'] } } } };
+          if (cmd === 'check_for_updates') {
+            if (testState.failUpdate) throw new Error('Could not reach GitHub. Please try again.');
+            return structuredClone(testState.update);
+          }
           if (cmd === 'location') return { short: 'This computer', folder: '/tmp/tinytasks-test' };
+          if (cmd === 'list_chats') return [...new Set([...testState.chats, ...tasks.map(t => t.chat).filter(Boolean)])];
+          if (cmd === 'create_list') {
+            if (testState.chats.includes(args.name)) throw new Error('A list with that name already exists.');
+            testState.chats.push(args.name);
+            return [...testState.chats];
+          }
           if (cmd === 'list_note') return structuredClone(tasks.filter(t => t.id === args.id || t.parent_id === args.id));
           if (cmd === 'edit_task') {
             if (window.testState.failSave) throw new Error('File unavailable');
             if (!t) throw new Error('That task is gone.');
-            for (const field of ['title', 'details']) if (field in args) t[field] = args[field];
+            for (const field of ['title', 'details', 'agent', 'chat']) if (field in args) t[field] = args[field];
+            if ('chat' in args) tasks.filter(c => c.parent_id === t.id).forEach(c => { c.chat = args.chat; });
           }
           if (cmd === 'set_done') {
             t.done_at = args.done ? now : null;
@@ -35,12 +50,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             else if (t.parent_id) tasks.find(p => p.id === t.parent_id).done_at = null;
           }
           if (cmd === 'set_priority') t.priority = args.priority;
+          if (cmd === 'set_due') t.due = args.due;
           if (cmd === 'set_desk') t.mydesk = args.on;
           if (cmd === 'delete_task') {
             for (let i = tasks.length - 1; i >= 0; i--) if (tasks[i].id === args.id || tasks[i].parent_id === args.id) tasks.splice(i, 1);
           }
           if (cmd === 'add_task') {
-            tasks.push({ ...tasks[0], id: Math.max(...tasks.map(t => t.id)) + 1, title: args.title, details: '', agent: '', chat: '', priority: null, due: null, done_at: null, parent_id: null, mydesk: args.mydesk });
+            if (window.testState.failSave) throw new Error('File unavailable');
+            tasks.push({ ...tasks[0], id: Math.max(...tasks.map(t => t.id)) + 1, title: args.title, details: '', agent: '', chat: args.chat || '', priority: null, due: args.due || null, done_at: null, parent_id: null, mydesk: args.mydesk });
           }
           if (cmd === 'add_subtask') {
             if (window.testState.failSave) throw new Error('File unavailable');
@@ -55,11 +72,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           return structuredClone(tasks);
         } },
       };
-    });
+    };
+    await context.addInitScript(installMock);
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const url = pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
+    if (process.env.LIST_INTERACTIONS_ONLY) {
+      await require('./list-interactions.cjs')(browser, installMock, url, errors);
+      assert.deepEqual(errors, []);
+      return;
+    }
     await page.goto(url);
     const taskAction = async (app, task, action) => {
       await task.locator(':scope > .line').hover();
@@ -540,7 +563,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const beforeText = await actionLine.locator('.text').boundingBox();
     await actionLine.hover();
     assert.equal(await opacity(more), '1');
-    assert.equal(await opacity(actionLine.locator('.prio')), '0');
+    assert.equal(await opacity(actionLine.locator('.prio')), '1');
     assert.deepEqual(await actionLine.locator('.text').boundingBox(), beforeText);
     await more.click();
     const overflowLabels = await actions.locator('#task-menu button:not([hidden])').allTextContents();
@@ -703,6 +726,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'parchment');
     assert.equal(await appearance.locator('html').getAttribute('data-appearance'), 'auto');
     assert.equal(await appearance.evaluate(() => testState.calls.some(c => ['edit_task', 'set_done', 'set_priority', 'set_desk', 'delete_task'].includes(c.cmd))), false);
+    await require('./list-interactions.cjs')(browser, installMock, url, errors);
     assert.deepEqual(errors, []);
     console.log('PASS: display/group persistence, editing and retry, notes, subtasks, My desk, drag/keyboard order, grouping and ordering in both directions, per-view layouts, preference migration, progress, compact alignment, hover/focus controls, narrow layout, themes, settings keyboard access, theme persistence and note syncing, shared task menus, context-click and keyboard actions, growing task/subtask entry, resizing, and composition handling.');
   } finally { await browser.close(); }

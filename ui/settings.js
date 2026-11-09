@@ -1,15 +1,21 @@
 const { invoke } = window.__TAURI__.core;
 const $ = id => document.getElementById(id);
 const settings = document.body;
+const sidebarInput = $("show-sidebar");
+const updateSidebar = () => { try { sidebarInput.checked = localStorage.getItem("sidebar") === "1"; } catch {} };
+updateSidebar();
+sidebarInput.onchange = () => { try { localStorage.setItem("sidebar", sidebarInput.checked ? "1" : "0"); } catch {} };
+window.addEventListener("storage", e => { if (e.key === "sidebar" || e.key == null) updateSidebar(); });
 if (/Mac/.test(navigator.platform)) settings.classList.add("mac-titlebar");
 for (const link of settings.querySelectorAll("[data-about-link]")) {
   link.onclick = async e => {
     e.preventDefault();
-    $("about-error").hidden = true;
+    const error = $(link.dataset.aboutLink === "agent-setup" ? "mcp-status" : "about-error");
+    error.hidden = true;
     try { await invoke("open_about_link", { destination: link.dataset.aboutLink }); }
     catch (err) {
-      $("about-error").textContent = `Couldn't open the link: ${String(err)}`;
-      $("about-error").hidden = false;
+      error.textContent = `Couldn't open the link: ${String(err)}`;
+      error.hidden = false;
     }
   };
 }
@@ -45,6 +51,50 @@ function updateThemes() {
 }
 window.addEventListener("themechange", updateThemes);
 updateThemes();
+
+let mcpConfiguration = "";
+invoke("app_info").then(info => {
+  $("installed-version").textContent = `Version ${info.version}`;
+  mcpConfiguration = JSON.stringify(info.mcp, null, 2);
+  $("mcp-config").textContent = mcpConfiguration;
+  $("copy-mcp").disabled = false;
+}).catch(() => {
+  $("installed-version").textContent = "Version unavailable";
+  $("mcp-config").textContent = "Could not load the server configuration. Reopen Settings to try again.";
+});
+$("copy-mcp").onclick = async () => {
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(mcpConfiguration);
+    else {
+      const range = document.createRange(); range.selectNodeContents($("mcp-config"));
+      const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      if (!document.execCommand("copy")) throw new Error("Clipboard unavailable");
+      selection.removeAllRanges(); $("copy-mcp").focus();
+    }
+    $("mcp-status").textContent = "Configuration copied.";
+  } catch { $("mcp-status").textContent = "Could not copy. Select the configuration above and copy it."; }
+  $("mcp-status").hidden = false;
+};
+function showUpdate(status) {
+  $("installed-version").textContent = `Version ${status.current_version}`;
+  $("settings-download").hidden = !status.update_available;
+  $("update-status").textContent = status.update_available ? `Version ${status.latest_version} is available.` : status.latest_version ? "You’re up to date." : "";
+  $("update-status").hidden = !$("update-status").textContent;
+}
+async function checkUpdates(force) {
+  $("check-updates").disabled = true;
+  if (force) { $("update-status").textContent = "Checking…"; $("update-status").hidden = false; }
+  try { showUpdate(await invoke("check_for_updates", { force })); }
+  catch (err) { if (force) { $("update-status").textContent = String(err); $("update-status").hidden = false; } }
+  finally { $("check-updates").disabled = false; }
+}
+$("check-updates").onclick = () => checkUpdates(true);
+$("settings-download").onclick = async () => {
+  try { await invoke("open_about_link", { destination: "releases" }); }
+  catch (err) { $("update-status").textContent = `Couldn't open the download: ${String(err)}`; $("update-status").hidden = false; }
+};
+window.__TAURI__.event.listen("updates-changed", event => showUpdate(event.payload));
+checkUpdates(false);
 
 document.addEventListener("keydown", async e => {
   if (e.key === "Escape" || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w")) {

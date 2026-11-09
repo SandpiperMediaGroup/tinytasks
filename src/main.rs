@@ -7,6 +7,7 @@ mod launch;
 mod mcp;
 mod notify;
 mod trayicon;
+mod updates;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

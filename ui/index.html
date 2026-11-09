@@ -25,7 +25,7 @@
         <button role="menuitemradio" data-view="today">Today <span class="n"></span></button>
         <button role="menuitemradio" data-view="upcoming">Upcoming <span class="n"></span></button>
         <div class="menu-sep"></div>
-        <button id="sidebar-toggle" role="menuitemcheckbox" aria-checked="false">Show sidebar</button>
+        <button id="sidebar-toggle" role="menuitemcheckbox" aria-checked="false" title="Automatically shown in wide windows">Show sidebar</button>
         <div class="menu-sep"></div>
         <div class="menu-label">Task location</div>
         <div id="where"></div>
@@ -79,6 +79,7 @@
     </div>
   </header>
 
+  <div id="release-notice" role="status" hidden><button id="release-download"></button></div>
   <p id="notice" role="status" hidden></p>
   <div id="workspace">
     <aside id="sidebar" aria-label="Navigation" hidden>

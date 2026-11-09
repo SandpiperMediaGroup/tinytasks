@@ -51,7 +51,7 @@
       </details>
       <h2>Navigation</h2>
       <label class="sidebar-setting"><input type="checkbox" id="show-sidebar"> Show sidebar</label>
-      <p class="settings-description">Keep My Desk, Today, Upcoming, and Lists &amp; Chats in view.</p>
+      <p class="settings-description">Shows My Desk, Today, Upcoming, and Lists &amp; Chats in wide windows. Collapses automatically in narrow windows.</p>
       <h2 id="appearance-heading">Appearance</h2>
       <p class="settings-description">Follow your Mac or choose a mode.</p>
       <div id="appearance-modes" role="radiogroup" aria-labelledby="appearance-heading">
@@ -63,8 +63,18 @@
       <p class="settings-description">A little change of atmosphere.</p>
       <div id="themes" role="radiogroup" aria-labelledby="theme-heading"></div>
       <p class="settings-footnote">Applies to your tasks and sticky notes on this Mac. Saved automatically.</p>
+      <section id="mcp-settings" class="settings-section" aria-labelledby="mcp-heading">
+        <h2 id="mcp-heading">MCP server</h2>
+        <p class="settings-description">Connect your agent using stdio and this installation of TinyTasks.</p>
+        <pre id="mcp-config" tabindex="0" aria-label="MCP server configuration">Loading configuration…</pre>
+        <div class="settings-actions"><button id="copy-mcp" disabled>Copy configuration</button><a href="https://github.com/SandpiperMediaGroup/tinytasks/blob/main/docs/agent-setup.md" data-about-link="agent-setup">Setup guide ↗</a></div>
+        <p id="mcp-status" role="status" hidden></p>
+      </section>
       <section class="settings-about" aria-labelledby="about-heading">
         <h2 id="about-heading">About TinyTasks</h2>
+        <p id="installed-version">Loading version…</p>
+        <div class="settings-actions"><button id="check-updates">Check for updates</button><button id="settings-download" hidden>View download ↗</button></div>
+        <p id="update-status" role="status" hidden></p>
         <p>Made by Evan Olson at Sandpiper Media Group.</p>
         <p>Open source under the MIT license.</p>
         <div class="about-links">

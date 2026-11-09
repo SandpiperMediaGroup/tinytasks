@@ -13,6 +13,7 @@ if (!["all", "desk", "done", "today", "upcoming"].includes(view)) view = "all";
 let selectedChat = store.get("selectedChat", "");
 let chatNames = [];
 let sidebarVisible = store.get("sidebar", "0") === "1";
+const sidebarWidth = matchMedia("(min-width: 720px)");
 let listIcons = Object.create(null);
 try { const saved = JSON.parse(store.get("listIcons", "{}")); if (saved && typeof saved === "object" && !Array.isArray(saved)) Object.assign(listIcons, saved); } catch {}
 const navIcons = {
@@ -587,7 +588,7 @@ function render() {
 // Lists are the markdown chat sections, including intentionally empty lists.
 function allChats() { return [...new Set([...chatNames, ...tasks.map(t => t.chat).filter(Boolean)])].sort(compareText); }
 function renderSidebar() {
-  $("sidebar").hidden = !sidebarVisible || noteId != null;
+  $("sidebar").hidden = !sidebarVisible || !sidebarWidth.matches || noteId != null;
   $("sidebar-toggle").setAttribute("aria-checked", sidebarVisible);
   const navButton = (label, count, active, action) => {
     const button = document.createElement("button");
@@ -615,6 +616,14 @@ function renderSidebar() {
     return item;
   }));
 }
+sidebarWidth.addEventListener("change", () => {
+  const hadSidebarFocus = $("sidebar").contains(document.activeElement);
+  renderSidebar();
+  if (!sidebarWidth.matches) {
+    closeFloating();
+    if (hadSidebarFocus) $("view").focus();
+  }
+});
 async function selectView(name, chat = "") {
   if (editingId != null && !await finishEditing?.(true)) return;
   if (!form.hidden) { if (input.value.trim() && !await saveNewTask()) return; closeNew(); }
@@ -1357,3 +1366,17 @@ window.addEventListener("storage", (e) => {
 // Coming back to the window: fresh "2h" labels, and yesterday's desk cleared.
 window.addEventListener("focus", () => { if (editingId == null) { render(); refresh(); } });
 refresh();
+
+// The native command shares a daily cache between windows. Background failures stay quiet.
+if (noteId == null) {
+  const showRelease = status => {
+    $("release-notice").hidden = !status?.update_available;
+    if (status?.update_available) $("release-download").textContent = `TinyTasks ${status.latest_version} is available · View download ↗`;
+  };
+  const checkRelease = () => invoke("check_for_updates", { force: false }).then(showRelease).catch(() => {});
+  listen("updates-changed", event => showRelease(event.payload));
+  $("release-download").onclick = () => invoke("open_about_link", { destination: "releases" }).catch(err => notice(String(err)));
+  checkRelease();
+  setInterval(checkRelease, 60 * 60 * 1000);
+  window.addEventListener("focus", checkRelease);
+}

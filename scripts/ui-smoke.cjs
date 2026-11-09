@@ -16,12 +16,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         { id: 2, title: 'Review the pricing page', details: '', agent: '', chat: '', priority: 2, due: null, created_at: now - 86400, done_at: null, mydesk: true, link: '' },
       ];
       const listeners = {};
-      window.testState = { tasks, chats: ['Billing launch', 'Later'], calls: [], failSave: false, emit: () => listeners['tasks-changed']?.() };
+      window.testState = { tasks, chats: ['Billing launch', 'Later'], calls: [], failSave: false, failUpdate: false,
+        update: { current_version: '0.1.0', latest_version: '0.1.0', update_available: false },
+        emit: () => listeners['tasks-changed']?.(), emitUpdate: () => listeners['updates-changed']?.({ payload: structuredClone(testState.update) }) };
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.testClipboard = text; } } });
       window.__TAURI__ = {
         event: { listen: async (event, callback) => { listeners[event] = callback; } },
         core: { invoke: async (cmd, args = {}) => {
           window.testState.calls.push({ cmd, args });
           const t = tasks.find(t => t.id === args.id);
+          if (cmd === 'app_info') return { version: '0.1.0', mcp: { mcpServers: { tinytasks: { command: 'C:\\Program Files\\TinyTasks\\tinytasks.exe', args: ['mcp'] } } } };
+          if (cmd === 'check_for_updates') {
+            if (testState.failUpdate) throw new Error('Could not reach GitHub. Please try again.');
+            return structuredClone(testState.update);
+          }
           if (cmd === 'location') return { short: 'This computer', folder: '/tmp/tinytasks-test' };
           if (cmd === 'list_chats') return [...new Set([...testState.chats, ...tasks.map(t => t.chat).filter(Boolean)])];
           if (cmd === 'create_list') {

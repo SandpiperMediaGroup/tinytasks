@@ -35,7 +35,7 @@ pub fn run(background: bool) {
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
             location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
-            open_settings, close_settings, list_chats, create_list
+            open_settings, close_settings, list_chats, create_list, app_info, check_for_updates
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -327,9 +327,28 @@ fn open_about_link(destination: &str) -> Res<()> {
     let url = match destination {
         "source" => "https://github.com/SandpiperMediaGroup/tinytasks",
         "timecal" => "https://trytimecal.com",
+        "releases" => crate::updates::RELEASES_URL,
+        "agent-setup" => "https://github.com/SandpiperMediaGroup/tinytasks/blob/main/docs/agent-setup.md",
         _ => return Err("Unknown About link.".into()),
     };
     open::that_detached(url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn app_info() -> Res<serde_json::Value> {
+    let executable = std::env::current_exe().map_err(|_| "Could not locate the TinyTasks executable.".to_string())?;
+    Ok(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "mcp": { "mcpServers": { "tinytasks": { "command": executable, "args": ["mcp"] } } }
+    }))
+}
+
+#[tauri::command]
+async fn check_for_updates(app: AppHandle, force: bool) -> Res<crate::updates::Status> {
+    let status = tauri::async_runtime::spawn_blocking(move || crate::updates::check(force))
+        .await.map_err(|_| "The update check could not finish.".to_string())??;
+    let _ = app.emit("updates-changed", &status);
+    Ok(status)
 }
 
 #[derive(serde::Serialize)]

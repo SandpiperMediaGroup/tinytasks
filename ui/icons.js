@@ -80,5 +80,4 @@ const LIST_ICON_PATHS = {
   dumbbell: '<path d="M6 4v16M2 8v8M18 4v16M22 8v8M6 12h12"/>',
   bike: '<circle cx="5" cy="17" r="4"/><circle cx="19" cy="17" r="4"/><path d="m5 17 5-9 5 9H5M8 5h5M11 8h6l2 9M16 3h3v5"/>',
   car: '<path d="m3 10 3-7h12l3 7v10H3zM3 10h18M6 14h2M16 14h2M5 20v2M19 20v2"/>',
-  train: '<rect x="5" y="2" width="14" height="17" rx="3"/><path d="M5 11h14M12 2v9M8 15h.01M16 15h.01M8 19l-3 3M16 19l3 3"/>',
 };

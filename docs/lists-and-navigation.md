@@ -16,6 +16,10 @@ Enable **Show sidebar** from the top-left navigation menu or Settings. It contai
 **My Desk**, **Today** (due today or overdue), **Upcoming** (due after today), and **All**,
 followed by **Lists & Chats**. These lists are the same chat sections in `tasks.md`.
 Empty lists are saved in the file and can sync between computers.
+An enabled sidebar collapses below 720 pixels and returns when the window widens;
+your saved preference stays enabled. Task controls stay centered within the row,
+independently of the expanded details below it. The symbol picker has 80 icons in
+ten complete rows.
 
 - Double-click empty sidebar space, or use its **+**, to create a list.
 - Drag a task to another sidebar list or a list section on the canvas when grouped by
@@ -33,6 +37,19 @@ Empty lists are saved in the file and can sync between computers.
 
 The sidebar preference syncs immediately between the main and Settings windows.
 Sticky notes keep their existing paper layout.
+
+## Updates and MCP settings
+
+Settings shows the installed version and **Check for updates**. TinyTasks quietly
+checks the latest published stable GitHub release once a day; failed background
+checks stay quiet. An available update adds a download link in Settings and the main
+window. The link opens the release page for manual installation. Version comparisons
+follow semantic version precedence, and no automatic installer is involved.
+
+The **MCP server** section shows a copyable stdio configuration using this installation's
+executable path and the `mcp` argument. The setup guide explains how to connect your
+agent. Each agent launches its own MCP server process; there is no separate service
+to enable or port to configure.
 
 ## Verification
 

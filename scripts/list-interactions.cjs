@@ -16,6 +16,21 @@ module.exports = async (browser, installMock, url, errors) => {
   const rootLine = id => task(id).locator(':scope > .line');
   const wait = () => page.waitForTimeout(220);
   const assertNoOverflow = async () => assert.equal(await page.evaluate(() => document.querySelector('#main').scrollWidth <= document.querySelector('#main').clientWidth), true);
+  const alignment = [];
+  const assertCentered = async (line, selectors, label) => {
+    const measurement = await line.evaluate((el, selectors) => {
+      const row = el.getBoundingClientRect();
+      const middle = row.y + row.height / 2;
+      return { height: row.height, items: selectors.flatMap(selector => [...el.querySelectorAll(selector)].filter(item => item.getClientRects().length).map(item => {
+        const bounds = item.getBoundingClientRect();
+        return { selector, offset: bounds.y + bounds.height / 2 - middle };
+      })) };
+    }, selectors);
+    alignment.push({ label, ...measurement });
+    for (const item of measurement.items) assert.ok(Math.abs(item.offset) <= 0.5, `${label}: ${item.selector} is ${item.offset}px off the row center`);
+    return measurement;
+  };
+  const allRowItems = ['.check', '.title', '.task-id', '.agent-badge', '.chat', '.due', '.due svg', '.due > span', '.prio', '.time', '.subtask-count', '.more'];
   try {
     await page.goto(url);
     await page.evaluate(() => localStorage.clear());
@@ -90,6 +105,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.locator('#display').click();
     await page.locator('[data-property="id"]').click();
     await page.keyboard.press('Escape');
+    await assertCentered(rootLine(1), allRowItems, 'wide row with all attributes');
     await page.screenshot({ path: path.join(dir, 'inline-attributes.png') });
     await page.locator('#display').click();
     await page.locator('[data-property="id"]').click();
@@ -106,7 +122,13 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.locator('#list-icon-options [aria-label="folder"]').click();
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('listIcons'))['Billing launch']), 'folder');
     await page.locator('#list-nav [data-chat="Later"] .list-icon').click();
-    assert.ok(await page.locator('#list-icon-options button').count() >= 72);
+    assert.equal(await page.locator('#list-icon-options button').count(), 80);
+    const iconRows = await page.locator('#list-icon-options button').evaluateAll(buttons => {
+      const rows = new Map();
+      for (const button of buttons) { const y = button.getBoundingClientRect().y; rows.set(y, (rows.get(y) || 0) + 1); }
+      return [...rows.values()];
+    });
+    assert.deepEqual(iconRows, Array(10).fill(8));
     assert.equal(await page.locator('#list-icon-menu input, #custom-list-icon, #list-icon-auto').count(), 0);
     assert.equal(await page.locator('#list-icon-agent button').count(), 1);
     assert.equal(await page.locator('#list-icon-agent button').getAttribute('aria-label'), 'Use Claude logo');
@@ -148,6 +170,24 @@ module.exports = async (browser, installMock, url, errors) => {
     });
     await task(1).locator(':scope > .line .subtask-count').waitFor();
     assert.equal(await task(1).locator(':scope > .line .subtask-count').innerText(), '1/2');
+    const collapsed = await assertCentered(rootLine(1), allRowItems, 'parent with subtask count');
+    await page.screenshot({ path: path.join(dir, 'row-alignment-collapsed.png') });
+    await rootLine(1).focus(); await page.keyboard.press('Enter'); await wait();
+    const opened = await assertCentered(rootLine(1), allRowItems, 'same parent with details expanded');
+    assert.equal(opened.height, collapsed.height);
+    await assertCentered(rootLine(20), allRowItems, 'subtask row');
+    await page.screenshot({ path: path.join(dir, 'row-alignment-expanded.png') });
+    await rootLine(1).focus(); await page.keyboard.press('Enter'); await wait();
+    await page.evaluate(() => {
+      window.originalTaskTitle = testState.tasks[0].title;
+      testState.tasks[0].title = 'A long task title that wraps across multiple lines while the completion circle, priority, date and actions remain balanced within the row. '.repeat(2);
+      testState.emit();
+    });
+    await page.waitForFunction(() => document.querySelector('.task[data-task-id="1"] .title-text').textContent.startsWith('A long task title'));
+    await assertCentered(rootLine(1), ['.check', '.prio', '.time', '.subtask-count', '.more'], 'wrapped task title');
+    await page.screenshot({ path: path.join(dir, 'row-alignment-wrapped.png') });
+    await page.evaluate(() => { testState.tasks[0].title = originalTaskTitle; testState.emit(); });
+    await page.waitForFunction(() => document.querySelector('.task[data-task-id="1"] .title-text').textContent === originalTaskTitle);
     const drag = async (from, to, cancel = false, capture = null) => {
       const a = await from.boundingBox(), b = await to.boundingBox();
       await page.mouse.move(a.x + 39, a.y + a.height / 2);
@@ -191,10 +231,15 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.screenshot({ path: path.join(dir, 'wide-sidebar.png') });
     for (const width of [280, 360, 700, 1120]) {
       await page.setViewportSize({ width, height: 780 });
+      await page.waitForFunction(shown => document.querySelector('#sidebar').hidden === !shown, width >= 720);
+      assert.equal(await page.evaluate(() => localStorage.getItem('sidebar')), '1');
       await assertNoOverflow();
+      await assertCentered(rootLine(1), ['.check', '.more'], `parent controls at ${width}px`);
+      await assertCentered(rootLine(20), ['.check', '.more'], `subtask controls at ${width}px`);
     }
     await page.setViewportSize({ width: 360, height: 780 });
     await page.screenshot({ path: path.join(dir, 'narrow-sidebar.png') });
+    fs.writeFileSync(path.join(dir, 'row-alignment.json'), JSON.stringify(alignment, null, 2));
     await page.setViewportSize({ width: 1120, height: 780 });
     await page.reload();
     assert.equal(await page.locator('#sidebar').isVisible(), true);
@@ -208,6 +253,33 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.waitForFunction(() => document.querySelector('#sidebar').hidden);
     await settings.locator('#show-sidebar').check();
     await page.waitForFunction(() => !document.querySelector('#sidebar').hidden);
+    await settings.locator('#copy-mcp').click();
+    assert.deepEqual(await settings.evaluate(() => JSON.parse(testClipboard)), { mcpServers: { tinytasks: { command: 'C:\\Program Files\\TinyTasks\\tinytasks.exe', args: ['mcp'] } } });
+    assert.equal(await settings.locator('#mcp-status').innerText(), 'Configuration copied.');
+    await settings.locator('[data-about-link="agent-setup"]').click();
+    assert.equal(await settings.evaluate(() => testState.calls.some(c => c.cmd === 'open_about_link' && c.args.destination === 'agent-setup')), true);
+    await settings.locator('#check-updates').click();
+    await settings.waitForFunction(() => document.querySelector('#update-status').textContent === 'You’re up to date.');
+    assert.equal(await settings.evaluate(() => testState.calls.some(c => c.cmd === 'check_for_updates' && c.args.force === true)), true);
+    await settings.evaluate(() => { testState.failUpdate = true; });
+    await settings.locator('#check-updates').click();
+    await settings.waitForFunction(() => document.querySelector('#update-status').textContent.includes('Could not reach GitHub'));
+    assert.equal(await settings.locator('#settings-download').isVisible(), false);
+    await settings.evaluate(() => { testState.failUpdate = false; testState.update = { current_version: '0.1.0', latest_version: '0.2.0', update_available: true }; });
+    await settings.locator('#check-updates').click();
+    await settings.locator('#settings-download').waitFor();
+    await settings.locator('#settings-download').click();
+    assert.equal(await settings.evaluate(() => testState.calls.some(c => c.cmd === 'open_about_link' && c.args.destination === 'releases')), true);
+    await settings.locator('.settings-body').evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await settings.screenshot({ path: path.join(dir, 'mcp-and-updates.png') });
+    await page.evaluate(() => { testState.update = { current_version: '0.1.0', latest_version: '0.2.0', update_available: true }; testState.emitUpdate(); });
+    await page.locator('#release-download').waitFor();
+    await page.locator('#release-download').click();
+    assert.equal(await page.evaluate(() => testState.calls.some(c => c.cmd === 'open_about_link' && c.args.destination === 'releases')), true);
+    await page.screenshot({ path: path.join(dir, 'release-notice.png') });
+    await page.evaluate(() => { testState.failUpdate = true; window.dispatchEvent(new Event('focus')); });
+    assert.equal(await page.locator('#notice').isVisible(), false, 'Background update failures stay quiet');
+    await page.evaluate(() => { testState.failUpdate = false; testState.update.update_available = false; testState.emitUpdate(); });
     await settings.close();
     await page.locator('#primary-nav button').nth(1).click();
     assert.equal(await page.locator('#heading').innerText(), 'Today');

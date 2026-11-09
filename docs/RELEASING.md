@@ -7,6 +7,9 @@ Before 1.0, document any compatibility changes explicitly in each minor release.
 
 Create an annotated `vMAJOR.MINOR.PATCH` tag at the exact clean commit used to build the assets.
 Never move a published tag or replace published binaries: changed builds need a new version.
+A missing platform may be added to an existing release when built from its exact unchanged
+tagged commit. Keep existing binaries intact, extend `SHA256SUMS.txt` with the new artifacts,
+and update release notes and download links to reflect the added platform.
 The update check compares semantic version precedence against GitHub's latest stable release;
 build metadata alone does not count as a newer version. Drafts and prereleases are ignored.
 

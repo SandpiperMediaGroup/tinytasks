@@ -35,11 +35,11 @@ and can also be checked manually in Settings; installing a new release is manual
 
 ## Download for Mac
 
-Download the universal Mac DMG from [v0.1.0](https://github.com/SandpiperMediaGroup/tinytasks/releases/tag/v0.1.0),
+Download the universal Mac DMG from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
 open it, and drag **TinyTasks.app** to **Applications** before launching it. A ZIP download is also available.
 Both the app and DMG are Developer ID signed, notarized by Apple, and carry their notarization tickets.
-The app supports Apple silicon and Intel Macs. This is the latest packaged Mac version;
-v0.2.0 adds a Windows release and does not include a new macOS build.
+The app supports Apple silicon and Intel Macs. v0.2.0 includes the latest task entry,
+Lists & Chats navigation, and desktop settings improvements on both Windows and macOS.
 
 For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
 See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the release guide](docs/RELEASING.md).

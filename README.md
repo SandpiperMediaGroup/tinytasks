@@ -26,15 +26,23 @@ you already use, such as Google Drive, Dropbox, OneDrive, or iCloud Drive. Each 
 its own app and selects its local copy of that shared folder. A local-only folder works too.
 This folder holds your `tasks.md`; you do not need to keep the source-code checkout there.
 
+## Download for Windows
+
+Download the Windows x64 setup executable from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest)
+and run it. A portable ZIP is also available; extract it to a permanent folder before connecting your agents.
+Settings shows the installed executable path and a copyable MCP configuration. Updates are checked daily
+and can also be checked manually in Settings; installing a new release is manual.
+
 ## Download for Mac
 
-Download the universal Mac DMG from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
+Download the universal Mac DMG from [v0.1.0](https://github.com/SandpiperMediaGroup/tinytasks/releases/tag/v0.1.0),
 open it, and drag **TinyTasks.app** to **Applications** before launching it. A ZIP download is also available.
 Both the app and DMG are Developer ID signed, notarized by Apple, and carry their notarization tickets.
-The app supports Apple silicon and Intel Macs. Windows users can build from source below.
+The app supports Apple silicon and Intel Macs. This is the latest packaged Mac version;
+v0.2.0 adds a Windows release and does not include a new macOS build.
 
 For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
-See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the Mac release guide](docs/RELEASING.md).
+See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the release guide](docs/RELEASING.md).
 
 ## A look inside
 

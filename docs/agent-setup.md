@@ -29,14 +29,17 @@ an installer matching the OS and processor. Use the release's installation instr
 verify its published checksum when provided. Do not confuse GitHub's source archives with an
 app installer or describe an unnotarized build as notarized.
 
-The current release provides a universal Mac DMG and ZIP for Apple silicon and Intel. Both the
+The latest Windows release provides an x64 setup executable and portable ZIP. Run the installer,
+or extract the ZIP to a permanent local folder. Settings shows the actual executable path and a
+copyable MCP configuration. Locate the installed `tinytasks.exe` before connecting agents.
+
+The latest packaged Mac version is [v0.1.0](https://github.com/SandpiperMediaGroup/tinytasks/releases/tag/v0.1.0),
+with a universal DMG and ZIP for Apple silicon and Intel. v0.2.0 has no new macOS build. Both the
 app and DMG are Developer ID signed and separately notarized with stapled tickets. On macOS,
 prefer the DMG: open it, copy `TinyTasks.app` to `/Applications`, eject the image, and launch
 `/Applications/TinyTasks.app`. The ZIP contains the same app. Check `SHA256SUMS.txt` against the
 artifact you downloaded. Do not run the MCP server from a mounted DMG or a temporary download folder.
 
-For Windows, check whether a compatible binary has since been released; otherwise build from
-source. Locate the resulting `tinytasks.exe`.
 If no suitable release exists, explain that a source build is currently required and follow
 the [README build instructions](../README.md#build), including the platform prerequisites.
 For macOS source builds, `cargo tauri build --bundles app` produces

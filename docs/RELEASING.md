@@ -1,4 +1,42 @@
-# Mac releases from a development Mac
+# Releases
+
+Use semantic versions in `Cargo.toml`, the root `tinytasks` package in `Cargo.lock`, and
+`tauri.conf.json`. Keep all three identical. Use a patch release for fixes, a minor release
+for features, and a major release for breaking compatibility once the project reaches 1.0.
+Before 1.0, document any compatibility changes explicitly in each minor release.
+
+Create an annotated `vMAJOR.MINOR.PATCH` tag at the exact clean commit used to build the assets.
+Never move a published tag or replace published binaries: changed builds need a new version.
+The update check compares semantic version precedence against GitHub's latest stable release;
+build metadata alone does not count as a newer version. Drafts and prereleases are ignored.
+
+Publish only the platforms actually built and verified. When a release omits a platform,
+link to its last available build in the notes and keep README download links accurate.
+Do not rename or reupload an older platform binary as a new version.
+
+## Windows releases
+
+Use a clean checkout on Windows with the Rust MSVC toolchain and Tauri prerequisites installed.
+Run the checks described in the README. Build the committed version with the pinned Tauri CLI:
+
+```powershell
+$env:CARGO_BUILD_JOBS = '2'
+$env:CARGO_TARGET_DIR = Join-Path $PWD 'target'
+npx --yes @tauri-apps/cli@2.12.4 build --ci --bundles nsis --target x86_64-pc-windows-msvc -- --locked
+```
+
+Use a separate target directory if the development app is running. The NSIS installer is under
+`target/x86_64-pc-windows-msvc/release/bundle/nsis`. Also offer a portable ZIP containing the
+release `tinytasks.exe`, the license, and brief installation/MCP instructions. The installer
+downloads WebView2 when needed; portable users need the WebView2 runtime already installed.
+
+Inspect executable architecture and version, exercise MCP against the exact packaged binary
+with isolated state, and compare the executable extracted from the portable ZIP. Generate
+`SHA256SUMS.txt` over the final installer and ZIP. Verify GitHub's uploaded asset digests match
+before publishing the draft release. State whether binaries are signed and identify any native
+desktop testing limitations. Never run the installer against the development installation as a test.
+
+## Mac releases from a development Mac
 
 Use a clean, committed checkout with matching versions in `Cargo.toml`, `Cargo.lock`, and
 `tauri.conf.json`. Install Xcode, Rust, Tauri CLI 2, and both `aarch64-apple-darwin` and

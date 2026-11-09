@@ -1,0 +1,41 @@
+name: UI interactions
+
+on:
+  pull_request:
+    paths:
+      - 'ui/**'
+      - 'scripts/*interactions.cjs'
+      - 'scripts/ui-smoke.cjs'
+      - '.github/workflows/ui.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  interactions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install the isolated browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/tinytasks-ui" playwright@1.57.0
+          "$RUNNER_TEMP/tinytasks-ui/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check task interactions and capture motion
+        env:
+          REVIEW_MOTION: '1'
+        run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/tinytasks-ui/node_modules/playwright" node scripts/ui-smoke.cjs
+      - name: Retain rendered verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-verification
+          path: artifacts/list-interactions/
+          retention-days: 14

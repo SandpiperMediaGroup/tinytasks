@@ -1,0 +1,118 @@
+name: Windows release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact committed source to build (release commit or tag)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install stable Rust
+        run: |
+          rustup update stable --no-self-update
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          rustup default stable
+          rustup target add x86_64-pc-windows-msvc
+      - name: Validate release version and record source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $metadata = cargo metadata --no-deps --format-version 1 --locked | ConvertFrom-Json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $version = ($metadata.packages | Where-Object name -eq 'tinytasks').version
+          $config = Get-Content tauri.conf.json -Raw | ConvertFrom-Json
+          if ($version -notmatch '^\d+\.\d+\.\d+$' -or $version -ne $config.version) { throw 'Release versions must match.' }
+          Add-Content $env:GITHUB_ENV "APP_VERSION=$version"
+          New-Item -ItemType Directory -Path release-output | Out-Null
+          git rev-parse HEAD | Set-Content release-output/source-commit.txt
+          git diff --exit-code
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Rust checks
+        run: |
+          cargo test --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build the NSIS installer
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $PWD 'target'
+          npx --yes @tauri-apps/cli@2.12.4 build --ci --bundles nsis --target x86_64-pc-windows-msvc -- --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Package and verify Windows downloads
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:APP_VERSION
+          $binary = Join-Path $PWD 'target/x86_64-pc-windows-msvc/release/tinytasks.exe'
+          $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($binary))
+          try {
+            $reader.BaseStream.Position = 0x3c
+            $offset = $reader.ReadInt32()
+            $reader.BaseStream.Position = $offset
+            if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne 0x8664) { throw 'Expected a Windows x64 executable.' }
+          } finally { $reader.Dispose() }
+          $productVersion = (Get-Item $binary).VersionInfo.ProductVersion
+          if ($productVersion -ne $version -and $productVersion -ne "$version.0") { throw "Unexpected executable version: $productVersion" }
+          $installers = @(Get-ChildItem target/x86_64-pc-windows-msvc/release/bundle/nsis -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer.' }
+          $installerName = "TinyTasks-$version-windows-x64-setup.exe"
+          $zipName = "TinyTasks-$version-windows-x64.zip"
+          Copy-Item $installers[0].FullName "release-output/$installerName"
+          New-Item -ItemType Directory -Path portable | Out-Null
+          Copy-Item $binary portable/tinytasks.exe
+          Copy-Item LICENSE portable/LICENSE.txt
+          @'
+          TinyTasks for Windows x64
+
+          Extract this folder to a permanent location and run tinytasks.exe.
+          The portable app requires the Microsoft Edge WebView2 runtime.
+          Alternatively, use the setup executable; it installs WebView2 if needed.
+          In Settings, copy the executable path and MCP configuration for your agent.
+          MCP uses the executable's absolute path with the argument: mcp
+
+          These Windows binaries are unsigned. Source and setup guide:
+          https://github.com/SandpiperMediaGroup/tinytasks
+          '@ | Set-Content portable/README.txt
+          Compress-Archive -Path portable/* -DestinationPath "release-output/$zipName"
+          Expand-Archive "release-output/$zipName" -DestinationPath portable-check
+          $extracted = Join-Path $PWD 'portable-check/tinytasks.exe'
+          if ((Get-FileHash $binary).Hash -ne (Get-FileHash $extracted).Hash) { throw 'Portable executable differs from the release build.' }
+          $env:TINYTASKS_SMOKE_BINARY = $extracted
+          @'
+          import os
+          from pathlib import Path
+          test = Path('scripts/mcp-smoke.py')
+          source = test.read_text()
+          old = "binary = Path(__file__).resolve().parents[1] / 'target/debug/tinytasks'"
+          assert old in source
+          source = source.replace(old, "binary = Path(os.environ['TINYTASKS_SMOKE_BINARY'])")
+          exec(compile(source, str(test), 'exec'), {'__file__': str(test.resolve()), '__name__': '__main__'})
+          '@ | python -
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          @($installerName, $zipName) | ForEach-Object {
+            $digest = (Get-FileHash "release-output/$_" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$digest  $_"
+          } | Set-Content -Encoding utf8NoBOM release-output/SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tinytasks-windows-${{ env.APP_VERSION }}
+          path: release-output/
+          if-no-files-found: error
+          retention-days: 14

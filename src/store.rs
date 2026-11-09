@@ -677,6 +677,15 @@ impl List {
         Ok(())
     }
 
+    /// A list explicitly used by the desktop stays available after its last task is moved.
+    pub fn preserve_chat(&mut self, name: &str) {
+        let Some(start) = self.blocks.iter().position(|b| matches!(b, Block::Text(text) if heading(text).as_deref() == Some(name))) else { return };
+        let end = self.blocks[start + 1..].iter().position(is_heading).map_or(self.blocks.len(), |offset| start + 1 + offset);
+        if !self.blocks[start + 1..end].iter().any(|b| matches!(b, Block::Text(text) if text == "<!-- TinyTasks list -->")) {
+            self.blocks.insert(start + 1, Block::Text("<!-- TinyTasks list -->".into()));
+        }
+    }
+
     pub fn render(&self) -> String {
         let mut lines: Vec<String> = Vec::new();
         let has_tasks = self.tasks().next().is_some();
@@ -1177,5 +1186,19 @@ mod tests {
         assert_eq!(restored.get(child).unwrap().chat, "Later");
         assert_eq!(restored.get(parent).unwrap().agent, "codex");
         assert_eq!(restored.children(parent).len(), 1);
+    }
+
+    #[test]
+    fn desktop_moves_preserve_existing_lists_without_duplicate_markers() {
+        let mut list = parse("## Source\n\n- [ ] Move me @id(1)\n\n## Destination\n\n");
+        list.preserve_chat("Source");
+        list.preserve_chat("Source");
+        list.preserve_chat("Destination");
+        list.update(1, Changes { chat: Some("Destination"), ..Default::default() });
+        let text = list.render();
+        assert_eq!(text.matches("<!-- TinyTasks list -->").count(), 2);
+        let restored = parse(&text);
+        assert_eq!(restored.chats(), vec!["Source", "Destination"]);
+        assert_eq!(restored.get(1).unwrap().chat, "Destination");
     }
 }

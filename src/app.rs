@@ -246,6 +246,11 @@ fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<Str
     let changes = store::Changes { title, details: details.as_deref(), chat: chat.as_deref(), agent: agent.as_deref(), ..Default::default() };
     store::change(|l| {
         if l.get(id).is_none() { return Err("That task is gone.".into()); }
+        if let Some(destination) = chat.as_deref() {
+            let source = l.get(id).unwrap().chat.clone();
+            l.preserve_chat(&source);
+            l.preserve_chat(destination);
+        }
         Ok(l.update(id, changes))
     })?;
     reply(&app)

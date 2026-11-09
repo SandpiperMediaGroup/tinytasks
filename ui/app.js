@@ -20,22 +20,16 @@ const navIcons = {
   today: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1"/>',
   upcoming: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4m-6 7 3 2-3 2"/>',
   all: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
-  star: '<path d="m12 2 2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/>',
-  folder: '<path d="M3 7h7l2 2h9v11H3z"/>',
-  flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
-  book: '<path d="M4 3h13a2 2 0 0 1 2 2v16H6a2 2 0 0 1-2-2zm0 14h15"/>',
-  code: '<path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16"/>',
-  briefcase: '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V3h8v4M3 12h18M10 12v3h4v-3"/>',
+  ...LIST_ICON_PATHS,
 };
 function symbolIcon(name) {
   const el = document.createElement("span"); el.className = "nav-icon";
   el.setAttribute("aria-hidden", "true");
-  if (Object.hasOwn(navIcons, name)) el.innerHTML = `<svg viewBox="0 0 24 24">${navIcons[name]}</svg>`;
-  else el.textContent = name;
+  el.innerHTML = `<svg viewBox="0 0 24 24">${navIcons[Object.hasOwn(navIcons, name) ? name : "star"]}</svg>`;
   return el;
 }
 function listIcon(chat, agent = "") {
-  if (Object.hasOwn(listIcons, chat) && typeof listIcons[chat] === "string" && listIcons[chat]) return symbolIcon(listIcons[chat]);
+  if (Object.hasOwn(listIcons, chat) && Object.hasOwn(LIST_ICON_PATHS, listIcons[chat])) return symbolIcon(listIcons[chat]);
   const sourceAgent = agent || tasks.find(t => t.chat === chat && t.agent)?.agent;
   return sourceAgent ? agentIcon(sourceAgent) : symbolIcon("star");
 }
@@ -1142,25 +1136,42 @@ function saveListIcon(value) {
 }
 function openListIconMenu(name, anchor) {
   iconChat = name;
-  $("list-icon-options").replaceChildren(...["star", "folder", "flag", "book", "code", "briefcase"].map(icon => {
+  const originalAgent = tasks.find(t => t.chat === name && t.agent)?.agent;
+  $("list-icon-agent").replaceChildren();
+  if (agentInfo(originalAgent).icon) {
+    const original = document.createElement("button");
+    original.title = `Use ${agentInfo(originalAgent).name} logo`;
+    original.setAttribute("aria-label", original.title);
+    original.setAttribute("aria-pressed", !Object.hasOwn(LIST_ICON_PATHS, listIcons[name]));
+    original.appendChild(agentIcon(originalAgent));
+    original.onclick = e => { e.stopPropagation(); saveListIcon(null); };
+    $("list-icon-agent").appendChild(original);
+  }
+  $("list-icon-options").replaceChildren(...Object.keys(LIST_ICON_PATHS).map(icon => {
     const button = document.createElement("button");
     button.setAttribute("aria-label", icon);
-    button.setAttribute("aria-pressed", listIcons[name] === icon);
+    button.title = icon[0].toUpperCase() + icon.slice(1);
+    button.setAttribute("aria-pressed", listIcons[name] === icon || (icon === "star" && !Object.hasOwn(LIST_ICON_PATHS, listIcons[name]) && !agentInfo(originalAgent).icon));
     button.appendChild(symbolIcon(icon));
     button.onclick = e => { e.stopPropagation(); saveListIcon(icon); };
     return button;
   }));
-  $("custom-list-symbol").value = "";
   place($("list-icon-menu"), anchor);
-  $("list-icon-auto").focus();
+  ($("list-icon-menu").querySelector('[aria-pressed="true"]') || $("list-icon-menu").querySelector("button"))?.focus();
 }
-$("list-icon-auto").onclick = () => saveListIcon(null);
-$("custom-list-icon").onsubmit = e => {
-  e.preventDefault();
-  const value = $("custom-list-symbol").value.trim();
-  const symbols = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)];
-  if (symbols.length !== 1) { notice("Choose one emoji or symbol for the list icon."); return; }
-  saveListIcon(value);
+$("list-icon-menu").onkeydown = e => {
+  if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation(); closeFloating();
+    [...$("list-nav").querySelectorAll("[data-chat]")].find(el => el.dataset.chat === iconChat)?.querySelector(".list-icon")?.focus();
+    return;
+  }
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+  e.preventDefault(); e.stopPropagation();
+  const options = [...$("list-icon-options").querySelectorAll("button")];
+  const current = options.indexOf(document.activeElement);
+  const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -8, ArrowDown: 8 }[e.key];
+  const next = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : current < 0 ? 0 : Math.max(0, Math.min(options.length - 1, current + offset));
+  options[next]?.focus();
 };
 
 async function openListMenu(task, anchor) {

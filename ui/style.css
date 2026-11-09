@@ -154,14 +154,16 @@ main { flex: 1; min-width: 0; overflow-y: auto; padding: 0 0 16px; container-typ
 .sidebar-list:has([aria-current="page"]) { background: var(--bg-hover); }
 #sidebar nav .sidebar-list > .list-icon { width: 26px; height: 30px; padding: 6px 5px; flex: none; }
 #sidebar nav .sidebar-list > button:not(.list-icon) { min-width: 0; flex: 1; padding-left: 3px; }
-#list-icon-menu { width: 210px; padding: 8px; }
-#list-icon-options { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; margin: 5px 0; }
-#list-icon-options button { justify-content: center; padding: 6px; }
-#list-icon-options button::after { display: none; }
-#list-icon-options button[aria-pressed="true"] { background: var(--bg-hover); outline: 1px solid var(--accent); }
-#custom-list-icon { display: flex; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
-#custom-list-symbol { width: 100%; min-width: 0; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 5px; font: inherit; }
-#custom-list-icon button { width: auto; font-size: 12px; }
+#list-icon-menu { width: 340px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; padding: 10px; }
+.icon-picker-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 7px; margin-bottom: 7px; border-bottom: 1px solid var(--line); }
+.icon-picker-head .menu-label { padding-left: 4px; }
+#list-icon-agent:empty { display: none; }
+#list-icon-options { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
+#list-icon-menu button { justify-content: center; height: 32px; padding: 5px; border-radius: 5px; }
+#list-icon-agent button { width: 32px; }
+#list-icon-options .nav-icon, #list-icon-agent .agent-badge { width: 18px; height: 18px; }
+#list-icon-menu button::after { display: none; }
+#list-icon-menu button[aria-pressed="true"] { background: var(--bg-hover); outline: 1px solid var(--accent); }
 #sidebar .n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 #sidebar nav button:hover, #sidebar nav button[aria-current="page"] { background: var(--bg-hover); }
 #sidebar nav button[aria-current="page"] { font-weight: 650; }

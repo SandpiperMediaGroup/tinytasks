@@ -25,8 +25,10 @@ Empty lists are saved in the file and can sync between computers.
   Both open the same picker, with existing lists and **New list…**. For subtasks, the
   picker moves the parent and its steps together.
 - Lists use their agent's icon, or a four-pointed star when no agent is available.
-  Click the icon in the sidebar to choose another symbol or enter an emoji.
-  **Use agent icon or star** restores the default. Custom icons appear in the sidebar,
+  Click the icon in the sidebar to choose from the outline symbol palette. When the list
+  has an agent, its original logo is available at the top of the picker to restore it.
+  Choosing a symbol changes the list's appearance and keeps task attribution intact.
+  Custom icons appear in the sidebar,
   list group headings, and the move picker. Icon preferences are saved on this computer.
 
 The sidebar preference syncs immediately between the main and Settings windows.

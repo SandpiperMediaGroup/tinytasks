@@ -122,10 +122,8 @@
   </form>
   <div id="list-menu" class="menu floating" role="menu" aria-label="Move to list" hidden></div>
   <div id="list-icon-menu" class="menu floating" role="dialog" aria-label="List icon" hidden>
-    <div class="menu-label">List icon</div>
-    <button id="list-icon-auto">Use agent icon or star</button>
-    <div id="list-icon-options"></div>
-    <form id="custom-list-icon" autocomplete="off"><input id="custom-list-symbol" aria-label="Custom list emoji" placeholder="Emoji" maxlength="16"><button type="submit">Set</button></form>
+    <div class="icon-picker-head"><div class="menu-label">List icon</div><div id="list-icon-agent"></div></div>
+    <div id="list-icon-options" role="group" aria-label="List symbols"></div>
   </div>
 
   <div id="prio-menu" class="menu floating" role="menu" hidden>
@@ -188,6 +186,7 @@
   </template>
 
   <script src="agents.js"></script>
+  <script src="icons.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

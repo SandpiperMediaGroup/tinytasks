@@ -26,6 +26,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.mouse.dblclick(400, bottom + 45);
     assert.equal(await page.locator('#new-title').evaluate(el => el === document.activeElement), true);
     await page.locator('#new-title').fill('First quick thought');
+    await page.screenshot({ path: path.join(dir, 'quick-entry.png') });
     await page.locator('#new-title').press('Enter');
     await page.waitForFunction(() => testState.tasks.some(t => t.title === 'First quick thought'));
     await page.locator('#new-title').fill('Second quick thought');
@@ -41,6 +42,7 @@ module.exports = async (browser, installMock, url, errors) => {
     // Editable attributes open immediately; task details remain closed.
     await task(1).locator('.due').click();
     assert.equal(await page.locator('#due-menu').isVisible(), true);
+    await page.screenshot({ path: path.join(dir, 'due-picker.png') });
     assert.equal(await rootLine(1).getAttribute('aria-expanded'), 'false');
     await page.locator('#due-menu [data-quick="0"]').click();
     await page.waitForFunction(() => testState.tasks[0].due === new Date().toLocaleDateString('en-CA'));
@@ -52,10 +54,12 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.locator('#attribute-value').press('Enter');
     await page.waitForFunction(() => testState.tasks[0].agent === 'claude');
     await task(1).locator('.chat').click();
+    await page.screenshot({ path: path.join(dir, 'move-picker.png') });
     await page.locator('#list-menu [data-chat-choice="Later"]').click();
     await page.waitForFunction(() => testState.tasks[0].chat === 'Later');
     const contextLists = async () => {
       await rootLine(1).click({ button: 'right' });
+      await page.screenshot({ path: path.join(dir, 'context-menu.png') });
       await page.locator('#task-menu [data-action="set-chat"]').click();
       assert.equal(await page.locator('#list-menu').isVisible(), true);
     };
@@ -83,7 +87,15 @@ module.exports = async (browser, installMock, url, errors) => {
       return Math.abs(title.y - sub.y) < 6;
     });
     assert.equal(inline, true);
+    await page.locator('#display').click();
+    await page.locator('[data-property="id"]').click();
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: path.join(dir, 'inline-attributes.png') });
+    await page.locator('#display').click();
+    await page.locator('[data-property="id"]').click();
+    await page.keyboard.press('Escape');
     await page.locator('#view').click();
+    await page.screenshot({ path: path.join(dir, 'nav-menu.png') });
     await page.locator('#sidebar-toggle').click();
     assert.equal(await page.locator('#sidebar').isVisible(), true);
     assert.deepEqual(await page.locator('#primary-nav .nav-label').allTextContents(), ['My Desk', 'Today', 'Upcoming', 'All']);
@@ -94,12 +106,30 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.locator('#list-icon-options [aria-label="folder"]').click();
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('listIcons'))['Billing launch']), 'folder');
     await page.locator('#list-nav [data-chat="Later"] .list-icon').click();
-    await page.locator('#custom-list-symbol').fill('🚀');
-    await page.locator('#custom-list-symbol').press('Enter');
-    assert.equal(await page.locator('#list-nav [data-chat="Later"] .nav-icon').innerText(), '🚀');
+    assert.ok(await page.locator('#list-icon-options button').count() >= 72);
+    assert.equal(await page.locator('#list-icon-menu input, #custom-list-icon, #list-icon-auto').count(), 0);
+    assert.equal(await page.locator('#list-icon-agent button').count(), 1);
+    assert.equal(await page.locator('#list-icon-agent button').getAttribute('aria-label'), 'Use Claude logo');
+    await page.screenshot({ path: path.join(dir, 'icon-picker.png') });
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.locator('#list-icon-options [aria-label="star"]').evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('End');
+    assert.equal(await page.locator('#list-icon-options button').last().evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#list-nav [data-chat="Later"] .list-icon').evaluate(el => el === document.activeElement), true);
+    await page.locator('#list-nav [data-chat="Later"] .list-icon').click();
+    await page.locator('#list-icon-options [aria-label="rocket"]').click();
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('listIcons')).Later), 'rocket');
+    assert.equal(await page.evaluate(() => testState.tasks[0].agent), 'claude');
+    await page.locator('#list-nav [data-chat="Later"] .list-icon').click();
+    await page.locator('#list-icon-agent button').click();
+    assert.equal(await page.locator('#list-nav [data-chat="Later"] .agent-badge').getAttribute('title'), 'Claude');
+    await page.locator('#list-nav [data-chat="Later"] .list-icon').click();
+    await page.locator('#list-icon-options [aria-label="rocket"]').click();
     // New empty lists have a real creation action and an independent entry field.
     await page.locator('#sidebar-space').dblclick();
     await page.locator('#new-list-name').fill('Release checklist');
+    await page.screenshot({ path: path.join(dir, 'new-list-entry.png') });
     await page.locator('#new-list-name').press('Enter');
     await page.waitForFunction(() => document.querySelector('#heading').textContent === 'Release checklist');
     await page.locator('#add').click();
@@ -118,16 +148,17 @@ module.exports = async (browser, installMock, url, errors) => {
     });
     await task(1).locator(':scope > .line .subtask-count').waitFor();
     assert.equal(await task(1).locator(':scope > .line .subtask-count').innerText(), '1/2');
-    const drag = async (from, to, cancel = false) => {
+    const drag = async (from, to, cancel = false, capture = null) => {
       const a = await from.boundingBox(), b = await to.boundingBox();
       await page.mouse.move(a.x + 39, a.y + a.height / 2);
       await page.mouse.down();
       await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 16), { steps: 16 });
       await page.waitForTimeout(100);
+      if (capture) await page.screenshot({ path: path.join(dir, capture + '.png') });
       if (cancel) await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
       await page.mouse.up();
     };
-    await drag(rootLine(1), page.locator('#list-nav [data-chat="Billing launch"]'));
+    await drag(rootLine(1), page.locator('#list-nav [data-chat="Billing launch"]'), false, 'drag-to-sidebar');
     await page.waitForFunction(() => testState.tasks[0].chat === 'Billing launch');
     assert.equal(await page.evaluate(() => testState.tasks.filter(t => t.parent_id === 1).every(t => t.chat === 'Billing launch')), true);
     // Canvas destinations remain usable even when the list is empty or collapsed.
@@ -135,7 +166,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.locator('#group-field').click();
     await page.locator('#layout-options [data-value="chat"]').click();
     await page.keyboard.press('Escape');
-    await drag(rootLine(1), page.locator('#open section[data-chat="Later"] .group-head'));
+    await drag(rootLine(1), page.locator('#open section[data-chat="Later"] .group-head'), false, 'drag-to-canvas');
     await page.waitForFunction(() => testState.tasks[0].chat === 'Later');
     const callsBeforeCancel = await page.evaluate(() => testState.calls.filter(c => c.cmd === 'edit_task').length);
     await drag(rootLine(1), page.locator('#list-nav [data-chat="Billing launch"]'), true);
@@ -146,9 +177,11 @@ module.exports = async (browser, installMock, url, errors) => {
     await wait();
     assert.equal(await task(21).isVisible(), true);
     await page.locator('#display').click();
+    await page.screenshot({ path: path.join(dir, 'completed-before.png') });
     await page.locator('[data-property="completed"]').click();
     assert.equal(await task(21).count(), 0);
     assert.equal(await task(20).isVisible(), true);
+    await page.screenshot({ path: path.join(dir, 'completed-after.png') });
     await page.locator('[data-property="subtasks"]').click();
     assert.equal(await task(1).locator(':scope > .line .subtask-count').isVisible(), false);
     await page.locator('[data-property="subtasks"]').click();
@@ -165,10 +198,12 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.setViewportSize({ width: 1120, height: 780 });
     await page.reload();
     assert.equal(await page.locator('#sidebar').isVisible(), true);
-    assert.equal(await page.locator('#list-nav [data-chat="Later"] .nav-icon').innerText(), '🚀');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('listIcons')).Later), 'rocket');
+    assert.equal(await page.locator('#list-nav [data-chat="Later"] .nav-icon svg').count(), 1);
     // Settings writes the same preference, including cross-window updates.
     const settings = await context.newPage();
     await settings.goto(url.replace('index.html', 'settings.html'));
+    await settings.screenshot({ path: path.join(dir, 'sidebar-settings.png') });
     await settings.locator('#show-sidebar').uncheck();
     await page.waitForFunction(() => document.querySelector('#sidebar').hidden);
     await settings.locator('#show-sidebar').check();

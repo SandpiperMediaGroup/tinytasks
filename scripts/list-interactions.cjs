@@ -114,8 +114,8 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.screenshot({ path: path.join(dir, 'nav-menu.png') });
     await page.locator('#sidebar-toggle').click();
     assert.equal(await page.locator('#sidebar').isVisible(), true);
-    assert.deepEqual(await page.locator('#primary-nav .nav-label').allTextContents(), ['My Desk', 'Today', 'Upcoming', 'All']);
-    assert.equal(await page.locator('#primary-nav .nav-icon svg').count(), 4);
+    assert.deepEqual(await page.locator('#primary-nav .nav-label').allTextContents(), ['My Desk', 'Today', 'Upcoming', 'All', 'Completed']);
+    assert.equal(await page.locator('#primary-nav .nav-icon svg').count(), 5);
     assert.equal(await page.locator('#list-nav [data-chat="Later"] .agent-badge').count(), 1);
     assert.equal(await page.locator('#list-nav [data-chat="Billing launch"] .nav-icon svg').count(), 1);
     await page.locator('#list-nav [data-chat="Billing launch"] .list-icon').click();
@@ -201,11 +201,14 @@ module.exports = async (browser, installMock, url, errors) => {
     await drag(rootLine(1), page.locator('#list-nav [data-chat="Billing launch"]'), false, 'drag-to-sidebar');
     await page.waitForFunction(() => testState.tasks[0].chat === 'Billing launch');
     assert.equal(await page.evaluate(() => testState.tasks.filter(t => t.parent_id === 1).every(t => t.chat === 'Billing launch')), true);
-    // Canvas destinations remain usable even when the list is empty or collapsed.
+    // Empty lists stay in the sidebar and do not create empty groups on the All canvas.
     await page.locator('#group').click();
     await page.locator('#group-field').click();
     await page.locator('#layout-options [data-value="chat"]').click();
     await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#open section[data-chat="Later"]').count(), 0);
+    await page.evaluate(() => { testState.tasks.push({ ...testState.tasks[0], id: 22, title: 'Another later task', chat: 'Later', parent_id: null }); testState.emit(); });
+    await page.locator('#open section[data-chat="Later"] .group-head').waitFor();
     await drag(rootLine(1), page.locator('#open section[data-chat="Later"] .group-head'), false, 'drag-to-canvas');
     await page.waitForFunction(() => testState.tasks[0].chat === 'Later');
     const callsBeforeCancel = await page.evaluate(() => testState.calls.filter(c => c.cmd === 'edit_task').length);

@@ -15,7 +15,7 @@
   <header data-tauri-drag-region="deep">
     <div class="menu-wrap">
       <h1><button id="view" class="view-btn" title="Choose what to show" aria-haspopup="menu" aria-expanded="false">
-        <span id="heading">Tasks</span><span id="count"></span>
+        <span id="heading-icon" hidden></span><span id="heading">Tasks</span><span id="count"></span>
         <svg class="chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
       </button></h1>
       <div id="view-menu" data-tauri-drag-region="false" class="menu" role="menu" hidden>
@@ -25,7 +25,7 @@
         <button role="menuitemradio" data-view="today">Today <span class="n"></span></button>
         <button role="menuitemradio" data-view="upcoming">Upcoming <span class="n"></span></button>
         <div class="menu-sep"></div>
-        <button id="sidebar-toggle" role="menuitemcheckbox" aria-checked="false" title="Automatically shown in wide windows">Show sidebar</button>
+        <button id="sidebar-toggle" role="menuitemcheckbox" aria-checked="false">Show sidebar</button>
         <div class="menu-sep"></div>
         <div class="menu-label">Task location</div>
         <div id="where"></div>
@@ -85,11 +85,12 @@
     <aside id="sidebar" aria-label="Navigation" hidden>
       <nav id="primary-nav" aria-label="Views"></nav>
       <div class="menu-sep"></div>
-      <div class="sidebar-heading"><span>Lists &amp; Chats</span><button id="add-list" class="icon" aria-label="New list" title="New list">+</button></div>
+      <div class="sidebar-heading"><span>Lists &amp; Chats</span><button id="add-list" class="icon" aria-label="New list" title="New list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
       <nav id="list-nav" aria-label="Lists &amp; Chats"></nav>
       <form id="new-list" hidden autocomplete="off"><input id="new-list-name" maxlength="200" placeholder="List name" aria-label="New list name"></form>
       <div id="sidebar-space" title="Double-click to create a list"></div>
     </aside>
+    <div id="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" aria-valuemin="140" aria-valuemax="400" aria-valuenow="220" tabindex="0" hidden></div>
   <main id="main">
     <form id="new-task" hidden autocomplete="off">
       <span class="check"></span>
@@ -122,6 +123,26 @@
     <div class="attribute-actions"><button type="button" id="attribute-cancel">Cancel</button><button type="submit">Save</button></div>
   </form>
   <div id="list-menu" class="menu floating" role="menu" aria-label="Move to list" hidden></div>
+  <div id="sidebar-menu" class="menu floating" role="menu" aria-label="List actions" hidden>
+    <button data-list-action="rename" role="menuitem">Rename…</button>
+    <button data-list-action="icon" role="menuitem">Change icon…</button>
+    <div class="menu-sep"></div>
+    <button data-list-action="up" role="menuitem">Move up</button>
+    <button data-list-action="down" role="menuitem">Move down</button>
+    <div class="menu-sep"></div>
+    <button data-list-action="archive" role="menuitem">Archive list</button>
+    <button data-list-action="delete" class="delete" role="menuitem">Delete list…</button>
+  </div>
+  <dialog id="list-dialog" aria-labelledby="list-dialog-title">
+    <form id="list-dialog-form">
+      <h2 id="list-dialog-title"></h2>
+      <p id="list-dialog-description"></p>
+      <label id="list-name-label" for="list-name">List name</label>
+      <input id="list-name" maxlength="200" autocomplete="off">
+      <p id="list-dialog-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" id="list-dialog-cancel">Cancel</button><button type="submit" id="list-dialog-save">Save</button></div>
+    </form>
+  </dialog>
   <div id="list-icon-menu" class="menu floating" role="dialog" aria-label="List icon" hidden>
     <div class="icon-picker-head"><div class="menu-label">List icon</div><div id="list-icon-agent"></div></div>
     <div id="list-icon-options" role="group" aria-label="List symbols"></div>

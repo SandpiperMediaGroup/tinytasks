@@ -35,7 +35,8 @@ pub fn run(background: bool) {
         .invoke_handler(tauri::generate_handler![
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
             location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
-            open_settings, close_settings, list_chats, create_list, app_info, check_for_updates
+            open_settings, close_settings, list_chats, create_list, rename_list, archive_list, delete_list,
+            ensure_sidebar_visible, app_info, check_for_updates
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -266,6 +267,48 @@ fn create_list(app: AppHandle, name: String) -> Res<Vec<String>> {
     store::change(|l| l.create_chat(&name))?;
     let _ = app.emit("tasks-changed", ());
     list_chats()
+}
+
+#[tauri::command]
+fn rename_list(app: AppHandle, name: String, new_name: String) -> Res<Vec<Task>> {
+    store::rename_chat(&name, &new_name)?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn archive_list(app: AppHandle, name: String) -> Res<String> {
+    let path = store::archive_chat(&name)?;
+    reply(&app)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn delete_list(app: AppHandle, name: String) -> Res<Vec<Task>> {
+    store::delete_chat(&name)?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn ensure_sidebar_visible(app: AppHandle) -> Res<()> {
+    let window = app.get_webview_window("main").ok_or("The task window isn't available.")?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let inner = window.inner_size().map_err(|e| e.to_string())?;
+    let size = inner.to_logical::<f64>(scale);
+    if size.width < 720.0 {
+        let mut width: f64 = 860.0;
+        if let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? {
+            let area = monitor.work_area();
+            let outer = window.outer_size().map_err(|e| e.to_string())?;
+            let decoration = outer.width.saturating_sub(inner.width) as f64;
+            width = width.min((area.size.width as f64 - decoration) / scale).max(720.0);
+            let mut position = window.outer_position().map_err(|e| e.to_string())?;
+            let rightmost = area.position.x + area.size.width as i32 - (width * scale + decoration).ceil() as i32;
+            position.x = position.x.min(rightmost).max(area.position.x);
+            window.set_position(position).map_err(|e| e.to_string())?;
+        }
+        window.set_size(tauri::LogicalSize::new(width, size.height)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

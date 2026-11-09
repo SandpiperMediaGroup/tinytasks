@@ -13,7 +13,7 @@
 //! ```
 
 use chrono::{Local, NaiveDate, NaiveDateTime, TimeZone};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;
@@ -99,6 +99,7 @@ fn open_count_in(text: &str) -> usize {
 /// Returns a sentence saying which happened.
 pub fn use_folder(dir: &Path) -> Result<String, String> {
     let _lock = lock()?;
+    recover_archive(&data_dir().join("archive-pending.json"))?;
     let new = dir.join("tasks.md");
     let old = path();
     if same_file(&old, &new) {
@@ -152,6 +153,11 @@ fn read_list(p: &Path, chosen: bool) -> Result<String, String> {
 
 /// The list as it is now (no lock: writes replace the file in one step).
 pub fn load() -> Result<List, String> {
+    let journal = data_dir().join("archive-pending.json");
+    if journal.exists() {
+        let _lock = lock()?;
+        recover_archive(&journal)?;
+    }
     let (p, chosen) = location();
     Ok(parse(&read_list(&p, chosen)?))
 }
@@ -160,6 +166,7 @@ pub fn load() -> Result<List, String> {
 /// Writes only if something changed (including ids and dates stamped onto hand-typed tasks).
 pub fn change<R>(f: impl FnOnce(&mut List) -> Result<R, String>) -> Result<R, String> {
     let _lock = lock()?;
+    recover_archive(&data_dir().join("archive-pending.json"))?;
     let (p, chosen) = location();
     let text = read_list(&p, chosen)?;
     let mut list = parse(&text);
@@ -169,6 +176,150 @@ pub fn change<R>(f: impl FnOnce(&mut List) -> Result<R, String>) -> Result<R, St
         write(&p, &out)?;
     }
     Ok(r)
+}
+
+// Work on the original text when managing whole sections, so notes, unknown attributes,
+// completed tasks, sibling order, and line endings survive an archive or rename unchanged.
+struct Section {
+    name: String,
+    start: usize,
+    body: usize,
+    end: usize,
+}
+
+fn sections(text: &str) -> Vec<Section> {
+    let mut result: Vec<Section> = Vec::new();
+    let (mut offset, mut comment, mut fence) = (0, false, false);
+    for raw in text.split_inclusive('\n') {
+        let line = raw.trim_end_matches(['\r', '\n']);
+        let hidden = comment || fence || line.contains("<!--");
+        if !hidden {
+            if let Some(name) = heading(line) {
+                if let Some(previous) = result.last_mut() { previous.end = offset; }
+                result.push(Section { name, start: offset, body: offset + raw.len(), end: text.len() });
+            } else if result.is_empty() && checkbox(line).is_some() {
+                result.push(Section { name: String::new(), start: offset, body: offset, end: text.len() });
+            }
+        }
+        if !comment && line.trim_start().starts_with("```") { fence = !fence; }
+        if !fence {
+            if let Some(open) = line.rfind("<!--") { comment = !line[open..].contains("-->"); }
+            else if line.contains("-->") { comment = false; }
+        }
+        offset += raw.len();
+    }
+    result
+}
+
+fn valid_chat_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.chars().count() > 200 || name.contains(['\r', '\n']) || name.ends_with('#') {
+        return Err("Use a list name of 1–200 characters on one line, without a trailing #.".into());
+    }
+    Ok(())
+}
+
+fn split_chat(text: &str, name: &str) -> Result<(String, String), String> {
+    let selected: Vec<_> = sections(text).into_iter().filter(|s| s.name == name).collect();
+    if selected.is_empty() { return Err("That list is gone. Refresh and try again.".into()); }
+    let (mut remaining, mut removed, mut offset) = (String::new(), String::new(), 0);
+    for section in selected {
+        remaining.push_str(&text[offset..section.start]);
+        removed.push_str(&text[section.start..section.end]);
+        offset = section.end;
+    }
+    remaining.push_str(&text[offset..]);
+    if name.is_empty() {
+        let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+        removed = format!("## Personal{newline}{newline}{removed}");
+    }
+    Ok((remaining, removed))
+}
+
+fn rename_chat_text(text: &str, name: &str, new_name: &str) -> Result<String, String> {
+    valid_chat_name(new_name)?;
+    let sections = sections(text);
+    if !sections.iter().any(|s| s.name == name) { return Err("That list is gone. Refresh and try again.".into()); }
+    if sections.iter().any(|s| s.name != name && s.name.eq_ignore_ascii_case(new_name)) {
+        return Err("A list with that name already exists.".into());
+    }
+    let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let (mut out, mut offset) = (String::new(), 0);
+    for section in sections.into_iter().filter(|s| s.name == name) {
+        out.push_str(&text[offset..section.start]);
+        out.push_str(&format!("## {new_name}{newline}"));
+        offset = section.body;
+    }
+    out.push_str(&text[offset..]);
+    Ok(out)
+}
+
+pub fn rename_chat(name: &str, new_name: &str) -> Result<(), String> {
+    let _lock = lock()?;
+    recover_archive(&data_dir().join("archive-pending.json"))?;
+    let (p, chosen) = location();
+    let text = read_list(&p, chosen)?;
+    write(&p, &rename_chat_text(&text, name, new_name.trim())?)
+}
+
+pub fn delete_chat(name: &str) -> Result<(), String> {
+    let _lock = lock()?;
+    recover_archive(&data_dir().join("archive-pending.json"))?;
+    let (p, chosen) = location();
+    let text = read_list(&p, chosen)?;
+    write(&p, &split_chat(&text, name)?.0)
+}
+
+#[derive(Deserialize, Serialize)]
+struct ArchiveMove {
+    active: PathBuf,
+    archive: PathBuf,
+    active_before: String,
+    active_after: String,
+    archive_before: String,
+    archive_after: String,
+}
+
+// Retain a local journal until both atomic file replacements finish. After an interruption,
+// finish the same move; never append a second copy or remove tasks that weren't saved first.
+fn recover_archive(journal: &Path) -> Result<(), String> {
+    if !journal.exists() { return Ok(()); }
+    let pending: ArchiveMove = serde_json::from_str(&read(journal)?).map_err(|e| format!("Can't read the pending archive move: {e}"))?;
+    let active = read(&pending.active)?;
+    let archived = read(&pending.archive)?;
+    if (active != pending.active_before && active != pending.active_after)
+        || (archived != pending.archive_before && archived != pending.archive_after) {
+        return Err("An interrupted archive move needs attention: tasks.md or archive.md changed before it finished. Your tasks and the recovery copy are preserved in archive-pending.json in the TinyTasks settings folder.".into());
+    }
+    if archived != pending.archive_after { write(&pending.archive, &pending.archive_after)?; }
+    if active != pending.active_after { write(&pending.active, &pending.active_after)?; }
+    fs::remove_file(journal).map_err(|e| write_error(e, journal))
+}
+
+fn archive_chat_files(active: &Path, archive: &Path, journal: &Path, text: &str, name: &str) -> Result<(), String> {
+    let (active_after, removed) = split_chat(text, name)?;
+    let archive_before = read(archive)?;
+    let mut archive_after = archive_before.clone();
+    if !archive_after.is_empty() {
+        if !archive_after.ends_with('\n') { archive_after.push('\n'); }
+        archive_after.push('\n');
+    }
+    archive_after.push_str(&removed);
+    let pending = ArchiveMove { active: active.into(), archive: archive.into(), active_before: text.into(), active_after, archive_before, archive_after };
+    write(journal, &serde_json::to_string(&pending).map_err(|e| e.to_string())?)?;
+    recover_archive(journal)
+}
+
+pub fn archive_chat(name: &str) -> Result<PathBuf, String> {
+    let _lock = lock()?;
+    let journal = data_dir().join("archive-pending.json");
+    recover_archive(&journal)?;
+    let (p, chosen) = location();
+    let text = read_list(&p, chosen)?;
+    let p = if p.is_absolute() { p } else { std::env::current_dir().map_err(|e| e.to_string())?.join(p) };
+    let archive = p.with_file_name("archive.md");
+    if same_file(&p, &archive) { return Err("The active task file must be separate from archive.md.".into()); }
+    archive_chat_files(&p, &archive, &journal, &text, name)?;
+    Ok(archive)
 }
 
 /// Writers on this machine take turns through a lock file next to the settings (not next to
@@ -654,21 +805,15 @@ impl List {
 
     pub fn chats(&self) -> Vec<String> {
         let mut names = Vec::new();
-        for block in &self.blocks {
-            if let Block::Text(text) = block {
-                if let Some(name) = heading(text).filter(|name| !name.is_empty()) {
-                    if !names.contains(&name) { names.push(name); }
-                }
-            }
+        for section in sections(&self.render()) {
+            if !names.contains(&section.name) { names.push(section.name); }
         }
         names
     }
 
     pub fn create_chat(&mut self, name: &str) -> Result<(), String> {
         let name = name.trim();
-        if name.is_empty() || name.chars().count() > 200 || name.contains(['\r', '\n']) || name.ends_with('#') {
-            return Err("Use a list name of 1–200 characters on one line, without a trailing #.".into());
-        }
+        valid_chat_name(name)?;
         if self.chats().iter().any(|existing| existing.eq_ignore_ascii_case(name)) {
             return Err("A list with that name already exists.".into());
         }
@@ -1200,5 +1345,119 @@ mod tests {
         let restored = parse(&text);
         assert_eq!(restored.chats(), vec!["Source", "Destination"]);
         assert_eq!(restored.get(1).unwrap().chat, "Destination");
+    }
+
+    #[test]
+    fn managing_lists_preserves_raw_sections_and_personal_tasks() {
+        let preamble = "<!-- Notes\r\n## Not a list\r\n-->\r\nKeep this introduction.\r\n\r\n";
+        let personal = "- [ ] Mine @id(1) @odd(keep)\r\n  My details\r\n\r\n";
+        let named = "## Launch\r\n\r\nList notes\r\n- [ ] Parent @id(2) @subtasks(ordered)\r\n- [x] Child @id(3) @parent(2) @position(0)\r\n  Nested details\r\n\r\n```\r\n## Example heading\r\n```\r\n\r\n";
+        let later = "## Later\r\n<!-- TinyTasks list -->\r\n";
+        let text = format!("{preamble}{personal}{named}{later}");
+        assert_eq!(parse(&text).chats(), vec!["", "Launch", "Later"]);
+        let (remaining, removed) = split_chat(&text, "Launch").unwrap();
+        assert_eq!(removed, named);
+        assert_eq!(remaining, format!("{preamble}{personal}{later}"));
+        let (remaining, removed) = split_chat(&text, "").unwrap();
+        assert_eq!(removed, format!("## Personal\r\n\r\n{personal}"));
+        assert_eq!(remaining, format!("{preamble}{named}{later}"));
+        assert_eq!(rename_chat_text(&text, "Launch", "Ship").unwrap(), text.replacen("## Launch", "## Ship", 1));
+        assert_eq!(rename_chat_text(&text, "", "Home").unwrap(), format!("{preamble}## Home\r\n{personal}{named}{later}"));
+        assert!(rename_chat_text(&text, "Launch", "later").is_err());
+        assert!(rename_chat_text(&text, "Launch", "Bad\nname").is_err());
+        assert!(rename_chat_text(&text, "Missing", "New").is_err());
+        assert!(split_chat(&text, "Missing").is_err());
+    }
+
+    #[test]
+    fn duplicate_list_sections_move_together_without_changing_other_lists() {
+        let text = "## A\n- [ ] One @id(1)\n\n## B\nKeep me\n\n## A\n- [x] Two @id(2)\n";
+        let (remaining, removed) = split_chat(text, "A").unwrap();
+        assert_eq!(remaining, "## B\nKeep me\n\n");
+        assert_eq!(removed, "## A\n- [ ] One @id(1)\n\n## A\n- [x] Two @id(2)\n");
+        assert_eq!(rename_chat_text(text, "A", "Renamed").unwrap().matches("## Renamed").count(), 2);
+    }
+
+    fn archive_test_folder() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tinytasks-archive-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn archive_appends_the_original_structure_and_leaves_other_sections_untouched() {
+        let dir = archive_test_folder();
+        let (active, archive, journal) = (dir.join("tasks.md"), dir.join("archive.md"), dir.join("pending.json"));
+        let text = "## Keep\n- [ ] Stay @id(8)\n\n## Ship\nNotes\n- [ ] Parent @subtasks(ordered) @id(1)\n- [x] Child @parent(1) @position(0) @id(2)\n  Details\n";
+        fs::write(&active, text).unwrap();
+        fs::write(&archive, "Earlier archive\n").unwrap();
+        archive_chat_files(&active, &archive, &journal, text, "Ship").unwrap();
+        assert_eq!(read(&active).unwrap(), "## Keep\n- [ ] Stay @id(8)\n\n");
+        assert_eq!(read(&archive).unwrap(), format!("Earlier archive\n\n{}", &text[text.find("## Ship").unwrap()..]));
+        assert!(!journal.exists());
+        assert!(archive_chat_files(&active, &archive, &journal, &read(&active).unwrap(), "Ship").is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn interrupted_archive_recovers_once_and_detects_concurrent_edits() {
+        let dir = archive_test_folder();
+        let (active, archive, journal) = (dir.join("tasks.md"), dir.join("archive.md"), dir.join("pending.json"));
+        let pending = ArchiveMove { active: active.clone(), archive: archive.clone(), active_before: "## Move\n- [ ] One\n".into(), active_after: String::new(), archive_before: String::new(), archive_after: "## Move\n- [ ] One\n".into() };
+        fs::write(&active, &pending.active_before).unwrap();
+        fs::write(&archive, &pending.archive_after).unwrap();
+        fs::write(&journal, serde_json::to_string(&pending).unwrap()).unwrap();
+        recover_archive(&journal).unwrap();
+        recover_archive(&journal).unwrap();
+        assert_eq!(read(&active).unwrap(), "");
+        assert_eq!(read(&archive).unwrap(), pending.archive_after);
+        fs::write(&journal, serde_json::to_string(&pending).unwrap()).unwrap();
+        fs::write(&active, "A concurrent edit\n").unwrap();
+        assert!(recover_archive(&journal).is_err());
+        assert_eq!(read(&active).unwrap(), "A concurrent edit\n");
+        assert_eq!(read(&archive).unwrap(), pending.archive_after);
+        assert!(journal.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_archive_write_keeps_active_tasks_and_a_recoverable_move() {
+        let dir = archive_test_folder();
+        let (active, archive, journal) = (dir.join("tasks.md"), dir.join("missing/archive.md"), dir.join("pending.json"));
+        let text = "## Ship\n- [ ] Keep safe\n";
+        fs::write(&active, text).unwrap();
+        // A file blocks creation of the archive's parent directory.
+        fs::write(dir.join("missing"), "blocked").unwrap();
+        assert!(archive_chat_files(&active, &archive, &journal, text, "Ship").is_err());
+        assert_eq!(read(&active).unwrap(), text);
+        fs::remove_file(dir.join("missing")).unwrap();
+        if journal.exists() { recover_archive(&journal).unwrap(); }
+        else { archive_chat_files(&active, &archive, &journal, text, "Ship").unwrap(); }
+        assert_eq!(read(&active).unwrap(), "");
+        assert_eq!(read(&archive).unwrap(), text);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_archive_retains_the_journal_until_the_move_can_finish() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = archive_test_folder();
+        let archive_dir = dir.join("archived");
+        fs::create_dir(&archive_dir).unwrap();
+        let (active, archive, journal) = (dir.join("tasks.md"), archive_dir.join("archive.md"), dir.join("pending.json"));
+        let text = "## Ship\n- [ ] Important @id(1)\n";
+        fs::write(&active, text).unwrap();
+        fs::set_permissions(&archive_dir, fs::Permissions::from_mode(0o555)).unwrap();
+        let result = archive_chat_files(&active, &archive, &journal, text, "Ship");
+        fs::set_permissions(&archive_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(result.is_err());
+        assert!(journal.exists());
+        assert_eq!(read(&active).unwrap(), text);
+        recover_archive(&journal).unwrap();
+        assert_eq!(read(&archive).unwrap(), text);
+        assert_eq!(read(&active).unwrap(), "");
+        assert!(!journal.exists());
+        fs::remove_dir_all(dir).unwrap();
     }
 }

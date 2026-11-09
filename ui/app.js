@@ -10,16 +10,26 @@ const store = {
 };
 let view = store.get("view", "all");
 if (!["all", "desk", "done", "today", "upcoming"].includes(view)) view = "all";
-let selectedChat = store.get("selectedChat", "");
+let selectedChat = null;
+try { selectedChat = JSON.parse(store.get("selectedList", "null")); } catch {}
+if (typeof selectedChat !== "string") selectedChat = null;
+// Migrate named-list selection from 0.2.0. An empty name now selects Personal explicitly.
+if (store.get("selectedList", "") === "" && store.get("selectedChat", "")) selectedChat = store.get("selectedChat", "");
 let chatNames = [];
 let sidebarVisible = store.get("sidebar", "0") === "1";
 const sidebarWidth = matchMedia("(min-width: 720px)");
+let listOrder = [];
+try { const saved = JSON.parse(store.get("listOrder", "[]")); if (Array.isArray(saved)) listOrder = saved.filter(n => typeof n === "string"); } catch {}
+let sidebarPixels = Math.max(140, Math.min(400, Number(store.get("sidebarWidth", "220")) || 220));
+document.documentElement.style.setProperty("--sidebar-width", `${sidebarPixels}px`);
+let reorderingList = false;
 let listIcons = Object.create(null);
 try { const saved = JSON.parse(store.get("listIcons", "{}")); if (saved && typeof saved === "object" && !Array.isArray(saved)) Object.assign(listIcons, saved); } catch {}
 const navIcons = {
   desk: '<path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/>',
   today: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1"/>',
-  upcoming: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4m-6 7 3 2-3 2"/>',
+  upcoming: '<path d="M20 10V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M4 9h16M8 2v4M16 2v4M14 16h7m-3-3 3 3-3 3"/>',
+  done: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
   all: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
   ...LIST_ICON_PATHS,
 };
@@ -34,7 +44,7 @@ function listIcon(chat, agent = "") {
   const sourceAgent = agent || tasks.find(t => t.chat === chat && t.agent)?.agent;
   return sourceAgent ? agentIcon(sourceAgent) : symbolIcon("star");
 }
-const groupLabels = { none: "No grouping", chat: "Lists & Chats", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added" };
+const groupLabels = { none: "No grouping", chat: "Lists & Chats", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added", completed: "Date completed" };
 const orderLabels = { priority: "Priority", due: "Due date", added: "Date added", name: "Name", completed: "Date completed" };
 const legacyGroup = Object.hasOwn(groupLabels, store.get("groupBy", "time")) ? store.get("groupBy", "time") : "time";
 const layouts = {};
@@ -42,7 +52,7 @@ let savedLayouts = {};
 try { savedLayouts = JSON.parse(store.get("listLayouts", "{}")) || {}; } catch {}
 for (const name of ["all", "desk", "done", "today", "upcoming"]) {
   const saved = savedLayouts[name] || {};
-  const grouping = Object.hasOwn(groupLabels, saved.groupBy) ? saved.groupBy : name === "done" ? "none" : legacyGroup;
+  const grouping = Object.hasOwn(groupLabels, saved.groupBy) && (saved.groupBy !== "completed" || name === "done") ? saved.groupBy : name === "done" ? "none" : legacyGroup === "completed" ? "time" : legacyGroup;
   const ordering = Object.hasOwn(orderLabels, saved.orderBy) && (saved.orderBy !== "completed" || name === "done")
     ? saved.orderBy : name === "done" ? "completed" : grouping === "due" ? "due" : "added";
   layouts[name] = { groupBy: grouping, orderBy: ordering,
@@ -466,14 +476,15 @@ function orderedTasks(items) {
 function directionLabel(field, reverse, grouping = false) {
   if (field === "priority") return reverse ? "P3 first" : "P0 first";
   if (field === "due") return reverse ? "Latest first" : "Earliest first";
-  if (grouping && field === "time") return reverse ? "Oldest first" : "Newest first";
+  if (grouping && ["time", "completed"].includes(field)) return reverse ? "Oldest first" : "Newest first";
   if (["added", "completed"].includes(field)) return reverse ? "Newest first" : "Oldest first";
   return reverse ? "Z to A" : "A to Z";
 }
 function groupsOf(open) {
-  if (groupBy === "none") return [{ k: "", label: "", items: orderedTasks(open) }];
+  if (groupBy === "none" || (selectedChat != null && groupBy === "chat")) return [{ k: "", label: "", items: orderedTasks(open) }];
   const key = {
     time: (t) => timeBucket(t.created_at),
+    completed: (t) => timeBucket(t.done_at),
     chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : t.agent ? ["a:" + agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
     agent: (t) => (t.agent ? [agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
     // Headers show just the pill (the hint names like "Today" read as dates up here).
@@ -486,9 +497,6 @@ function groupsOf(open) {
     const [k, label] = key(t);
     if (!map.has(k)) map.set(k, { k, label, sample: t, items: [] });
     map.get(k).items.push(t);
-  }
-  if (view === "all" && groupBy === "chat" && !selectedChat) {
-    for (const name of allChats()) if (!map.has(`c:${name}`)) map.set(`c:${name}`, { k: `c:${name}`, label: name, sample: { chat: name, agent: "" }, items: [] });
   }
   const groups = [...map.values()];
   const missing = g => ["priority", "due"].includes(groupBy) ? g.k === 9 : !g.label;
@@ -508,13 +516,13 @@ const VIEWS = {
 const tasksForView = (name) => tasks.filter(t => (name === "desk" || t.parent_id == null) && VIEWS[name].show(t));
 
 function render() {
-  if (editingId != null || draggingSubtask != null || draggingTask != null) return;
+  if (editingId != null || draggingSubtask != null || draggingTask != null || reorderingList) return;
   if (taskMenuId != null) closeFloating();
   const v = VIEWS[view];
-  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view).filter(t => !selectedChat || t.chat === selectedChat);
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view).filter(t => selectedChat == null || t.chat === selectedChat);
   if (noteId != null) $("note-complete").replaceChildren();
   const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
-  const headers = groupBy !== "none" && noteId == null;
+  const headers = groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
 
   $("open").replaceChildren(
     ...groups.map((g, index) => {
@@ -561,10 +569,12 @@ function render() {
   $("problem").querySelector("p").textContent = problem;
   $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
   $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
-  $("heading").textContent = noteId != null ? "Sticky note" : selectedChat || v.name;
+  $("heading").textContent = noteId != null ? "Sticky note" : selectedChat != null ? selectedChat || "Personal" : v.name;
+  $("heading-icon").hidden = noteId != null || selectedChat == null;
+  $("heading-icon").replaceChildren(...(selectedChat != null ? [listIcon(selectedChat)] : []));
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
-    b.setAttribute("aria-checked", !selectedChat && b.dataset.view === view);
+    b.setAttribute("aria-checked", selectedChat == null && b.dataset.view === view);
     b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
   }
   for (const [id, value, label, name] of [["group-field", groupBy, groupLabels[groupBy], "Grouping"], ["order-field", orderBy, orderBy === "completed" ? "Completed" : orderLabels[orderBy], "Ordering"]]) {
@@ -586,9 +596,16 @@ function render() {
 }
 
 // Lists are the markdown chat sections, including intentionally empty lists.
-function allChats() { return [...new Set([...chatNames, ...tasks.map(t => t.chat).filter(Boolean)])].sort(compareText); }
+function allChats() { return [...new Set([...chatNames, ...tasks.map(t => t.chat)])].sort(compareText); }
+function orderedChats() {
+  const names = allChats();
+  return [...listOrder.filter((name, i) => names.includes(name) && listOrder.indexOf(name) === i), ...names.filter(name => !listOrder.includes(name))];
+}
 function renderSidebar() {
+  if (reorderingList) return;
   $("sidebar").hidden = !sidebarVisible || !sidebarWidth.matches || noteId != null;
+  $("sidebar-resizer").hidden = $("sidebar").hidden;
+  $("sidebar-resizer").setAttribute("aria-valuenow", Math.round($("sidebar").getBoundingClientRect().width || sidebarPixels));
   $("sidebar-toggle").setAttribute("aria-checked", sidebarVisible);
   const navButton = (label, count, active, action) => {
     const button = document.createElement("button");
@@ -597,22 +614,29 @@ function renderSidebar() {
     button.onclick = action;
     return button;
   };
-  $("primary-nav").replaceChildren(...[["desk", "My Desk"], ["today", "Today"], ["upcoming", "Upcoming"], ["all", "All"]].map(([name, label]) => {
-    const button = navButton(label, tasksForView(name).length, !selectedChat && view === name, () => selectView(name));
+  $("primary-nav").replaceChildren(...[["desk", "My Desk"], ["today", "Today"], ["upcoming", "Upcoming"], ["all", "All"], ["done", "Completed"]].map(([name, label]) => {
+    const button = navButton(label, tasksForView(name).length, selectedChat == null && view === name, () => selectView(name));
     button.prepend(symbolIcon(name));
     return button;
   }));
-  $("list-nav").replaceChildren(...allChats().map(name => {
+  $("list-nav").replaceChildren(...orderedChats().map(name => {
     const count = tasks.filter(t => t.chat === name && t.parent_id == null && t.done_at == null).length;
-    const button = navButton(name, count, selectedChat === name, () => selectView("all", name));
-    button.title = name;
+    const button = navButton(name || "Personal", count, selectedChat === name, () => selectView("all", name));
+    button.title = name || "Personal";
     const item = Object.assign(document.createElement("div"), { className: "sidebar-list" });
     item.dataset.chat = name;
-    const icon = Object.assign(document.createElement("button"), { className: "list-icon", title: `Change icon for ${name}` });
-    icon.setAttribute("aria-label", `Change icon for ${name}`);
+    const icon = Object.assign(document.createElement("button"), { className: "list-icon", title: `Change icon for ${name || "Personal"}` });
+    icon.setAttribute("aria-label", icon.title);
     icon.appendChild(listIcon(name));
     icon.onclick = e => { e.stopPropagation(); openListIconMenu(name, icon); };
     item.append(icon, button);
+    item.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); openSidebarMenu(name, item, e); };
+    button.onkeydown = e => {
+      if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) { e.preventDefault(); openSidebarMenu(name, item); }
+      if (e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) { e.preventDefault(); reorderChat(name, e.key === "ArrowUp" ? -1 : 1); }
+    };
+    button.onpointerdown = e => beginListReorder(e, item, name);
+    button.addEventListener("click", e => { if (suppressListClick) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
     return item;
   }));
 }
@@ -624,19 +648,25 @@ sidebarWidth.addEventListener("change", () => {
     if (hadSidebarFocus) $("view").focus();
   }
 });
-async function selectView(name, chat = "") {
+async function selectView(name, chat = null) {
   if (editingId != null && !await finishEditing?.(true)) return;
   if (!form.hidden) { if (input.value.trim() && !await saveNewTask()) return; closeNew(); }
   view = name; selectedChat = chat;
-  store.set("view", view); store.set("selectedChat", chat);
+  store.set("view", view); store.set("selectedList", JSON.stringify(chat));
   useViewLayout(); setViewMenu(false); closeFloating(); render();
   $("main").scrollTop = 0;
 }
-$("sidebar-toggle").onclick = () => {
+$("sidebar-toggle").onclick = async () => {
   sidebarVisible = !sidebarVisible;
   store.set("sidebar", sidebarVisible ? "1" : "0");
   setViewMenu(false); renderSidebar();
+  if (sidebarVisible) await expandForSidebar();
 };
+async function expandForSidebar() {
+  if (noteId != null || sidebarWidth.matches) return;
+  try { await invoke("ensure_sidebar_visible"); }
+  catch (err) { notice(`Couldn't expand the window: ${err}`); }
+}
 function startNewList() {
   $("new-list").hidden = false;
   $("new-list-name").focus();
@@ -649,6 +679,9 @@ $("sidebar").ondblclick = e => {
 $("new-list-name").onkeydown = e => {
   if (e.key === "Escape") { e.preventDefault(); $("new-list").hidden = true; $("new-list-name").value = ""; $("add-list").focus(); }
 };
+$("new-list-name").onblur = () => {
+  if (!$("new-list-name").value.trim()) { $("new-list-name").value = ""; $("new-list").hidden = true; }
+};
 $("new-list").onsubmit = async e => {
   e.preventDefault();
   const field = $("new-list-name"), name = field.value.trim();
@@ -660,6 +693,162 @@ $("new-list").onsubmit = async e => {
     await selectView("all", name);
   } catch (err) { notice(String(err)); field.focus(); }
   finally { field.readOnly = false; }
+};
+
+// Sidebar width is local to this computer, like its order and icon preferences.
+const resizer = $("sidebar-resizer");
+function resizeSidebar(width, persist = true) {
+  sidebarPixels = Math.round(Math.max(140, Math.min(400, innerWidth * .45, width)));
+  document.documentElement.style.setProperty("--sidebar-width", `${sidebarPixels}px`);
+  resizer.setAttribute("aria-valuenow", sidebarPixels);
+  resizer.setAttribute("aria-valuemax", Math.floor(Math.min(400, innerWidth * .45)));
+  if (persist) store.set("sidebarWidth", String(sidebarPixels));
+}
+resizer.onkeydown = e => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+  e.preventDefault();
+  resizeSidebar(e.key === "Home" ? 140 : e.key === "End" ? 400 : sidebarPixels + (e.key === "ArrowLeft" ? -12 : 12));
+};
+resizer.ondblclick = () => resizeSidebar(220);
+resizer.onpointerdown = e => {
+  if (e.button !== 0) return;
+  e.preventDefault(); closeFloating();
+  const original = sidebarPixels, pointer = e.pointerId;
+  resizer.setPointerCapture(pointer);
+  document.body.classList.add("resizing-sidebar");
+  const move = event => { if (event.pointerId === pointer) resizeSidebar(event.clientX - $("sidebar").getBoundingClientRect().left, false); };
+  const end = event => {
+    if (event.pointerId !== pointer) return;
+    document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", end); document.removeEventListener("pointercancel", end); document.removeEventListener("keydown", cancel);
+    if (resizer.hasPointerCapture(pointer)) resizer.releasePointerCapture(pointer);
+    document.body.classList.remove("resizing-sidebar");
+    resizeSidebar(event.type === "pointercancel" ? original : sidebarPixels);
+  };
+  const cancel = event => { if (event.key === "Escape") { event.preventDefault(); end({ pointerId: pointer, type: "pointercancel" }); } };
+  document.addEventListener("pointermove", move); document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end); document.addEventListener("keydown", cancel);
+};
+
+function focusList(name) { ([...$("list-nav").children].find(el => el.dataset.chat === name)?.querySelector("button:not(.list-icon)") || $("view")).focus(); }
+function saveListOrder(names) { listOrder = names; store.set("listOrder", JSON.stringify(names)); renderSidebar(); }
+function reorderChat(name, direction) {
+  const names = orderedChats(), index = names.indexOf(name), destination = index + direction;
+  if (index < 0 || destination < 0 || destination >= names.length) return;
+  [names[index], names[destination]] = [names[destination], names[index]];
+  saveListOrder(names); focusList(name);
+}
+let suppressListClick = false;
+function beginListReorder(e, item, name) {
+  if (e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const pointer = e.pointerId, x = e.clientX, y = e.clientY, button = e.currentTarget;
+  let target = null, after = false;
+  const clear = () => $("list-nav").querySelectorAll(".reorder-before, .reorder-after").forEach(el => el.classList.remove("reorder-before", "reorder-after"));
+  const move = event => {
+    if (event.pointerId !== pointer) return;
+    if (!item.isConnected) return end({ pointerId: pointer, type: "pointercancel" });
+    if (!reorderingList && Math.hypot(event.clientX - x, event.clientY - y) < 5) return;
+    event.preventDefault();
+    if (!reorderingList) { reorderingList = true; button.setPointerCapture(pointer); item.classList.add("reordering"); closeFloating(); }
+    clear();
+    target = document.elementFromPoint(event.clientX, event.clientY)?.closest("#list-nav .sidebar-list");
+    if (target === item) target = null;
+    if (target) {
+      const bounds = target.getBoundingClientRect(); after = event.clientY > bounds.y + bounds.height / 2;
+      target.classList.add(after ? "reorder-after" : "reorder-before");
+    }
+    const bounds = $("sidebar").getBoundingClientRect();
+    if (event.clientY > bounds.bottom - 28) $("sidebar").scrollTop += 12;
+    else if (event.clientY < bounds.top + 28) $("sidebar").scrollTop -= 12;
+  };
+  const end = event => {
+    if (event.pointerId !== pointer) return;
+    document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", end); document.removeEventListener("pointercancel", end); document.removeEventListener("keydown", cancel);
+    const dragged = reorderingList;
+    if (button.hasPointerCapture(pointer)) button.releasePointerCapture(pointer);
+    clear(); item.classList.remove("reordering"); reorderingList = false;
+    if (dragged) {
+      suppressListClick = true; setTimeout(() => { suppressListClick = false; }, 0);
+      if (target && event.type === "pointerup") {
+        const names = orderedChats().filter(n => n !== name), index = names.indexOf(target.dataset.chat);
+        if (index >= 0) { names.splice(index + Number(after), 0, name); saveListOrder(names); }
+      }
+      render(); focusList(name);
+    }
+  };
+  const cancel = event => { if (event.key === "Escape") { event.preventDefault(); end({ pointerId: pointer, type: "pointercancel" }); } };
+  document.addEventListener("pointermove", move); document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end); document.addEventListener("keydown", cancel);
+}
+
+let sidebarMenuName = null, listDialogAction = null, listDialogName = null;
+function openSidebarMenu(name, anchor, point = null) {
+  place($("sidebar-menu"), anchor); sidebarMenuName = name;
+  const names = orderedChats(), index = names.indexOf(name);
+  $("sidebar-menu").querySelector('[data-list-action="up"]').disabled = index <= 0;
+  $("sidebar-menu").querySelector('[data-list-action="down"]').disabled = index === names.length - 1;
+  if (point) {
+    const popup = $("sidebar-menu"); popup.style.right = "auto";
+    popup.style.left = `${Math.max(8, Math.min(innerWidth - popup.offsetWidth - 8, point.clientX))}px`;
+    popup.style.top = `${Math.max(8, Math.min(innerHeight - popup.offsetHeight - 8, point.clientY))}px`;
+  }
+  $("sidebar-menu").querySelector("button").focus();
+}
+async function manageList(action, name, newName = null) {
+  if (editingId != null && !await finishEditing?.(true)) throw new Error("Save your task edit first.");
+  const result = await invoke(`${action}_list`, { name, ...(action === "rename" ? { newName } : {}) });
+  if (action === "rename") {
+    if (name !== newName && Object.hasOwn(listIcons, name)) { listIcons[newName] = listIcons[name]; delete listIcons[name]; }
+    listOrder = listOrder.map(n => n === name ? newName : n);
+    if (selectedChat === name) selectedChat = newName;
+  } else {
+    delete listIcons[name]; listOrder = listOrder.filter(n => n !== name);
+    if (selectedChat === name) selectedChat = null;
+  }
+  store.set("listIcons", JSON.stringify(listIcons)); store.set("listOrder", JSON.stringify(listOrder)); store.set("selectedList", JSON.stringify(selectedChat));
+  chatNames = await invoke("list_chats");
+  update(await invoke("list"));
+  if (action === "archive") notice(`Archived ${name || "Personal"} to ${result}`);
+  else $("notice").hidden = true;
+}
+function openListDialog(action, name) {
+  closeFloating(); listDialogAction = action; listDialogName = name;
+  const rename = action === "rename";
+  $("list-dialog-title").textContent = rename ? "Rename list" : `Delete ${name || "Personal"}?`;
+  $("list-dialog-description").textContent = rename ? "Tasks and subtasks stay together in the renamed list." : "This removes the list and all its tasks and subtasks. Archive the list instead to keep a copy.";
+  $("list-name").hidden = $("list-name-label").hidden = !rename;
+  $("list-name").required = rename; $("list-name").value = name || "Personal";
+  $("list-dialog-save").textContent = rename ? "Save" : "Delete list";
+  $("list-dialog-save").classList.toggle("delete", !rename);
+  $("list-dialog-error").hidden = true;
+  $("list-dialog").showModal();
+  if (rename) { $("list-name").focus(); $("list-name").select(); } else $("list-dialog-cancel").focus();
+}
+$("sidebar-menu").onclick = async e => {
+  const action = e.target.closest("[data-list-action]")?.dataset.listAction, name = sidebarMenuName;
+  if (!action || name == null) return;
+  e.stopPropagation(); closeFloating();
+  if (action === "up" || action === "down") return reorderChat(name, action === "up" ? -1 : 1);
+  if (action === "icon") {
+    const anchor = [...$("list-nav").children].find(el => el.dataset.chat === name)?.querySelector(".list-icon");
+    if (anchor) openListIconMenu(name, anchor);
+  } else if (action === "rename" || action === "delete") openListDialog(action, name);
+  else if (action === "archive") { try { await manageList(action, name); $("view").focus(); } catch (err) { notice(`Couldn't archive list: ${err}`); } }
+};
+$("sidebar-menu").onkeydown = e => {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeFloating(); focusList(sidebarMenuName); }
+  else menuKeys(e, $("sidebar-menu"));
+};
+$("list-dialog-cancel").onclick = () => $("list-dialog").close();
+$("list-dialog").addEventListener("close", () => focusList(listDialogName));
+$("list-dialog-form").onsubmit = async e => {
+  e.preventDefault();
+  if ($("list-dialog-save").disabled) return;
+  $("list-dialog-save").disabled = true;
+  try {
+    const renamed = $("list-name").value.trim();
+    await manageList(listDialogAction, listDialogName, renamed);
+    if (listDialogAction === "rename") listDialogName = renamed;
+    $("list-dialog").close();
+  } catch (err) { $("list-dialog-error").textContent = String(err); $("list-dialog-error").hidden = false; }
+  finally { $("list-dialog-save").disabled = false; }
 };
 
 function beginTaskDrag(event, line, task) {
@@ -1133,6 +1322,7 @@ function closeFloating() {
   $("attribute-menu").hidden = true;
   $("list-menu").hidden = true;
   $("list-icon-menu").hidden = true;
+  $("sidebar-menu").hidden = true;
 }
 
 let iconChat = "";
@@ -1189,7 +1379,7 @@ async function openListMenu(task, anchor) {
   if (!parent) return;
   const picker = $("list-menu");
   const label = Object.assign(document.createElement("div"), { className: "menu-label", textContent: task.parent_id != null ? "Move parent and subtasks" : "Move to list" });
-  picker.replaceChildren(label, ...["", ...allChats()].map(name => {
+  picker.replaceChildren(label, ...[...new Set(["", ...allChats()])].map(name => {
     const button = document.createElement("button");
     button.textContent = name || "Personal";
     button.prepend(listIcon(name));
@@ -1335,6 +1525,7 @@ document.addEventListener("click", (e) => {
   if (!$("attribute-menu").hidden && !$("attribute-menu").contains(e.target)) $("attribute-menu").hidden = true;
   if (!$("list-menu").hidden && !$("list-menu").contains(e.target)) $("list-menu").hidden = true;
   if (!$("list-icon-menu").hidden && !$("list-icon-menu").contains(e.target)) $("list-icon-menu").hidden = true;
+  if (!$("sidebar-menu").hidden && !$("sidebar-menu").contains(e.target)) $("sidebar-menu").hidden = true;
   if (taskMenu.hidden && prioMenu.hidden && dueMenu.hidden && $("attribute-menu").hidden && $("list-menu").hidden) actionReturnId = null;
 });
 document.addEventListener("keydown", (e) => {
@@ -1354,7 +1545,12 @@ $("main").addEventListener("scroll", closeFloating);
 listen("tasks-changed", refresh);
 window.addEventListener("storage", (e) => {
   if (e.key === "listIcons" || e.key == null) { try { const saved = JSON.parse(store.get("listIcons", "{}")); listIcons = Object.assign(Object.create(null), saved); render(); } catch {} }
-  if (e.key === "sidebar" || e.key == null) { sidebarVisible = store.get("sidebar", "0") === "1"; renderSidebar(); }
+  if (e.key === "sidebar" || e.key == null) {
+    const wasVisible = sidebarVisible;
+    sidebarVisible = store.get("sidebar", "0") === "1"; renderSidebar();
+    if (sidebarVisible && !wasVisible) expandForSidebar();
+  }
+  if (e.key === "listOrder") { try { const saved = JSON.parse(e.newValue || "[]"); if (Array.isArray(saved)) { listOrder = saved.filter(n => typeof n === "string"); renderSidebar(); } } catch {} }
   if (e.key === "properties") {
     try {
       const saved = JSON.parse(e.newValue || "{}");

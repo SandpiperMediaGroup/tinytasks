@@ -16,7 +16,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         { id: 2, title: 'Review the pricing page', details: '', agent: '', chat: '', priority: 2, due: null, created_at: now - 86400, done_at: null, mydesk: true, link: '' },
       ];
       const listeners = {};
-      window.testState = { tasks, chats: ['Billing launch', 'Later'], calls: [], failSave: false, failUpdate: false,
+      window.testState = { tasks, chats: ['Billing launch', 'Later'], archives: [], calls: [], failSave: false, failUpdate: false, failLists: false,
         update: { current_version: '0.1.0', latest_version: '0.1.0', update_available: false },
         emit: () => listeners['tasks-changed']?.(), emitUpdate: () => listeners['updates-changed']?.({ payload: structuredClone(testState.update) }) };
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.testClipboard = text; } } });
@@ -31,7 +31,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             return structuredClone(testState.update);
           }
           if (cmd === 'location') return { short: 'This computer', folder: '/tmp/tinytasks-test' };
-          if (cmd === 'list_chats') return [...new Set([...testState.chats, ...tasks.map(t => t.chat).filter(Boolean)])];
+          if (cmd === 'list_chats') return [...new Set([...testState.chats, ...tasks.map(t => t.chat)])];
+          if (['rename_list', 'archive_list', 'delete_list'].includes(cmd)) {
+            if (testState.failLists) throw new Error('File unavailable');
+            if (cmd === 'rename_list') {
+              if (!args.newName.trim() || testState.chats.some(n => n !== args.name && n.toLowerCase() === args.newName.toLowerCase())) throw new Error('A list with that name already exists.');
+              testState.chats = testState.chats.map(n => n === args.name ? args.newName : n);
+              if (!testState.chats.includes(args.newName)) testState.chats.push(args.newName);
+              tasks.filter(t => t.chat === args.name).forEach(t => { t.chat = args.newName; });
+            } else {
+              if (cmd === 'archive_list') testState.archives.push({ name: args.name, tasks: structuredClone(tasks.filter(t => t.chat === args.name)) });
+              testState.chats = testState.chats.filter(n => n !== args.name);
+              for (let i = tasks.length - 1; i >= 0; i--) if (tasks[i].chat === args.name) tasks.splice(i, 1);
+              if (cmd === 'archive_list') return '/tmp/tinytasks-test/archive.md';
+            }
+          }
           if (cmd === 'create_list') {
             if (testState.chats.includes(args.name)) throw new Error('A list with that name already exists.');
             testState.chats.push(args.name);
@@ -80,6 +94,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const url = pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
     if (process.env.LIST_INTERACTIONS_ONLY) {
       await require('./list-interactions.cjs')(browser, installMock, url, errors);
+      assert.deepEqual(errors, []);
+      return;
+    }
+    if (process.env.SIDEBAR_INTERACTIONS_ONLY) {
+      await require('./sidebar-interactions.cjs')(browser, installMock, url, errors);
       assert.deepEqual(errors, []);
       return;
     }
@@ -727,6 +746,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await appearance.locator('html').getAttribute('data-appearance'), 'auto');
     assert.equal(await appearance.evaluate(() => testState.calls.some(c => ['edit_task', 'set_done', 'set_priority', 'set_desk', 'delete_task'].includes(c.cmd))), false);
     await require('./list-interactions.cjs')(browser, installMock, url, errors);
+    await require('./sidebar-interactions.cjs')(browser, installMock, url, errors);
     assert.deepEqual(errors, []);
     console.log('PASS: display/group persistence, editing and retry, notes, subtasks, My desk, drag/keyboard order, grouping and ordering in both directions, per-view layouts, preference migration, progress, compact alignment, hover/focus controls, narrow layout, themes, settings keyboard access, theme persistence and note syncing, shared task menus, context-click and keyboard actions, growing task/subtask entry, resizing, and composition handling.');
   } finally { await browser.close(); }

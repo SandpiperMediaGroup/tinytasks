@@ -38,7 +38,7 @@ and can also be checked manually in Settings; installing a new release is manual
 Download the universal Mac DMG from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
 open it, and drag **TinyTasks.app** to **Applications** before launching it. A ZIP download is also available.
 Both the app and DMG are Developer ID signed, notarized by Apple, and carry their notarization tickets.
-The app supports Apple silicon and Intel Macs. v0.2.0 includes the latest task entry,
+The app supports Apple silicon and Intel Macs. v0.2.0 includes task entry,
 Lists & Chats navigation, and desktop settings improvements on both Windows and macOS.
 
 For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
@@ -104,11 +104,21 @@ Drag the empty header space to move the window.
   puts a few tasks there, or use the lamp action in a task’s menu. The desk clears overnight.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
+- **Show sidebar**, in the title menu or Settings, expands a narrow window to show My Desk,
+  Today, Upcoming, All, Completed, and your Lists & Chats, including Personal tasks. Drag the
+  divider to resize it. Drag list names to reorder them; the five main views stay fixed.
+  Right-click a list to rename it, change its icon, archive it, or delete it. Empty lists stay
+  in the sidebar and are hidden in All. An open list shows its icon in the toolbar without
+  repeating its name as a group heading. See [Lists & Chats](docs/lists-and-navigation.md).
+- **Archive list** moves its original Markdown sections, including completed tasks, subtasks,
+  and notes, to `archive.md` beside `tasks.md`. Deleting a list instead asks for confirmation.
 - **Grouping and ordering** share a compact two-row menu. Group by date added, chat, agent,
   priority, due date, or choose No grouping. Order tasks within each group by priority, due date,
   date added, or name; Completed also offers date completed. Each row has a direction control.
   Missing dates and priorities stay last. Tasks, My desk, and Completed remember their own
   choices and collapsed groups. Subtasks keep their saved order.
+  Completed also offers grouping by **Date completed**, with Today, Yesterday, This week,
+  and Earlier headings.
 - **Subtasks** live in a task's details. Use **Add subtask** in the task’s **⋯** menu to add the
   first one; the Subtasks header appears once needed, with its own **+** for more. Click its
   text to edit, or the rest of its row to open its own details. Its **⋯** menu manages its priority, due date, and sticky note.

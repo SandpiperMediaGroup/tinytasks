@@ -1,6 +1,11 @@
 const { invoke } = window.__TAURI__.core;
 const $ = id => document.getElementById(id);
 const settings = document.body;
+const sidebarInput = $("show-sidebar");
+const updateSidebar = () => { try { sidebarInput.checked = localStorage.getItem("sidebar") === "1"; } catch {} };
+updateSidebar();
+sidebarInput.onchange = () => { try { localStorage.setItem("sidebar", sidebarInput.checked ? "1" : "0"); } catch {} };
+window.addEventListener("storage", e => { if (e.key === "sidebar" || e.key == null) updateSidebar(); });
 if (/Mac/.test(navigator.platform)) settings.classList.add("mac-titlebar");
 for (const link of settings.querySelectorAll("[data-about-link]")) {
   link.onclick = async e => {

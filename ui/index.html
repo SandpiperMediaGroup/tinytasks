@@ -19,9 +19,13 @@
         <svg class="chev" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>
       </button></h1>
       <div id="view-menu" data-tauri-drag-region="false" class="menu" role="menu" hidden>
-        <button role="menuitemradio" data-view="all"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Tasks <span class="n"></span></button>
+        <button role="menuitemradio" data-view="all"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>All <span class="n"></span></button>
         <button role="menuitemradio" data-view="desk"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg>My desk <span class="n"></span></button>
         <button role="menuitemradio" data-view="done"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>Completed <span class="n"></span></button>
+        <button role="menuitemradio" data-view="today">Today <span class="n"></span></button>
+        <button role="menuitemradio" data-view="upcoming">Upcoming <span class="n"></span></button>
+        <div class="menu-sep"></div>
+        <button id="sidebar-toggle" role="menuitemcheckbox" aria-checked="false">Show sidebar</button>
         <div class="menu-sep"></div>
         <div class="menu-label">Task location</div>
         <div id="where"></div>
@@ -62,11 +66,12 @@
           <div class="property-options">
             <button data-property="id" aria-pressed="false">ID</button>
             <button data-property="agent" aria-pressed="true">Agent</button>
-            <button data-property="chat" aria-pressed="true">Chat</button>
+            <button data-property="chat" aria-pressed="true">Lists &amp; Chats</button>
             <button data-property="priority" aria-pressed="true">Priority</button>
             <button data-property="due" aria-pressed="true">Due date</button>
             <button data-property="added" aria-pressed="true">Added</button>
             <button data-property="completed" aria-pressed="true">Completed</button>
+            <button data-property="subtasks" aria-pressed="true">Subtask count</button>
             <button data-property="details" aria-pressed="false">Details</button>
           </div>
         </div>
@@ -75,6 +80,15 @@
   </header>
 
   <p id="notice" role="status" hidden></p>
+  <div id="workspace">
+    <aside id="sidebar" aria-label="Navigation" hidden>
+      <nav id="primary-nav" aria-label="Views"></nav>
+      <div class="menu-sep"></div>
+      <div class="sidebar-heading"><span>Lists &amp; Chats</span><button id="add-list" class="icon" aria-label="New list" title="New list">+</button></div>
+      <nav id="list-nav" aria-label="Lists &amp; Chats"></nav>
+      <form id="new-list" hidden autocomplete="off"><input id="new-list-name" maxlength="200" placeholder="List name" aria-label="New list name"></form>
+      <div id="sidebar-space" title="Double-click to create a list"></div>
+    </aside>
   <main id="main">
     <form id="new-task" hidden autocomplete="off">
       <span class="check"></span>
@@ -87,6 +101,7 @@
       <button class="pick-folder">Choose a folder…</button>
     </div>
   </main>
+  </div>
 
   <div id="task-menu" class="menu floating" role="menu" aria-label="Task actions" hidden>
     <button class="open-note" data-action="open-note" role="menuitem"><svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg><span>Open as sticky note</span></button>
@@ -94,8 +109,23 @@
     <button class="set-desk" data-action="set-desk" role="menuitem"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg><span>Put on my desk</span></button>
     <button class="set-due" data-action="set-due" role="menuitem" aria-haspopup="dialog"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span>Due date</span></button>
     <button class="set-prio" data-action="set-prio" role="menuitem" aria-haspopup="menu"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Priority</span></button>
+    <button data-action="set-chat" role="menuitem"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v11H3zM14 4h7m-3-3 3 3-3 3"/></svg><span>Move to list…</span></button>
     <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open link</span></button>
     <button class="delete" data-action="delete" role="menuitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Delete task</span></button>
+  </div>
+
+  <form id="attribute-menu" class="menu floating" role="dialog" aria-label="Edit attribute" hidden autocomplete="off">
+    <label id="attribute-label" for="attribute-value"></label>
+    <input id="attribute-value" list="attribute-options" maxlength="300">
+    <datalist id="attribute-options"></datalist>
+    <div class="attribute-actions"><button type="button" id="attribute-cancel">Cancel</button><button type="submit">Save</button></div>
+  </form>
+  <div id="list-menu" class="menu floating" role="menu" aria-label="Move to list" hidden></div>
+  <div id="list-icon-menu" class="menu floating" role="dialog" aria-label="List icon" hidden>
+    <div class="menu-label">List icon</div>
+    <button id="list-icon-auto">Use agent icon or star</button>
+    <div id="list-icon-options"></div>
+    <form id="custom-list-icon" autocomplete="off"><input id="custom-list-symbol" aria-label="Custom list emoji" placeholder="Emoji" maxlength="16"><button type="submit">Set</button></form>
   </div>
 
   <div id="prio-menu" class="menu floating" role="menu" hidden>
@@ -134,7 +164,7 @@
           <div class="sub"><span class="task-id" hidden></span><span class="src"></span><span class="due" hidden><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span></span></span><span class="time-sub"></span></div>
         </div>
         <div class="row-status">
-          <span class="prio" hidden></span><span class="time"></span>
+          <button class="subtask-count" hidden></button><span class="prio" hidden></span><span class="time"></span>
           <button class="icon more" aria-label="Task actions" title="Task actions" aria-haspopup="menu" aria-controls="task-menu" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
         </div>
       </div>

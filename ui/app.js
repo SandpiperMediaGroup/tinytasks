@@ -8,15 +8,44 @@ const store = {
   get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
-let view = store.get("view", "all"); // "all", "desk" (only what's on my desk) or "done"
-if (!["all", "desk", "done"].includes(view)) view = "all";
-const groupLabels = { none: "No grouping", chat: "Chat", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added" };
+let view = store.get("view", "all");
+if (!["all", "desk", "done", "today", "upcoming"].includes(view)) view = "all";
+let selectedChat = store.get("selectedChat", "");
+let chatNames = [];
+let sidebarVisible = store.get("sidebar", "0") === "1";
+let listIcons = Object.create(null);
+try { const saved = JSON.parse(store.get("listIcons", "{}")); if (saved && typeof saved === "object" && !Array.isArray(saved)) Object.assign(listIcons, saved); } catch {}
+const navIcons = {
+  desk: '<path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/>',
+  today: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1"/>',
+  upcoming: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4m-6 7 3 2-3 2"/>',
+  all: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+  star: '<path d="m12 2 2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/>',
+  folder: '<path d="M3 7h7l2 2h9v11H3z"/>',
+  flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
+  book: '<path d="M4 3h13a2 2 0 0 1 2 2v16H6a2 2 0 0 1-2-2zm0 14h15"/>',
+  code: '<path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-14-2 16"/>',
+  briefcase: '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V3h8v4M3 12h18M10 12v3h4v-3"/>',
+};
+function symbolIcon(name) {
+  const el = document.createElement("span"); el.className = "nav-icon";
+  el.setAttribute("aria-hidden", "true");
+  if (Object.hasOwn(navIcons, name)) el.innerHTML = `<svg viewBox="0 0 24 24">${navIcons[name]}</svg>`;
+  else el.textContent = name;
+  return el;
+}
+function listIcon(chat, agent = "") {
+  if (Object.hasOwn(listIcons, chat) && typeof listIcons[chat] === "string" && listIcons[chat]) return symbolIcon(listIcons[chat]);
+  const sourceAgent = agent || tasks.find(t => t.chat === chat && t.agent)?.agent;
+  return sourceAgent ? agentIcon(sourceAgent) : symbolIcon("star");
+}
+const groupLabels = { none: "No grouping", chat: "Lists & Chats", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added" };
 const orderLabels = { priority: "Priority", due: "Due date", added: "Date added", name: "Name", completed: "Date completed" };
 const legacyGroup = Object.hasOwn(groupLabels, store.get("groupBy", "time")) ? store.get("groupBy", "time") : "time";
 const layouts = {};
 let savedLayouts = {};
 try { savedLayouts = JSON.parse(store.get("listLayouts", "{}")) || {}; } catch {}
-for (const name of ["all", "desk", "done"]) {
+for (const name of ["all", "desk", "done", "today", "upcoming"]) {
   const saved = savedLayouts[name] || {};
   const grouping = Object.hasOwn(groupLabels, saved.groupBy) ? saved.groupBy : name === "done" ? "none" : legacyGroup;
   const ordering = Object.hasOwn(orderLabels, saved.orderBy) && (saved.orderBy !== "completed" || name === "done")
@@ -39,7 +68,7 @@ if (noteId != null) {
   document.body.classList.add("sticky-note");
   $("note-handle").hidden = false;
 }
-const properties = { id: false, agent: true, chat: true, priority: true, due: true, added: true, completed: true, details: false };
+const properties = { id: false, agent: true, chat: true, priority: true, due: true, added: true, completed: true, subtasks: true, details: false };
 try {
   const saved = JSON.parse(store.get("properties", "{}"));
   for (const key of Object.keys(properties)) if (typeof saved?.[key] === "boolean") properties[key] = saved[key];
@@ -53,6 +82,7 @@ let tasks = [];
 let lastJson = "";
 const childrenOf = (id) => tasks.filter(t => t.parent_id === id).sort((a, b) => a.position - b.position || a.id - b.id);
 let draggingSubtask = null;
+let draggingTask = null;
 
 // ---- time ----
 const DAY = 86400;
@@ -109,15 +139,30 @@ function source(t, { icon = true, chat = true } = {}) {
   const el = document.createElement("span");
   el.className = "src";
   const mine = !t.agent; // the user added it: no logo, no label
-  if (icon && !mine) el.appendChild(agentIcon(t.agent));
-  const label = chat ? t.chat || (icon && !mine ? agentInfo(t.agent).name : "") : "";
+  if (icon && !mine) {
+    const badge = agentIcon(t.agent);
+    attributeControl(badge, "Edit agent", () => editAttribute(t, "agent", badge));
+    el.appendChild(badge);
+  }
+  const label = chat ? t.chat : "";
   if (label) {
     const c = document.createElement("span");
     c.className = "chat";
     c.textContent = label;
+    attributeControl(c, "Move to list", () => openListMenu(t, c));
     el.appendChild(c);
   }
   return el;
+}
+
+function attributeControl(el, label, action) {
+  el.setAttribute("role", "button");
+  el.tabIndex = 0;
+  el.setAttribute("aria-label", label);
+  el.onclick = e => { e.stopPropagation(); if (!suppressSubtaskClick) action(); };
+  el.onkeydown = e => {
+    if (["Enter", " "].includes(e.key)) { e.preventDefault(); e.stopPropagation(); action(); }
+  };
 }
 
 function row(t, parent = null, index = 0) {
@@ -165,12 +210,14 @@ function row(t, parent = null, index = 0) {
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
   const pill = li.querySelector(".prio");
+  attributeControl(pill, "Edit priority", () => { openPrioMenu(pill, t); prioMenu.querySelector('[aria-checked="true"]').focus(); });
   if (properties.priority && t.priority != null && by !== "priority") {
     pill.hidden = false;
     pill.dataset.p = t.priority;
     pill.textContent = `P${t.priority}`;
   }
   const due = li.querySelector(".due");
+  attributeControl(due, "Edit due date", () => { openDueMenu(due, t); dueMenu.querySelector('[data-quick="0"]').focus(); });
   // Grouped by due date, only the Today and Tomorrow headers name the day; other rows keep it.
   const headerSaysDay = by === "due" && t.due && [0, 1].includes(daysUntil(t.due));
   if (properties.due && t.due && !done && !headerSaysDay) {
@@ -191,6 +238,11 @@ function row(t, parent = null, index = 0) {
   check.classList.toggle("checked", done);
   check.title = done ? "Mark not done" : "Mark done";
   const children = childrenOf(t.id);
+  const subtaskCount = li.querySelector(".subtask-count");
+  subtaskCount.hidden = !properties.subtasks || children.length === 0 || noteId != null;
+  subtaskCount.textContent = `${children.filter(child => child.done_at != null).length}/${children.length}`;
+  subtaskCount.title = `${children.filter(child => child.done_at != null).length} of ${children.length} subtasks complete`;
+  attributeControl(subtaskCount, subtaskCount.title + ". Show subtasks", () => line.onclick());
   if (children.length && !done) {
     const count = children.filter(child => child.done_at != null).length;
     check.classList.add("has-progress");
@@ -221,7 +273,9 @@ function row(t, parent = null, index = 0) {
     open ? expanded.add(t.id) : expanded.delete(t.id);
     li.classList.toggle("open", open);
     line.setAttribute("aria-expanded", open);
-    if (open) setTimeout(() => li.scrollIntoView({ block: "nearest", behavior: "smooth" }), 170);
+    if (open) setTimeout(() => {
+      if (li.isConnected && li.classList.contains("open")) li.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    }, 170);
   };
   li.querySelector(".details").onclick = async (e) => {
     // Only this task's blank gutter/footer: child rows, text, and controls handle their own clicks.
@@ -266,7 +320,7 @@ function row(t, parent = null, index = 0) {
   if (t.parent_id == null) {
     // A child selected for My desk has its own row there; don't render a duplicate inside its parent.
     const nestedChildren = children.map((child, i) => ({ child, i })).filter(({ child }) =>
-      !(view === "desk" && noteId == null && child.mydesk && child.done_at == null));
+      (properties.completed || child.done_at == null) && !(view === "desk" && noteId == null && child.mydesk && child.done_at == null));
     const section = li.querySelector(".subtasks");
     section.hidden = nestedChildren.length === 0;
     const mode = section.querySelector(".mode-chip");
@@ -279,6 +333,10 @@ function row(t, parent = null, index = 0) {
   if (parent) {
     line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
     line.onpointerdown = (e) => beginSubtaskDrag(e, line, t.id, parent.id);
+  }
+  else if (t.parent_id == null && noteId == null) {
+    line.title = "Drag to another list section or sidebar list.";
+    line.onpointerdown = e => beginTaskDrag(e, line, t);
   }
   if (noteId === t.id) $("note-complete").replaceChildren(check);
   return li;
@@ -434,6 +492,9 @@ function groupsOf(open) {
     if (!map.has(k)) map.set(k, { k, label, sample: t, items: [] });
     map.get(k).items.push(t);
   }
+  if (view === "all" && groupBy === "chat" && !selectedChat) {
+    for (const name of allChats()) if (!map.has(`c:${name}`)) map.set(`c:${name}`, { k: `c:${name}`, label: name, sample: { chat: name, agent: "" }, items: [] });
+  }
   const groups = [...map.values()];
   const missing = g => ["priority", "due"].includes(groupBy) ? g.k === 9 : !g.label;
   groups.sort((a, b) => Number(missing(a)) - Number(missing(b)) ||
@@ -445,15 +506,17 @@ function groupsOf(open) {
 const VIEWS = {
   all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
   desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
+  today: { name: "Today", empty: "Nothing due today.", show: t => t.done_at == null && t.due && daysUntil(t.due) <= 0 },
+  upcoming: { name: "Upcoming", empty: "Nothing upcoming.", show: t => t.done_at == null && t.due && daysUntil(t.due) > 0 },
   done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
 };
 const tasksForView = (name) => tasks.filter(t => (name === "desk" || t.parent_id == null) && VIEWS[name].show(t));
 
 function render() {
-  if (editingId != null || draggingSubtask != null) return;
+  if (editingId != null || draggingSubtask != null || draggingTask != null) return;
   if (taskMenuId != null) closeFloating();
   const v = VIEWS[view];
-  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view);
+  const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view).filter(t => !selectedChat || t.chat === selectedChat);
   if (noteId != null) $("note-complete").replaceChildren();
   const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
   const headers = groupBy !== "none" && noteId == null;
@@ -461,6 +524,7 @@ function render() {
   $("open").replaceChildren(
     ...groups.map((g, index) => {
       const sec = document.createElement("section");
+      if (groupBy === "chat" && noteId == null) sec.dataset.chat = g.sample?.chat || "";
       const ul = document.createElement("ul");
       ul.id = `group-items-${index}`;
       if (headers) {
@@ -476,7 +540,7 @@ function render() {
           toggle.appendChild(Object.assign(document.createElement("span"), { className: "prio", textContent: `P${g.k}` }));
           toggle.lastChild.dataset.p = g.k;
         } else if (groupBy === "chat" || groupBy === "agent") {
-          toggle.appendChild(agentIcon(g.sample.agent));
+          toggle.appendChild(groupBy === "chat" ? listIcon(g.sample.chat, g.sample.agent) : agentIcon(g.sample.agent));
         }
         // Overdue and Today read in the same red and orange as the due dates on rows.
         if (groupBy === "due" && g.k <= 1) toggle.dataset.when = g.k === 0 ? "late" : "today";
@@ -502,10 +566,10 @@ function render() {
   $("problem").querySelector("p").textContent = problem;
   $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
   $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
-  $("heading").textContent = noteId != null ? "Sticky note" : v.name;
+  $("heading").textContent = noteId != null ? "Sticky note" : selectedChat || v.name;
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
-    b.setAttribute("aria-checked", b.dataset.view === view);
+    b.setAttribute("aria-checked", !selectedChat && b.dataset.view === view);
     b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
   }
   for (const [id, value, label, name] of [["group-field", groupBy, groupLabels[groupBy], "Grouping"], ["order-field", orderBy, orderBy === "completed" ? "Completed" : orderLabels[orderBy], "Ordering"]]) {
@@ -523,6 +587,120 @@ function render() {
   }
   $("group").title = `Grouping: ${groupLabels[groupBy]}. Ordering: ${orderLabels[orderBy]}, ${directionLabel(orderBy, orderDescending).toLowerCase()}.`;
   for (const b of document.querySelectorAll("[data-property]")) b.setAttribute("aria-pressed", properties[b.dataset.property]);
+  renderSidebar();
+}
+
+// Lists are the markdown chat sections, including intentionally empty lists.
+function allChats() { return [...new Set([...chatNames, ...tasks.map(t => t.chat).filter(Boolean)])].sort(compareText); }
+function renderSidebar() {
+  $("sidebar").hidden = !sidebarVisible || noteId != null;
+  $("sidebar-toggle").setAttribute("aria-checked", sidebarVisible);
+  const navButton = (label, count, active, action) => {
+    const button = document.createElement("button");
+    button.append(Object.assign(document.createElement("span"), { className: "nav-label", textContent: label }), Object.assign(document.createElement("span"), { className: "n", textContent: count || "" }));
+    if (active) button.setAttribute("aria-current", "page");
+    button.onclick = action;
+    return button;
+  };
+  $("primary-nav").replaceChildren(...[["desk", "My Desk"], ["today", "Today"], ["upcoming", "Upcoming"], ["all", "All"]].map(([name, label]) => {
+    const button = navButton(label, tasksForView(name).length, !selectedChat && view === name, () => selectView(name));
+    button.prepend(symbolIcon(name));
+    return button;
+  }));
+  $("list-nav").replaceChildren(...allChats().map(name => {
+    const count = tasks.filter(t => t.chat === name && t.parent_id == null && t.done_at == null).length;
+    const button = navButton(name, count, selectedChat === name, () => selectView("all", name));
+    button.title = name;
+    const item = Object.assign(document.createElement("div"), { className: "sidebar-list" });
+    item.dataset.chat = name;
+    const icon = Object.assign(document.createElement("button"), { className: "list-icon", title: `Change icon for ${name}` });
+    icon.setAttribute("aria-label", `Change icon for ${name}`);
+    icon.appendChild(listIcon(name));
+    icon.onclick = e => { e.stopPropagation(); openListIconMenu(name, icon); };
+    item.append(icon, button);
+    return item;
+  }));
+}
+async function selectView(name, chat = "") {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  if (!form.hidden) { if (input.value.trim() && !await saveNewTask()) return; closeNew(); }
+  view = name; selectedChat = chat;
+  store.set("view", view); store.set("selectedChat", chat);
+  useViewLayout(); setViewMenu(false); closeFloating(); render();
+  $("main").scrollTop = 0;
+}
+$("sidebar-toggle").onclick = () => {
+  sidebarVisible = !sidebarVisible;
+  store.set("sidebar", sidebarVisible ? "1" : "0");
+  setViewMenu(false); renderSidebar();
+};
+function startNewList() {
+  $("new-list").hidden = false;
+  $("new-list-name").focus();
+}
+$("add-list").onclick = startNewList;
+$("sidebar").ondblclick = e => {
+  if (e.target.closest("button, input, form")) return;
+  startNewList();
+};
+$("new-list-name").onkeydown = e => {
+  if (e.key === "Escape") { e.preventDefault(); $("new-list").hidden = true; $("new-list-name").value = ""; $("add-list").focus(); }
+};
+$("new-list").onsubmit = async e => {
+  e.preventDefault();
+  const field = $("new-list-name"), name = field.value.trim();
+  if (!name || field.readOnly) return;
+  field.readOnly = true;
+  try {
+    chatNames = await invoke("create_list", { name });
+    field.value = ""; $("new-list").hidden = true;
+    await selectView("all", name);
+  } catch (err) { notice(String(err)); field.focus(); }
+  finally { field.readOnly = false; }
+};
+
+function beginTaskDrag(event, line, task) {
+  if (event.button !== 0 || editingId != null || event.target.closest('button, input, textarea, .sub, .row-status')) return;
+  const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
+  let target = null;
+  const clearTarget = () => document.querySelectorAll(".list-drop-target").forEach(el => el.classList.remove("list-drop-target"));
+  const move = e => {
+    if (e.pointerId !== start.pointer) return;
+    if (!line.isConnected) return end({ pointerId: start.pointer, type: "pointercancel" });
+    if (!draggingTask && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5) return;
+    e.preventDefault();
+    if (!draggingTask) {
+      draggingTask = task.id; line.setPointerCapture(start.pointer);
+      line.parentElement.classList.add("dragging");
+      closeFloating();
+    }
+    clearTarget();
+    target = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-chat]");
+    if (target && target.dataset.chat !== task.chat) target.classList.add("list-drop-target");
+    else target = null;
+    const scroller = e.clientX < $("main").getBoundingClientRect().left ? $("sidebar") : $("main");
+    const bounds = scroller.getBoundingClientRect();
+    if (e.clientY > bounds.bottom - 28) scroller.scrollBy(0, 12);
+    else if (e.clientY < bounds.top + 28) scroller.scrollBy(0, -12);
+  };
+  const end = async e => {
+    if (e.pointerId !== start.pointer) return;
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", end);
+    document.removeEventListener("pointercancel", end);
+    if (line.hasPointerCapture(start.pointer)) line.releasePointerCapture(start.pointer);
+    clearTarget(); line.parentElement.classList.remove("dragging");
+    const dragged = draggingTask != null;
+    draggingTask = null;
+    if (!dragged) return;
+    suppressSubtaskClick = true;
+    setTimeout(() => { suppressSubtaskClick = false; }, 0);
+    if (e.type === "pointerup" && target) await act("edit_task", { id: task.id, chat: target.dataset.chat });
+    else render();
+  };
+  document.addEventListener("pointermove", move, { passive: false });
+  document.addEventListener("pointerup", end);
+  document.addEventListener("pointercancel", end);
 }
 
 // ---- editing a task in place ----
@@ -598,6 +776,10 @@ function update(list) {
 
 async function refresh() {
   try {
+    if (noteId == null) {
+      const names = await invoke("list_chats");
+      if (JSON.stringify(names) !== JSON.stringify(chatNames)) { chatNames = Array.isArray(names) ? names.filter(n => typeof n === "string") : []; renderSidebar(); }
+    }
     const list = await invoke(noteId != null ? "list_note" : "list", noteId != null ? { id: noteId } : undefined);
     if (problem || JSON.stringify(list) !== lastJson) update(list);
   } catch (e) {
@@ -631,28 +813,56 @@ new ResizeObserver(() => {
   entryWidth = width;
   $("main").querySelectorAll("textarea").forEach(fitEntry);
 }).observe($("main"));
-$("add").onclick = () => {
+$("add").onclick = () => openNewTask(false);
+function openNewTask(atEnd = false) {
+  if (noteId != null || problem) return;
   if (view === "done") { view = "all"; store.set("view", view); useViewLayout(); render(); }
+  if (atEnd) $("main").appendChild(form);
+  else $("main").prepend(form);
   form.hidden = false;
   fitEntry(input);
   $("empty").hidden = true;
-  $("main").scrollTop = 0;
+  if (atEnd) form.scrollIntoView({ block: "nearest" });
+  else $("main").scrollTop = 0;
   input.focus();
+}
+$("main").ondblclick = e => {
+  if (e.target.closest(".task, button, input, textarea, form, #problem")) return;
+  const bottom = $("open").getBoundingClientRect().bottom;
+  if (e.clientY >= bottom) openNewTask(true);
 };
+let savingNew = null;
+function saveNewTask() {
+  if (savingNew) return savingNew;
+  const title = input.value.trim();
+  if (!title) return Promise.resolve(false);
+  input.readOnly = true;
+  savingNew = (async () => {
+    try {
+      const list = await invoke("add_task", { title, mydesk: view === "desk", chat: selectedChat || null, due: view === "today" ? daysFrom(0) : view === "upcoming" ? daysFrom(1) : null });
+      input.value = ""; fitEntry(input); $("notice").hidden = true; update(list);
+      return true;
+    } catch (err) { notice(`Couldn't save: ${err}`); input.focus(); return false; }
+    finally { savingNew = null; input.readOnly = false; }
+  })();
+  return savingNew;
+}
 form.onsubmit = async (e) => {
   e.preventDefault();
   const title = input.value.trim();
   if (!title) return closeNew();
-  input.value = ""; // stay open for the next one
-  fitEntry(input);
-  act("add_task", { title, mydesk: view === "desk" });
+  await saveNewTask();
 };
 input.onkeydown = e => {
   if (e.isComposing || e.keyCode === 229) return;
   if (e.key === "Enter") { e.preventDefault(); form.requestSubmit(); }
   if (e.key === "Escape") { e.preventDefault(); closeNew(); render(); }
 };
-input.onblur = () => { if (input.value.trim()) form.requestSubmit(); closeNew(); render(); };
+input.onblur = async () => {
+  if (savingNew) return;
+  if (input.value.trim() && !await saveNewTask()) return;
+  closeNew(); render();
+};
 
 // ---- header tools ----
 // ---- the view menu (the header): what to show, and where the list lives ----
@@ -673,12 +883,7 @@ $("view").onclick = async (e) => {
 viewMenu.onclick = (e) => {
   const b = e.target.closest("[data-view]");
   if (!b) return;
-  view = b.dataset.view;
-  store.set("view", view);
-  useViewLayout();
-  setViewMenu(false);
-  render();
-  $("main").scrollTop = 0;
+  selectView(b.dataset.view);
 };
 let noticeTimer;
 function notice(text) {
@@ -857,6 +1062,7 @@ taskMenu.onclick = async e => {
   const action = button.dataset.action;
   if (action === "set-prio") { openPrioMenu(anchor, t); prioMenu.querySelector('[aria-checked="true"]').focus(); return; }
   if (action === "set-due") { openDueMenu(anchor, t); dueMenu.querySelector('[data-quick="0"]').focus(); return; }
+  if (action === "set-chat") { openListMenu(t, anchor); return; }
   closeTaskMenu(); actionReturnId = null;
   if (action === "first-subtask") return startNewSubtask(t.id);
   if (action === "set-desk") await act("set_desk", { id: t.id, on: !t.mydesk });
@@ -911,7 +1117,7 @@ function place(menu, btn) {
   menu.style.left = "auto";
   menu.hidden = false;
   const h = menu.offsetHeight;
-  menu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+  menu.style.right = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, innerWidth - r.right))}px`;
   // Open downward if it fits, otherwise upward.
   menu.style.top = r.bottom + 4 + h < innerHeight ? `${r.bottom + 4}px` : `${Math.max(8, r.top - 4 - h)}px`;
 }
@@ -921,7 +1127,113 @@ function closeFloating() {
   closeLayoutOptions();
   prioMenu.hidden = true;
   dueMenu.hidden = true;
+  $("attribute-menu").hidden = true;
+  $("list-menu").hidden = true;
+  $("list-icon-menu").hidden = true;
 }
+
+let iconChat = "";
+function saveListIcon(value) {
+  if (value) listIcons[iconChat] = value;
+  else delete listIcons[iconChat];
+  store.set("listIcons", JSON.stringify(listIcons));
+  closeFloating(); render();
+  [...$("list-nav").querySelectorAll("[data-chat]")].find(el => el.dataset.chat === iconChat)?.querySelector(".list-icon")?.focus();
+}
+function openListIconMenu(name, anchor) {
+  iconChat = name;
+  $("list-icon-options").replaceChildren(...["star", "folder", "flag", "book", "code", "briefcase"].map(icon => {
+    const button = document.createElement("button");
+    button.setAttribute("aria-label", icon);
+    button.setAttribute("aria-pressed", listIcons[name] === icon);
+    button.appendChild(symbolIcon(icon));
+    button.onclick = e => { e.stopPropagation(); saveListIcon(icon); };
+    return button;
+  }));
+  $("custom-list-symbol").value = "";
+  place($("list-icon-menu"), anchor);
+  $("list-icon-auto").focus();
+}
+$("list-icon-auto").onclick = () => saveListIcon(null);
+$("custom-list-icon").onsubmit = e => {
+  e.preventDefault();
+  const value = $("custom-list-symbol").value.trim();
+  const symbols = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)];
+  if (symbols.length !== 1) { notice("Choose one emoji or symbol for the list icon."); return; }
+  saveListIcon(value);
+};
+
+async function openListMenu(task, anchor) {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  const parent = task.parent_id != null ? tasks.find(t => t.id === task.parent_id) : task;
+  if (!parent) return;
+  const picker = $("list-menu");
+  const label = Object.assign(document.createElement("div"), { className: "menu-label", textContent: task.parent_id != null ? "Move parent and subtasks" : "Move to list" });
+  picker.replaceChildren(label, ...["", ...allChats()].map(name => {
+    const button = document.createElement("button");
+    button.textContent = name || "Personal";
+    button.prepend(listIcon(name));
+    button.dataset.chatChoice = name;
+    button.setAttribute("role", "menuitemradio");
+    button.setAttribute("aria-checked", name === parent.chat);
+    button.onclick = async e => {
+      e.stopPropagation();
+      try {
+        const list = await invoke("edit_task", { id: parent.id, chat: name });
+        closeFloating(); $("notice").hidden = true;
+        update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
+        focusTask(task.id);
+      } catch (err) { notice(`Couldn't move task: ${err}`); }
+    };
+    return button;
+  }));
+  picker.appendChild(Object.assign(document.createElement("div"), { className: "menu-sep" }));
+  const create = Object.assign(document.createElement("button"), { textContent: "New list…" });
+  create.setAttribute("role", "menuitem");
+  create.dataset.newList = "";
+  create.onclick = e => { e.stopPropagation(); editAttribute(task, "chat", anchor, true); };
+  picker.appendChild(create);
+  place(picker, anchor); actionReturnId = task.id;
+  picker.querySelector('[aria-checked="true"]')?.focus();
+}
+$("list-menu").onkeydown = e => menuKeys(e, $("list-menu"));
+
+let attributeTask = null, attributeField = null, creatingList = false;
+async function editAttribute(task, field, anchor, create = false) {
+  if (editingId != null && !await finishEditing?.(true)) return;
+  // A subtask shares its parent's list; moving it moves that family together.
+  attributeTask = field === "chat" && task.parent_id != null ? tasks.find(t => t.id === task.parent_id) : task;
+  if (!attributeTask) return;
+  attributeField = field;
+  creatingList = create;
+  const label = field === "chat" ? "Lists & Chats" : "Agent";
+  $("attribute-label").textContent = create ? "New list" : label;
+  $("attribute-menu").setAttribute("aria-label", create ? "New list" : "Edit agent");
+  $("attribute-value").value = create ? "" : attributeTask[field] || "";
+  $("attribute-value").setAttribute("aria-label", label);
+  $("attribute-options").replaceChildren(...(field === "chat" ? allChats() : [...new Set(tasks.map(t => t.agent).filter(Boolean))]).map(value => Object.assign(document.createElement("option"), { value })));
+  place($("attribute-menu"), anchor);
+  actionReturnId = task.id;
+  $("attribute-value").focus(); $("attribute-value").select();
+}
+$("attribute-cancel").onclick = () => { const id = actionReturnId; closeFloating(); if (id != null) focusTask(id); };
+$("attribute-menu").onsubmit = async e => {
+  e.preventDefault();
+  const field = $("attribute-value");
+  if (!attributeTask || field.readOnly) return;
+  field.readOnly = true;
+  try {
+    if (creatingList) {
+      chatNames = await invoke("create_list", { name: field.value.trim() });
+      creatingList = false;
+    }
+    const list = await invoke("edit_task", { id: attributeTask.id, [attributeField]: field.value.trim() });
+    const id = actionReturnId;
+    closeFloating(); $("notice").hidden = true; update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
+    if (id != null) focusTask(id);
+  } catch (err) { notice(`Couldn't save: ${err}`); field.focus(); }
+  finally { field.readOnly = false; }
+};
 prioMenu.onclick = async (e) => {
   const b = e.target.closest("button[data-p]");
   if (!b || !prioTask) return;
@@ -1000,7 +1312,10 @@ document.addEventListener("click", (e) => {
   if (!viewMenu.hidden && !viewMenu.contains(e.target)) setViewMenu(false);
   if (!prioMenu.hidden && !prioMenu.contains(e.target)) prioMenu.hidden = true;
   if (!dueMenu.hidden && !dueMenu.contains(e.target)) dueMenu.hidden = true;
-  if (taskMenu.hidden && prioMenu.hidden && dueMenu.hidden) actionReturnId = null;
+  if (!$("attribute-menu").hidden && !$("attribute-menu").contains(e.target)) $("attribute-menu").hidden = true;
+  if (!$("list-menu").hidden && !$("list-menu").contains(e.target)) $("list-menu").hidden = true;
+  if (!$("list-icon-menu").hidden && !$("list-icon-menu").contains(e.target)) $("list-icon-menu").hidden = true;
+  if (taskMenu.hidden && prioMenu.hidden && dueMenu.hidden && $("attribute-menu").hidden && $("list-menu").hidden) actionReturnId = null;
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
@@ -1018,6 +1333,8 @@ $("main").addEventListener("scroll", closeFloating);
 
 listen("tasks-changed", refresh);
 window.addEventListener("storage", (e) => {
+  if (e.key === "listIcons" || e.key == null) { try { const saved = JSON.parse(store.get("listIcons", "{}")); listIcons = Object.assign(Object.create(null), saved); render(); } catch {} }
+  if (e.key === "sidebar" || e.key == null) { sidebarVisible = store.get("sidebar", "0") === "1"; renderSidebar(); }
   if (e.key === "properties") {
     try {
       const saved = JSON.parse(e.newValue || "{}");

@@ -132,7 +132,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.waitForFunction(() => document.querySelector('#heading').textContent === 'Tasks');
     assert.equal(await row('Home & studio').count(), 0);
     assert.deepEqual(await page.evaluate(() => testState.archives[0].tasks.map(t => t.id)), [1, 10]);
-    assert.match(await page.locator('#notice').innerText(), /archive\.md/);
+    assert.equal(await page.locator('#notice').isVisible(), false);
 
     await action('Later', 'delete');
     await page.locator('#list-dialog-cancel').click();

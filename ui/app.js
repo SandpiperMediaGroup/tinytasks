@@ -793,7 +793,7 @@ function openSidebarMenu(name, anchor, point = null) {
 }
 async function manageList(action, name, newName = null) {
   if (editingId != null && !await finishEditing?.(true)) throw new Error("Save your task edit first.");
-  const result = await invoke(`${action}_list`, { name, ...(action === "rename" ? { newName } : {}) });
+  await invoke(`${action}_list`, { name, ...(action === "rename" ? { newName } : {}) });
   if (action === "rename") {
     if (name !== newName && Object.hasOwn(listIcons, name)) { listIcons[newName] = listIcons[name]; delete listIcons[name]; }
     listOrder = listOrder.map(n => n === name ? newName : n);
@@ -805,8 +805,7 @@ async function manageList(action, name, newName = null) {
   store.set("listIcons", JSON.stringify(listIcons)); store.set("listOrder", JSON.stringify(listOrder)); store.set("selectedList", JSON.stringify(selectedChat));
   chatNames = await invoke("list_chats");
   update(await invoke("list"));
-  if (action === "archive") notice(`Archived ${name || "Personal"} to ${result}`);
-  else $("notice").hidden = true;
+  $("notice").hidden = true;
 }
 function openListDialog(action, name) {
   closeFloating(); listDialogAction = action; listDialogName = name;

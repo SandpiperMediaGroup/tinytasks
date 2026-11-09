@@ -19,6 +19,12 @@ Do not rename or reupload an older platform binary as a new version.
 
 ## Windows releases
 
+The **Windows release artifacts** GitHub Actions workflow accepts an exact `source_ref`
+commit or tag. It builds and checks the installer and portable ZIP on a hosted Windows runner,
+then retains them as an Actions artifact with checksums and the resolved source commit.
+It does not publish a release. Download the artifact, verify its source and digests, and
+combine its Windows checksum entries with the final Mac entries before publishing both platforms.
+
 Use a clean checkout on Windows with the Rust MSVC toolchain and Tauri prerequisites installed.
 Run the checks described in the README. Build the committed version with the pinned Tauri CLI:
 

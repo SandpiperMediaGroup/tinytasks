@@ -33,7 +33,7 @@ The latest Windows release provides an x64 setup executable and portable ZIP. Ru
 or extract the ZIP to a permanent local folder. Settings shows the actual executable path and a
 copyable MCP configuration. Locate the installed `tinytasks.exe` before connecting agents.
 
-The latest packaged Mac version is [v0.2.0](https://github.com/SandpiperMediaGroup/tinytasks/releases/tag/v0.2.0),
+The latest packaged Mac version is [v0.2.1](https://github.com/SandpiperMediaGroup/tinytasks/releases/tag/v0.2.1),
 with a universal DMG and ZIP for Apple silicon and Intel. Both the
 app and DMG are Developer ID signed and separately notarized with stapled tickets. On macOS,
 prefer the DMG: open it, copy `TinyTasks.app` to `/Applications`, eject the image, and launch

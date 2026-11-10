@@ -38,13 +38,15 @@ class DeskArcPicker {
         if (direction) {
           event.preventDefault(); event.stopPropagation();
           const step = event.altKey ? 1 : 15;
-          const before = this.value(); this.apply(part, direction * step, this.snapshot(), step);
+          const minute = part === "end" ? this.end() : this.start;
+          const tick = direction > 0 ? Math.floor(minute / step) + 1 : Math.ceil(minute / step) - 1;
+          const before = this.value();
+          this.apply(part, tick * step, this.snapshot(), step, direction);
           if (!this.equal(before, this.value())) this.detent();
           this.commit();
         } else if (["Enter", " "].includes(event.key)) {
           event.preventDefault(); event.stopPropagation();
-          if (part === "end" && this.duration == null) this.apply(part, 0, this.snapshot());
-          else this.scheduled = true;
+          this.select(part);
           this.render(); this.commit();
         }
       };
@@ -117,7 +119,7 @@ class DeskArcPicker {
       handle.setAttribute("aria-valuemin", String(part === "end" ? this.start + 1 : 0));
       handle.setAttribute("aria-valuemax", String(part === "start" && this.duration != null ? end - 1 : part === "move" ? 1440 - (this.duration || 1) : part === "start" ? 1439 : 1440));
       handle.setAttribute("aria-valuenow", String(value)); handle.setAttribute("aria-valuetext", description);
-      handle.title = `${part === "move" ? "Move time block" : part === "start" ? "Start time" : "End time"}: ${description}. Arrow keys: 15 minutes; Alt/Option: 1 minute.`;
+      handle.title = `${part === "move" ? "Move time block" : part === "start" ? "Start time" : "End time"}: ${description}. Arrow keys: quarter hours; Alt/Option: 1 minute.`;
     }
     this.root.querySelectorAll(".desk-arc-clear").forEach(button => { button.disabled = this.busy; });
     this.retry.disabled = this.busy;
@@ -139,24 +141,36 @@ class DeskArcPicker {
     }
     return onRing && along <= angle ? "move" : null;
   }
-  apply(part, delta, base, step = 15) {
-    const minimum = Math.min(step, base.duration ?? Math.min(30, 1440 - base.start));
+  apply(part, target, base, step = 15, direction = 0) {
+    const earliest = part === "end" ? base.start + 1 : 0;
+    const latest = part === "end" ? 1440 : part === "start" && base.duration != null
+      ? base.end - 1 : 1440 - (base.duration || 1);
+    const minute = this.clamp(Math.round(target / step) * step,
+      Math.ceil(earliest / step) * step, Math.floor(latest / step) * step);
+    const initial = part === "end" ? base.end : base.start;
+    if (direction && (minute - initial) * direction <= 0) return;
     if (part === "end") {
       this.start = base.start;
-      this.duration = this.clamp(base.end + delta, base.start + minimum, 1440) - base.start;
+      this.duration = minute - base.start;
     } else if (part === "start" && base.duration != null) {
-      this.start = this.clamp(base.start + delta, 0, base.end - minimum); this.duration = base.end - this.start;
+      this.start = minute;
+      this.duration = base.end - minute;
     } else {
-      this.start = this.clamp(base.start + delta, 0, 1440 - (base.duration || 1)); this.duration = base.duration;
+      this.start = minute;
+      this.duration = base.duration;
     }
     this.scheduled = true; this.render();
+  }
+  select(part) {
+    if (part === "end" && this.duration == null) this.apply(part, this.end(), this.snapshot());
+    else if (!this.scheduled) this.apply(part, this.start, this.snapshot());
   }
   beginDrag(event) {
     if (event.button !== 0 || this.busy || event.target.closest(".desk-arc-readout")) return;
     const p = this.pointer(event), part = this.targetAt(p); if (!part) return;
     event.preventDefault(); event.stopPropagation(); this.lastPart = part;
     this.handles[part].focus({ preventScroll: true }); this.area.setPointerCapture(event.pointerId);
-    this.drag = { ...this.snapshot(), part, pointer: event.pointerId, last: p.angle, total: 0, ticks: 0, valid: true };
+    this.drag = { ...this.snapshot(), part, pointer: event.pointerId, last: p.angle, total: 0, moved: false, valid: true };
     this.render();
   }
   moveDrag(event) {
@@ -165,15 +179,18 @@ class DeskArcPicker {
     if (p.radius < 35) { drag.valid = false; return; }
     if (!drag.valid) { drag.last = p.angle; drag.valid = true; return; }
     drag.total += this.mod(p.angle - drag.last + 180, 360) - 180; drag.last = p.angle;
-    const ticks = Math.round(drag.total / 7.5), before = this.value();
-    drag.ticks = ticks; this.apply(drag.part, ticks * 15, drag);
+    if (!drag.moved && Math.abs(drag.total) < 1.25) return;
+    drag.moved = true;
+    const initial = drag.part === "end" ? drag.end : drag.start;
+    const before = this.value();
+    this.apply(drag.part, initial + drag.total * 2, drag);
     if (!this.equal(before, this.value())) this.detent();
   }
   endDrag(event, cancel = false) {
     if (!this.drag || event.pointerId !== this.drag.pointer) return;
     const drag = this.drag; this.drag = null;
     if (cancel) { this.start = drag.start; this.duration = drag.duration; this.scheduled = drag.scheduled; }
-    else if (!drag.ticks) this.apply(drag.part, 0, drag);
+    else if (!drag.moved) this.select(drag.part);
     if (this.area.hasPointerCapture(event.pointerId)) this.area.releasePointerCapture(event.pointerId);
     this.render(); if (!cancel) this.commit();
   }

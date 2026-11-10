@@ -112,7 +112,20 @@ module.exports = async (browser, installMock, url, errors) => {
     await openTime(5);await page.evaluate(()=>{testState.failDesk=true;});await adjust('move','ArrowRight');
     await page.locator('#desk-time-error').waitFor();assert.deepEqual(await item(5),{start:'15:00',duration:20});
     await page.evaluate(()=>{testState.failDesk=false;});await dialog.locator('.desk-arc-retry').click();await saved();
-    assert.deepEqual(await item(5),{start:'15:15',duration:20});await dismiss();
+    assert.deepEqual(await item(5),{start:'15:15',duration:20});
+    // An off-grid end snaps to a clock quarter when dragged, keeping the start.
+    await turn('end',7.5);
+    assert.deepEqual(await item(5),{start:'15:15',duration:30});
+    await adjust('start','Alt+ArrowLeft');
+    assert.deepEqual(await item(5),{start:'15:14',duration:31});
+    await adjust('move','ArrowRight');
+    assert.deepEqual(await item(5),{start:'15:15',duration:31});
+    await adjust('end','ArrowLeft');
+    await adjust('start','ArrowRight');
+    await adjust('start','Alt+ArrowRight');
+    await adjust('start','ArrowRight');
+    assert.deepEqual(await item(5),{start:'15:31',duration:14},'A blocked arrow key cannot move the time backward');
+    await dismiss();
     // Inline tasks remain visible in a pending arrangement and survive its rejection.
     await page.locator('#add').click();await page.locator('#new-title').fill('Send the production notes');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===7);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await page.locator('#add').click();await page.locator('#new-title').fill('Confirm tomorrow’s session');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===8);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),7);
@@ -120,12 +133,18 @@ module.exports = async (browser, installMock, url, errors) => {
     // A first drag reveals the timeline; drops snap to quarter hours and ask duration.
     await drag(2,0.373);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await adjust('end','ArrowRight');await dismiss();assert.deepEqual(await item(2),{start:'12:00',duration:45});assert.deepEqual(await page.locator('.desk-section-heading').allTextContents(),['Midday','Unscheduled']);assert.match(await page.locator('#desk-now-pill').innerText(),/\d.*:/);
     const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);await drag(4,0.7,'blur');assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
-    await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.52);await adjust('end','ArrowRight');assert.deepEqual(await item(3,true),{start:'13:15',duration:40});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
+    await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.52);await adjust('end','ArrowRight');assert.deepEqual(await item(3,true),{start:'13:15',duration:30});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
     // Clearing a duration keeps the start; clearing the start keeps desk membership.
-    await openTime(2);await dialog.locator('.desk-arc-clear-duration').press('Enter');await saved();
+    await openTime(2);
+    const clearEnd = dialog.getByRole('button', { name: 'Clear duration' });
+    const clearStart = dialog.getByRole('button', { name: 'Clear time', exact: true });
+    for (const button of [clearStart, clearEnd]) {
+      assert.equal(await button.evaluate(el => getComputedStyle(el).opacity), '1');
+    }
+    await clearEnd.click();await saved();
     assert.deepEqual(await item(2),{start:'12:00',duration:null});
     assert.equal(await dialog.locator('.desk-arc-duration').innerText(),'No duration');
-    await dialog.locator('.desk-arc-clear-time').press('Enter');await saved();await dismiss();
+    await clearStart.click();await saved();await dismiss();
     await page.locator('#desk-timeline').waitFor({state:'hidden'});assert.equal(await page.locator('.desk-time').count(),0);
     assert.equal(await task(2).count(),1);
 

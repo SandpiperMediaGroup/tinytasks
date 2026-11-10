@@ -18,12 +18,13 @@ below **Due date** in the task's context menu. That action is available for task
 including when you open their menu from another list.
 
 The rotary picker shows the start, end, and duration in the center. Drag either endpoint to adjust
-that time, or drag the grip in the middle of the arc to move the whole block. The dial snaps in
-15-minute steps and gives light feedback on supported Mac trackpads. Releasing applies the
-change; Escape cancels an active drag. With a handle focused, use the arrow keys for 15-minute
-steps or hold Option (Alt) for one-minute steps. For a task without a duration, move the end
-handle to add one. Hover over either time or tab to its **×** to clear it. Clearing the start
-also clears its duration. A block must end within the same day. The timeline uses bars for durations and dots
+that time, or drag the grip in the middle of the arc to move the whole block. The edited time
+snaps to the clock's quarter hours. Moving the block snaps its start and keeps its duration.
+The dial gives light feedback on supported Mac trackpads. Releasing applies the change, and
+Escape cancels an active drag. With a handle focused, use the arrow keys to jump to the next
+or previous quarter hour or hold Option (Alt) for one-minute steps. For a task without a
+duration, move the end handle to add one. Use the **×** beside either time to clear it.
+Clearing the start also clears its duration. A block must end within the same day. The timeline uses bars for durations and dots
 for start times without a duration, with a labeled pill marking the current time.
 Hover or focus a task marker to highlight its row; click to edit its time.
 Tasks outside the configured work hours remain in the desk, with only the portion within

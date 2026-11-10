@@ -297,19 +297,19 @@ section:first-child .group-head { padding-top: 16px; }
 .desk-arc-grip { display: flex; gap: 3px; }
 .desk-arc-grip i { width: 2px; height: 10px; border-radius: 2px; background: var(--desk-arc-face); }
 .desk-arc-readout { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.desk-arc-time-line { position: relative; display: flex; align-items: baseline; justify-content: center; gap: 4px; padding: 0 19px; font-size: 18px; line-height: 1.25; font-weight: 500; white-space: nowrap; pointer-events: auto; }
+.desk-arc-time-line { position: relative; display: flex; align-items: baseline; justify-content: center; gap: 4px; padding: 0 26px; font-size: 18px; line-height: 1.25; font-weight: 500; white-space: nowrap; }
 .desk-arc-start-unit, .desk-arc-end-unit { color: var(--muted); font-size: 11px; }
 .desk-arc-duration { margin-top: 4px; color: var(--muted); font-size: 12px; }
-#desk-time-dialog .desk-arc-clear { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border-radius: 3px; color: var(--muted); opacity: 0; pointer-events: none; }
-#desk-time-dialog .desk-arc-time-line:hover .desk-arc-clear, #desk-time-dialog .desk-arc-clear:focus-visible { opacity: 1; pointer-events: auto; }
-#desk-time-dialog .desk-arc-clear svg { width: 11px; height: 11px; }
+#desk-time-dialog .desk-arc-clear { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 21px; height: 21px; padding: 0; border-radius: 50%; color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, var(--desk-arc-face)); pointer-events: auto; }
+#desk-time-dialog .desk-arc-clear:hover, #desk-time-dialog .desk-arc-clear:focus-visible { background: color-mix(in srgb, var(--ink) 17%, var(--desk-arc-face)); }
+#desk-time-dialog .desk-arc-clear:disabled { opacity: .5; cursor: wait; }
+#desk-time-dialog .desk-arc-clear svg { width: 14px; height: 14px; stroke-width: 2; }
 #desk-time-dialog button::after { display: none; }
 #desk-time-dialog[aria-busy="true"] .desk-arc-handle { cursor: wait; }
 #desk-time-error { padding: 0; margin: 5px 0; }
 #desk-time-dialog .desk-arc-retry { width: auto; margin: 0 0 0 auto; font-size: 12px; }
 @media (pointer: coarse) {
   #desk-time-dialog .desk-arc-handle { width: 44px; height: 44px; }
-  #desk-time-dialog .desk-arc-clear { opacity: 1; pointer-events: auto; }
 }
 @container (max-width: 500px) { #desk-hours > span:nth-child(even) { visibility: hidden; } }
 @media (max-width: 600px) { .desk-view #main { padding: 18px 14px 24px; } #desk-date { font-size: 17px; } }

@@ -41,7 +41,7 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(await personalGroup.locator('.task[data-task-id="2"]').count(), 1);
     assert.equal(await page.locator('#open .task[data-task-id="2"]').count(), 1);
     assert.equal(await page.locator('#open .group-head').filter({hasText:'Nuthatch'}).count(), 0);
-    assert.equal(await personalGroup.locator('.agent-badge[aria-label="Edit agent"]').count(), 1);
+    assert.equal(await personalGroup.locator('.task[data-task-id="2"] > .line .agent-badge[title="Nuthatch"]').count(), 1);
     assert.equal(await row('Personal').locator('.n').innerText(), '1');
     await select('Personal');
     assert.equal(await page.locator('#heading').innerText(), 'Personal');

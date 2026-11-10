@@ -6,7 +6,8 @@ in the toolbar still starts entry at the top. New tasks stay in the selected lis
 Today assigns today's due date and Upcoming assigns tomorrow's.
 
 In wide task panes, metadata fits beside the task title. Narrow panes wrap properties
-to keep the title readable. Click a due date, priority, or agent to open its editor.
+to keep the title readable. Click a due date or priority to open its editor.
+Agent attribution is read-only in the app; direct Markdown edits still update it.
 IDs and timestamps remain identifiers and history. The completed/total subtask count
 appears beside priority and the added time; **Display properties → Subtask count** hides it.
 Turning off **Completed** also hides completed subtasks, while retaining their contribution

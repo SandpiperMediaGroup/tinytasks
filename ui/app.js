@@ -146,9 +146,7 @@ function source(t, { icon = true, chat = true } = {}) {
   el.className = "src";
   const mine = !t.agent; // the user added it: no logo, no label
   if (icon && !mine) {
-    const badge = agentIcon(t.agent);
-    attributeControl(badge, "Edit agent", () => editAttribute(t, "agent", badge));
-    el.appendChild(badge);
+    el.appendChild(agentIcon(t.agent));
   }
   const label = chat ? t.chat : "";
   if (label) {
@@ -1483,27 +1481,21 @@ async function openListMenu(task, anchor) {
   const create = Object.assign(document.createElement("button"), { textContent: "New list…" });
   create.setAttribute("role", "menuitem");
   create.dataset.newList = "";
-  create.onclick = e => { e.stopPropagation(); editAttribute(task, "chat", anchor, true); };
+  create.onclick = e => { e.stopPropagation(); createTaskList(task, anchor); };
   picker.appendChild(create);
   place(picker, anchor); actionReturnId = task.id;
   picker.querySelector('[aria-checked="true"]')?.focus();
 }
 $("list-menu").onkeydown = e => menuKeys(e, $("list-menu"));
 
-let attributeTask = null, attributeField = null, creatingList = false;
-async function editAttribute(task, field, anchor, create = false) {
+let attributeTask = null, creatingList = false;
+async function createTaskList(task, anchor) {
   if (editingId != null && !await finishEditing?.(true)) return;
   // A subtask shares its parent's list; moving it moves that family together.
-  attributeTask = field === "chat" && task.parent_id != null ? tasks.find(t => t.id === task.parent_id) : task;
+  attributeTask = task.parent_id != null ? tasks.find(t => t.id === task.parent_id) : task;
   if (!attributeTask) return;
-  attributeField = field;
-  creatingList = create;
-  const label = field === "chat" ? "Lists & Chats" : "Agent";
-  $("attribute-label").textContent = create ? "New list" : label;
-  $("attribute-menu").setAttribute("aria-label", create ? "New list" : "Edit agent");
-  $("attribute-value").value = create ? "" : attributeTask[field] || "";
-  $("attribute-value").setAttribute("aria-label", label);
-  $("attribute-options").replaceChildren(...(field === "chat" ? allChats() : [...new Set(tasks.map(t => t.agent).filter(Boolean))]).map(value => Object.assign(document.createElement("option"), { value })));
+  creatingList = true;
+  $("attribute-value").value = "";
   place($("attribute-menu"), anchor);
   actionReturnId = task.id;
   $("attribute-value").focus(); $("attribute-value").select();
@@ -1519,7 +1511,7 @@ $("attribute-menu").onsubmit = async e => {
       chatNames = await invoke("create_list", { name: field.value.trim() });
       creatingList = false;
     }
-    const list = await invoke("edit_task", { id: attributeTask.id, [attributeField]: field.value.trim() });
+    const list = await invoke("edit_task", { id: attributeTask.id, chat: field.value.trim() });
     const id = actionReturnId;
     closeFloating(); $("notice").hidden = true; update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
     if (id != null) focusTask(id);

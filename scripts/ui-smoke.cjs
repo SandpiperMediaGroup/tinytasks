@@ -90,7 +90,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           if (cmd === 'edit_task') {
             if (window.testState.failSave) throw new Error('File unavailable');
             if (!t) throw new Error('That task is gone.');
-            for (const field of ['title', 'details', 'agent', 'chat']) if (field in args) t[field] = args[field];
+            for (const field of ['title', 'details', 'chat']) if (field in args) t[field] = args[field];
             if ('chat' in args) tasks.filter(c => c.parent_id === t.id).forEach(c => { c.chat = args.chat; });
           }
           if (cmd === 'set_done') {

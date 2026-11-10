@@ -281,12 +281,12 @@ fn add_task(app: AppHandle, title: String, mydesk: bool, chat: Option<String>, d
 
 /// The user rewording a task or its details (any task, agents' included).
 #[tauri::command]
-fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<String>, chat: Option<String>, agent: Option<String>) -> Res<Vec<Task>> {
+fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<String>, chat: Option<String>) -> Res<Vec<Task>> {
     let title = title.as_deref().map(str::trim);
     if title.is_some_and(str::is_empty) {
         return Err("A task needs a title.".into());
     }
-    let changes = store::Changes { title, details: details.as_deref(), chat: chat.as_deref(), agent: agent.as_deref(), ..Default::default() };
+    let changes = store::Changes { title, details: details.as_deref(), chat: chat.as_deref(), ..Default::default() };
     store::change(|l| {
         if l.get(id).is_none() { return Err("That task is gone.".into()); }
         if let Some(destination) = chat.as_deref() {

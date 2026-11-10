@@ -144,10 +144,9 @@
     <button class="delete" data-action="delete" role="menuitem"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span>Delete task</span></button>
   </div>
 
-  <form id="attribute-menu" class="menu floating" role="dialog" aria-label="Edit attribute" hidden autocomplete="off">
-    <label id="attribute-label" for="attribute-value"></label>
-    <input id="attribute-value" list="attribute-options" maxlength="300">
-    <datalist id="attribute-options"></datalist>
+  <form id="attribute-menu" class="menu floating" role="dialog" aria-label="New list" hidden autocomplete="off">
+    <label id="attribute-label" for="attribute-value">New list</label>
+    <input id="attribute-value" maxlength="200">
     <div class="attribute-actions"><button type="button" id="attribute-cancel">Cancel</button><button type="submit">Save</button></div>
   </form>
   <div id="list-menu" class="menu floating" role="menu" aria-label="Move to list" hidden></div>

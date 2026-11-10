@@ -64,10 +64,20 @@ module.exports = async (browser, installMock, url, errors) => {
     await task(1).locator('.prio').click();
     await page.locator('#prio-menu button[data-p="2"]').click();
     await page.waitForFunction(() => testState.tasks[0].priority === 2);
-    await task(1).locator('.agent-badge').click();
-    await page.locator('#attribute-value').fill('claude');
-    await page.locator('#attribute-value').press('Enter');
-    await page.waitForFunction(() => testState.tasks[0].agent === 'claude');
+    // Attribution remains visible but cannot open an editor or take keyboard focus.
+    const badge = task(1).locator('.agent-badge');
+    const wasExpanded = await rootLine(1).getAttribute('aria-expanded');
+    assert.equal(await badge.getAttribute('role'), null);
+    assert.equal(await badge.evaluate(el => el.tabIndex), -1);
+    await badge.click();
+    assert.equal(await page.locator('#attribute-menu').isVisible(), false);
+    assert.equal(await page.evaluate(() => testState.tasks[0].agent), 'codex');
+    assert.equal(await page.evaluate(() => testState.calls.some(c => c.cmd === 'edit_task' && 'agent' in c.args)), false);
+    if (await rootLine(1).getAttribute('aria-expanded') !== wasExpanded) { await rootLine(1).focus(); await page.keyboard.press('Enter'); }
+    // External Markdown changes still refresh the displayed attribution.
+    await page.evaluate(() => { testState.tasks[0].agent = 'claude'; testState.emit(); });
+    await badge.filter({has:page.locator('svg')}).waitFor();
+    await page.waitForFunction(() => document.querySelector('.task[data-task-id="1"] .agent-badge')?.title === 'Claude');
     await task(1).locator('.chat').click();
     await page.screenshot({ path: path.join(dir, 'move-picker.png') });
     await page.locator('#list-menu [data-chat-choice="Later"]').click();

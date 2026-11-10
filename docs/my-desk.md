@@ -4,10 +4,11 @@ Version 0.3.0 adds daily arrangements and reviewable agent suggestions. Compatib
 the MCP `set_desk` shortcut now creates a pending suggestion instead of replacing the accepted
 desk immediately. Use `get_desk` and `suggest_desk` for timed plans.
 
-My Desk arranges existing tasks and subtasks for the current local day. It has a compact time
-gutter to the left of the checkbox: a start time and an optional duration in minutes. Tasks
-follow their start times; untimed tasks appear in a separate **Unscheduled** section. If every
-task is untimed, My Desk shows a normal list without a time gutter or timeline. Times are
+My Desk arranges existing tasks and subtasks for the current local day. Start times and optional
+durations appear beneath task titles. Scheduled tasks appear in time order under **Morning**
+(before noon), **Midday** (noon to 2 PM), **Afternoon** (2 to 6 PM), and **Evening** (6 PM onward).
+Untimed tasks appear under **Unscheduled**. If every task is untimed, My Desk shows a normal list
+without section headings or a timeline. Times are
 shown only on My Desk and do not change task due dates, priorities, list membership, or subtask
 order. Completing a task here is the same completion as in any other view.
 
@@ -16,20 +17,21 @@ find it in its list and choose **Put on My desk**. Click a scheduled time, or ch
 below **Due date** in the task's context menu. That action is available for tasks on your desk,
 including when you open their menu from another list.
 
-The anchored picker accepts times such as `9:30 AM`, `14:30`, or `930`, with 15-minute suggestions.
-The two timing rows use the same compact controls as grouping and ordering. Selecting a time
-or duration applies it immediately; typed values apply on Enter or when leaving the field.
-Use the **×** inside a field to clear it. Clearing the time also clears its duration.
-Choose an optional duration or type one, such as `30 min` or `1h 15m`. Duration requires
-a start time and must end within the same day. The timeline uses bars for durations and dots
+The rotary picker shows the start, end, and duration in the center. Drag either endpoint to adjust
+that time, or drag the grip in the middle of the arc to move the whole block. The dial snaps in
+15-minute steps and gives light feedback on supported Mac trackpads. Releasing applies the
+change; Escape cancels an active drag. With a handle focused, use the arrow keys for 15-minute
+steps or hold Option (Alt) for one-minute steps. For a task without a duration, move the end
+handle to add one. Hover over either time or tab to its **×** to clear it. Clearing the start
+also clears its duration. A block must end within the same day. The timeline uses bars for durations and dots
 for start times without a duration, with a labeled pill marking the current time.
 Hover or focus a task marker to highlight its row; click to edit its time.
 Tasks outside the configured work hours remain in the desk, with only the portion within
 work hours shown on the timeline.
 
 Drag a My Desk task onto the timeline to schedule it. The drop indicator snaps to 15-minute
-increments within work hours. Dropping applies the start time and opens duration choices;
-choosing a duration applies it immediately. Dismissing the choices keeps the dropped time.
+increments within work hours. Dropping applies the start time and opens the dial with the end
+handle focused. Dismissing the dial keeps the dropped time.
 If every task is untimed, the timeline appears temporarily while dragging so you can schedule
 the first task. Escape cancels a drag. Proposed arrangements support the same interaction;
 changes stay in the proposal until the whole arrangement is accepted.

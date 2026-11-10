@@ -36,7 +36,7 @@ pub fn run(background: bool) {
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
             location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
             open_settings, close_settings, list_chats, create_list, rename_list, archive_list, delete_list,
-            ensure_sidebar_visible, app_info, check_for_updates, get_desk, review_desk, edit_desk_time, add_to_desk, set_work_hours
+            ensure_sidebar_visible, app_info, check_for_updates, get_desk, review_desk, edit_desk_time, add_to_desk, set_work_hours, desk_haptic
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -221,6 +221,21 @@ fn edit_desk_time(app: AppHandle, date: String, item: desk::Item, proposal_id: O
     })?;
     let _ = app.emit("tasks-changed", ());
     Ok(state)
+}
+
+#[tauri::command]
+fn desk_haptic(app: AppHandle) -> Res<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime, NSHapticFeedbackPerformer};
+        app.run_on_main_thread(|| {
+            NSHapticFeedbackManager::defaultPerformer().performFeedbackPattern_performanceTime(
+                NSHapticFeedbackPattern::Alignment, NSHapticFeedbackPerformanceTime::Default,
+            );
+        }).map_err(|error| error.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    { let _ = app; Ok(()) }
 }
 
 #[tauri::command]

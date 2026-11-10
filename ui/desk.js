@@ -14,38 +14,22 @@ class DeskController {
     this.$ = id => document.getElementById(id);
     this.$("desk-accept").onclick = () => this.review(true);
     this.$("desk-decline").onclick = () => this.review(false);
-    this.$("desk-time-form").onsubmit = event => { event.preventDefault(); this.saveTime(); };
-    for (const id of ["desk-start", "desk-duration"]) {
-      const input = this.$(id);
-      input.onclick = () => this.showChoices(id);
-      input.oninput = () => { this.dirty = true; this.updateClearButtons(); this.$("desk-time-error").hidden = true; this.showChoices(id, true); };
-      input.onblur = () => { if (!this.$("desk-time-dialog").hidden && this.dirty) this.saveTime(); };
-      input.onkeydown = event => this.choiceKey(event, id);
-      this.$(`${id}-toggle`).onpointerdown = event => event.preventDefault();
-      this.$(`${id}-toggle`).onclick = () => {
-        if (this.choiceField === id) this.hideChoices();
-        else { input.focus({preventScroll:true}); this.showChoices(id); }
-      };
-      this.$(`${id}-clear`).onpointerdown = event => event.preventDefault();
-      this.$(`${id}-clear`).onclick = () => {
-        input.value = "";
-        if (id === "desk-start") this.$("desk-duration").value = "";
-        this.dirty = true; this.updateClearButtons(); this.saveTime();
-      };
-    }
+    this.arc = new DeskArcPicker(this.$("desk-time-dialog"), {
+      onDetent: () => this.invoke("desk_haptic").catch(() => {}),
+      onError: () => this.positionTime(),
+    });
     document.addEventListener("pointerdown", event => {
       if (!this.$("desk-time-dialog").hidden && !this.$("desk-time-dialog").contains(event.target)) this.closeTime(false);
     });
     document.addEventListener("keydown", event => {
       if (event.key !== "Escape" || this.$("desk-time-dialog").hidden) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (this.choiceField) this.hideChoices(); else this.closeTime();
+      if (this.arc.drag) this.arc.cancelDrag(); else this.closeTime();
     }, true);
     window.addEventListener("resize", () => {
       this.updateClock();
       if (this.$("desk-time-dialog").hidden) return;
-      this.positionTime();
-      if (this.choiceField) this.positionChoices(this.choiceField);
+      this.arc.cancelDrag(); this.positionTime();
     });
   }
   minutes(value) {
@@ -74,6 +58,15 @@ class DeskController {
     return (this.state?.proposal?.items || this.state?.items || []).filter(item => ids.has(item.id))
       .map((item, index) => ({ ...item, index }))
       .sort((a, b) => (this.minutes(a.start) ?? Infinity) - (this.minutes(b.start) ?? Infinity) || a.index - b.index);
+  }
+  sections(tasks, items) {
+    if (!tasks.some(task => items.get(task.id)?.start)) return [{ key: "unscheduled", label: "", items: tasks }];
+    const sections = ["Morning", "Midday", "Afternoon", "Evening", "Unscheduled"].map(label => ({ key: label.toLowerCase(), label, items: [] }));
+    for (const task of tasks) {
+      const minute = this.minutes(items.get(task.id)?.start);
+      sections[minute == null ? 4 : minute < 720 ? 0 : minute < 840 ? 1 : minute < 1080 ? 2 : 3].items.push(task);
+    }
+    return sections.filter(section => section.items.length);
   }
   render(active, tasks) {
     this.active = active;
@@ -142,13 +135,13 @@ class DeskController {
     li.dataset.change = !this.state.proposal ? "same" : !baseline ? "added" : baseline.start !== item.start || baseline.duration !== item.duration ? "changed" : "same";
     if (item.start) {
       const button = Object.assign(document.createElement("button"), { type: "button", className: "desk-time" });
-      const time = Object.assign(document.createElement("span"), { textContent: this.time(item.start) });
+      const time = Object.assign(document.createElement("span"), { textContent: this.time(item.start, true) });
       const duration = Object.assign(document.createElement("span"), { className: "desk-duration", textContent: item.duration ? `${item.duration}m` : "" });
       button.append(time, duration);
       button.title = baseline?.start && li.dataset.change === "changed" ? `Previously ${this.time(baseline.start, true)}${baseline.duration ? ` · ${baseline.duration} min` : ""}` : "Edit desk time";
       button.setAttribute("aria-label", `Edit desk time for ${task.title}: ${this.time(item.start, true)}${item.duration ? `, ${item.duration} minutes` : ""}`);
       button.onclick = event => { event.stopPropagation(); this.openTime(task, item, button); };
-      li.querySelector(".line").prepend(button);
+      li.querySelector(".sub").prepend(button);
       li.querySelector(".time").textContent = li.querySelector(".time-sub").textContent = "";
       li.querySelector(".time").hidden = li.querySelector(".time-sub").hidden = true;
       li.querySelector(".preview").hidden = true;
@@ -205,165 +198,53 @@ class DeskController {
       await this.refresh();
       this.endTimelineDrag();
       const marker = this.$("desk-markers").querySelector(`[data-task-id="${item.id}"]`);
-      await this.openTime(drag.task, item, marker, drag.context.proposalId ? result.proposal?.id || drag.context.proposalId : null, "desk-duration", true);
+      await this.openTime(drag.task, item, marker, drag.context.proposalId ? result.proposal?.id || drag.context.proposalId : null, "end");
     } catch (error) {
       this.endTimelineDrag();
       this.error = String(error);
       this.render(this.active, this.tasks);
     } finally { this.dropSaving = false; }
   }
-  async openTime(task, item, anchor, proposalId = this.active ? this.state.proposal?.id || null : null, focusField = "desk-start", showChoices = false) {
+  async openTime(task, item, anchor, proposalId = this.active ? this.state.proposal?.id || null : null, focusPart = "start") {
     if (this.savingTime) return;
+    const sequence = this.editorSequence = (this.editorSequence || 0) + 1;
     const editing = { id: task.id, date: this.state.date, proposalId, saved: { start: item.start, duration: item.duration } };
-    if (!await this.finishEditing()) return;
+    if (!await this.finishEditing() || sequence !== this.editorSequence) return;
     this.closeTime(false);
     this.editing = editing;
-    this.dirty = false;
     this.anchor = anchor?.isConnected ? anchor : document.querySelector(`.task[data-task-id="${task.id}"] > .line`) || this.$("view");
-    this.$("desk-start").value = item.start ? this.time(item.start, true) : "";
-    this.$("desk-duration").value = item.duration ? this.durationLabel(item.duration) : "";
-    this.$("desk-time-error").hidden = true;
-    this.updateClearButtons();
-    this.$("desk-time-dialog").setAttribute("aria-label", `Desk time for ${task.title}`);
+    this.$("desk-time-heading").textContent = `Desk time for ${task.title}`;
     this.place(this.$("desk-time-dialog"), this.anchor);
-    this.$(focusField).focus({preventScroll:true});
-    this.$(focusField).select();
-    if (showChoices) this.showChoices(focusField);
+    const now = new Date(), workStart = this.minutes(this.state.work_start), workEnd = this.minutes(this.state.work_end);
+    const nextQuarter = Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
+    const suggested = Math.max(workStart, Math.min(nextQuarter, Math.floor((workEnd - 1) / 15) * 15));
+    this.arc.open(item, suggested, value => this.saveTime(value, editing), focusPart);
+    this.positionTime();
   }
   closeTime(focus = true) {
     if (this.$("desk-time-dialog").hidden) return;
-    if (this.dirty && !this.savingTime) this.saveTime();
+    const id = this.editing?.id;
+    this.arc.close(); this.editing = null;
     this.$("desk-time-dialog").hidden = true;
-    this.hideChoices();
-    if (focus) (document.querySelector(`.task[data-task-id="${this.editing?.id}"] .desk-time`) || document.querySelector(`.task[data-task-id="${this.editing?.id}"] > .line`) || this.$("view")).focus({ preventScroll: true });
-  }
-  updateClearButtons() {
-    for (const id of ["desk-start", "desk-duration"]) this.$(`${id}-clear`).hidden = !this.$(id).value;
+    if (focus) (document.querySelector(`.task[data-task-id="${id}"] .desk-time`) || document.querySelector(`.task[data-task-id="${id}"] > .line`) || this.$("view")).focus({ preventScroll: true });
   }
   positionTime() {
     const anchor = this.anchor?.isConnected ? this.anchor : document.querySelector(`.task[data-task-id="${this.editing?.id}"] > .line`) || this.$("view");
     const rect = anchor.getBoundingClientRect(), panel = this.$("desk-time-dialog");
-    panel.style.right = `${Math.max(8, Math.min(innerWidth - panel.offsetWidth - 8, innerWidth - rect.right))}px`;
-    panel.style.top = `${rect.bottom + 4 + panel.offsetHeight < innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - 4 - panel.offsetHeight)}px`;
+    panel.style.left = `${Math.max(8, Math.min(innerWidth - panel.offsetWidth - 8, rect.left))}px`;
+    panel.style.right = "auto";
+    panel.style.top = `${Math.max(8, Math.min(innerHeight - panel.offsetHeight - 8, rect.bottom + 4 + panel.offsetHeight < innerHeight ? rect.bottom + 4 : rect.top - 4 - panel.offsetHeight))}px`;
   }
-  parseTime(value) {
-    const text = value.trim().toLowerCase().replace(/[.\s]/g, "");
-    if (!text) return null;
-    const match = text.match(/^(\d{1,2})(?::(\d{1,2})|(\d{2}))?(am|pm)?$/);
-    if (!match) return undefined;
-    let hour = Number(match[1]); const minute = Number(match[2] || match[3] || 0), period = match[4];
-    if (minute > 59 || (period ? hour < 1 || hour > 12 : hour > 23)) return undefined;
-    if (period) hour = hour % 12 + (period === "pm" ? 12 : 0);
-    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  }
-  parseDuration(value) {
-    const text = value.trim().toLowerCase().replace(/hours?|hrs?/g, "h").replace(/minutes?|mins?/g, "m").replace(/\s/g, "");
-    if (!text || ["none", "noduration"].includes(text)) return null;
-    if (/^\d+$/.test(text)) return Number(text);
-    const match = text.match(/^(?:(\d+(?:\.\d+)?)h)?(?:(\d+)m)?$/);
-    return match && (match[1] || match[2]) ? Number(match[1] || 0) * 60 + Number(match[2] || 0) : undefined;
-  }
-  durationLabel(value) { return value % 60 ? value < 60 ? `${value} min` : `${Math.floor(value / 60)} hr ${value % 60} min` : `${value / 60} hr`; }
-  hideChoices() {
-    for (const [input, list] of [["desk-start", "desk-time-options"], ["desk-duration", "desk-duration-options"]]) {
-      this.$(list).hidden = true; this.$(input).setAttribute("aria-expanded", "false"); this.$(input).removeAttribute("aria-activedescendant");
-    }
-    this.choiceField = null;
-  }
-  showChoices(field, typed = false) {
-    if (this.$("desk-time-dialog").hidden || this.savingTime) return;
-    this.hideChoices(); this.choiceField = field; this.choiceIndex = -1;
-    const time = field === "desk-start", list = this.$(time ? "desk-time-options" : "desk-duration-options"), input = this.$(field);
-    this.choices = time ? [{ value: null, label: "No time" }, ...Array.from({ length: 96 }, (_, i) => {
-      const value = `${String(Math.floor(i / 4)).padStart(2, "0")}:${String(i % 4 * 15).padStart(2, "0")}`;
-      return { value, label: this.time(value, true) };
-    })] : [null, 15, 30, 45, 60, 90, 120, 180].map(value => ({ value, label: value == null ? "No duration" : this.durationLabel(value) }));
-    const parsed = time ? this.parseTime(input.value) : this.parseDuration(input.value);
-    const now = new Date(), nearest = Math.min(95, Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15)) + 1;
-    this.choiceHint = time ? parsed ? Math.round(this.minutes(parsed) / 15) + 1 : nearest : Math.max(0, this.choices.findIndex(choice => choice.value === parsed));
-    list.replaceChildren(...this.choices.map((choice, index) => {
-      const button = Object.assign(document.createElement("button"), { type: "button", textContent: choice.label, tabIndex: -1 });
-      button.id = `${field}-choice-${index}`; button.setAttribute("role", "option"); button.setAttribute("aria-selected", "false");
-      button.dataset.value = choice.value ?? "";
-      button.onpointerdown = event => event.preventDefault();
-      button.onclick = () => this.choose(index);
-      return button;
-    }));
-    list.hidden = false; input.setAttribute("aria-expanded", "true");
-    this.positionChoices(field);
-    const hint = list.children[Math.min(this.choiceHint, list.children.length - 1)];
-    if (hint) list.scrollTop = Math.max(0, hint.offsetTop - list.clientHeight / 2);
-    if (!typed && parsed != null) this.choiceIndex = this.choices.findIndex(choice => choice.value === parsed);
-    this.highlightChoice();
-  }
-  positionChoices(field) {
-    const input = this.$(field), rect = input.closest(".desk-field-control").getBoundingClientRect(), list = this.$(field === "desk-start" ? "desk-time-options" : "desk-duration-options");
-    const panel = this.$("desk-time-dialog").getBoundingClientRect();
-    const below = innerHeight - panel.bottom - 12, above = panel.top - 12, down = above < 80 && below > above;
-    const width = Math.min(innerWidth - 16, Math.max(140, rect.width));
-    list.style.width = `${width}px`; list.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
-    list.style.maxHeight = `${Math.max(50, Math.min(240, down ? below : above))}px`;
-    list.style.top = `${down ? panel.bottom + 4 : Math.max(8, panel.top - list.offsetHeight - 4)}px`;
-  }
-  highlightChoice() {
-    if (!this.choiceField) return;
-    const list = this.$(this.choiceField === "desk-start" ? "desk-time-options" : "desk-duration-options");
-    [...list.children].forEach((button, index) => button.setAttribute("aria-selected", String(index === this.choiceIndex)));
-    if (this.choiceIndex >= 0) this.$(this.choiceField).setAttribute("aria-activedescendant", list.children[this.choiceIndex].id);
-    else this.$(this.choiceField).removeAttribute("aria-activedescendant");
-  }
-  choose(index) {
-    const field = this.choiceField, choice = this.choices[index];
-    this.$(field).value = choice.value == null ? "" : field === "desk-start" ? this.time(choice.value, true) : this.durationLabel(choice.value);
-    if (field === "desk-start" && choice.value == null) this.$("desk-duration").value = "";
-    this.dirty = true; this.updateClearButtons();
-    this.hideChoices(); this.$("desk-time-error").hidden = true;
-    this.saveTime();
-  }
-  choiceKey(event, field) {
-    if (event.isComposing) return;
-    if (event.key === "Tab") { this.hideChoices(); return; }
-    if (["ArrowDown", "ArrowUp"].includes(event.key)) {
-      event.preventDefault();
-      if (!this.choiceField) this.showChoices(field);
-      this.choiceIndex = this.choiceIndex < 0 ? Math.min(this.choices.length - 1, this.choiceHint) : Math.max(0, Math.min(this.choices.length - 1, this.choiceIndex + (event.key === "ArrowDown" ? 1 : -1)));
-      this.highlightChoice();
-      this.$(field === "desk-start" ? "desk-time-options" : "desk-duration-options").children[this.choiceIndex].scrollIntoView({ block: "nearest" });
-    } else if (event.key === "Enter" && this.choiceField) {
-      event.preventDefault();
-      if (this.choiceIndex >= 0) this.choose(this.choiceIndex); else { this.hideChoices(); this.saveTime(); }
-    } else if (event.key === "Enter") {
-      event.preventDefault(); this.saveTime();
-    }
-  }
-  async saveTime() {
-    if (this.savingTime || !this.editing || !this.$("desk-time-form").reportValidity()) return;
-    const editing = this.editing;
-    const start = this.parseTime(this.$("desk-start").value);
-    const duration = this.parseDuration(this.$("desk-duration").value);
-    const error = start === undefined ? "Enter a time like 9:30 AM or 14:30." : duration === undefined || duration != null && (!Number.isInteger(duration) || duration < 1 || duration > 1440) ? "Enter a duration like 30 min or 1 hr." : duration != null && (!start || this.minutes(start) + duration > 1440) ? "Duration needs a time and must end within today." : "";
-    if (error) { this.$("desk-time-error").textContent = error; this.$("desk-time-error").hidden = false; this.hideChoices(); this.positionTime(); return; }
-    if (start === editing.saved.start && duration === editing.saved.duration) { this.dirty = false; return; }
-    this.hideChoices();
+  async saveTime(value, editing) {
+    if (this.savingTime || this.editing !== editing) throw new Error("Reopen Desk time to edit this task.");
+    if (value.start === editing.saved.start && value.duration === editing.saved.duration) return;
     this.savingTime = true;
-    this.$("desk-start").readOnly = this.$("desk-duration").readOnly = true;
     try {
-      const result = await this.invoke("edit_desk_time", { date: editing.date, proposalId: editing.proposalId, item: { id: editing.id, start, duration } });
-      editing.saved = { start, duration };
+      const result = await this.invoke("edit_desk_time", { date: editing.date, proposalId: editing.proposalId, item: { id: editing.id, ...value } });
+      editing.saved = { ...value };
       if (editing.proposalId) editing.proposalId = result.proposal?.id || editing.proposalId;
-      if (this.editing === editing) {
-        this.dirty = false;
-        this.$("desk-start").value = start ? this.time(start, true) : "";
-        this.$("desk-duration").value = duration ? this.durationLabel(duration) : "";
-        this.updateClearButtons();
-        this.$("desk-time-error").hidden = true;
-      }
       await this.refresh();
-    } catch (error) {
-      this.$("desk-time-error").textContent = String(error);
-      this.$("desk-time-error").hidden = false;
-      this.positionTime();
-    } finally { this.savingTime = false; this.$("desk-start").readOnly = this.$("desk-duration").readOnly = false; }
+    } finally { this.savingTime = false; }
   }
   async review(accept) {
     const proposal = this.state?.proposal;

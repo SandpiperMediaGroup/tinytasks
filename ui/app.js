@@ -553,11 +553,7 @@ function render() {
   const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view).filter(t => selectedChat == null || t.chat === selectedChat);
   if (noteId != null) $("note-complete").replaceChildren();
   const deskItems = new Map(isDesk ? desk.entries(tasks).map(item => [item.id, item]) : []);
-  const hasTimes = isDesk && [...deskItems.values()].some(item => item.start);
-  const groups = isDesk && hasTimes ? [
-    { label: "", items: open.filter(task => deskItems.get(task.id)?.start) },
-    { label: "Unscheduled", items: open.filter(task => !deskItems.get(task.id)?.start) },
-  ].filter(group => group.items.length) : noteId != null || isDesk ? [{ label: "", items: open }] : groupsOf(open);
+  const groups = isDesk ? desk.sections(open, deskItems) : noteId != null ? [{ label: "", items: open }] : groupsOf(open);
   const headers = !isDesk && groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
 
   $("open").replaceChildren(
@@ -566,7 +562,7 @@ function render() {
       if (groupBy === "chat" && noteId == null && !isDesk) sec.dataset.chat = g.sample?.chat || "";
       const ul = document.createElement("ul");
       ul.id = `group-items-${index}`;
-      if (isDesk) sec.dataset.deskSection = hasTimes && !g.label ? "scheduled" : "unscheduled";
+      if (isDesk) sec.dataset.deskSection = g.key;
       if (isDesk && g.label) sec.append(Object.assign(document.createElement("h2"), { className: "desk-section-heading", textContent: g.label }));
       if (headers) {
         const h = document.createElement("h2");

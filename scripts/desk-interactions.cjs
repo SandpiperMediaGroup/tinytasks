@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 module.exports = async (browser, installMock, url, errors) => {
-  const context = await browser.newContext({ viewport: { width: 1024, height: 740 }, colorScheme: 'light' });
+  const context = await browser.newContext({ viewport: { width: 1024, height: 740 }, colorScheme: 'light', locale: 'en-GB' });
   await context.addInitScript(installMock);
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   try {
@@ -34,6 +34,18 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(await page.evaluate(()=>JSON.stringify(testState.tasks)===JSON.stringify(originalTasks)),true);
     assert.ok((await rows.evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height))).every(h=>h<55));
     assert.equal(await rows.first().locator('.check').isDisabled(),true);
+    for(const width of [1024,850,760]) {
+      await page.setViewportSize({width,height:740});
+      const offsets=await page.locator('.desk-task[data-task-id="2"] > .line').evaluate(line=>{
+        const r=line.getBoundingClientRect(),middle=r.top+r.height/2;
+        return ['.src','.chat','.agent-badge','.due','.due svg','.due > span','.subtask-count','.prio','.more'].flatMap(selector=>[...line.querySelectorAll(selector)].filter(el=>el.getClientRects().length).map(el=>{const b=el.getBoundingClientRect(),s=getComputedStyle(el);return{selector,offset:b.top+b.height/2-middle,font:s.fontSize,lineHeight:s.lineHeight};}));
+      });
+      for (const item of offsets) assert.ok(Math.abs(item.offset) < 0.5, `${width}px ${item.selector} is off center by ${item.offset}px`);
+      for (const item of offsets.filter(item => ['.chat','.due > span','.subtask-count','.prio'].includes(item.selector))) { assert.equal(item.font,'12px'); assert.equal(item.lineHeight,'16px'); }
+    }
+    await page.setViewportSize({width:1024,height:740});
+    assert.equal(await page.locator('.desk-task[data-task-id="5"] .desk-time').innerText(),'3:00\n20m');
+    assert.match(await page.locator('#desk-now-pill').innerText(),/\b(?:am|pm)\b/i);
     page.setDefaultTimeout(10000);
     const task=id=>page.locator(`.desk-task[data-task-id="${id}"]`);
     const saved=()=>page.waitForFunction(()=>!document.getElementById('desk-start').readOnly);
@@ -51,6 +63,8 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(await page.locator('#desk-time-save,#desk-time-cancel').count(),0);
     await openTime(3);await pick('desk-start','11:30');await pick('desk-duration','');assert.equal(await task(3).locator('.desk-time').innerText(),'11:30');assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3)),false);
     await dismiss();await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),2);assert.equal(await task(2).locator('.desk-time').innerText(),'10:30\n45m');assert.equal(await page.evaluate(()=>JSON.stringify(testState.tasks)===JSON.stringify(originalTasks)),true);
+    // Explicit 12-hour formatting even in a locale that defaults to 24-hour time.
+    await openTime(4);assert.match(await page.locator('#desk-start').inputValue(),/12:30\s*pm/i);await dismiss();
     // Concurrent refresh and stale editor protection.
     await page.evaluate(async()=>{testState.delayListOnce=100;suggest();await new Promise(r=>setTimeout(r,20));testState.emit();});await page.locator('#desk-review').waitFor();await openTime(1);
     await page.evaluate(()=>{suggest();testState.desk.proposal.agent='Codex';testState.emit();});await page.locator('#desk-proposal-label').filter({hasText:'Codex'}).waitFor();await pick('desk-start','09:45');await page.locator('#desk-time-error').waitFor();assert.ok((await page.locator('#desk-time-error').innerText()).includes('changed'));assert.equal(await page.evaluate(()=>testState.desk.proposal.items[0].start),'09:00');
@@ -58,7 +72,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.evaluate(()=>{suggest();testState.tasks.find(t=>t.id===1).done_at=Date.now()/1000;testState.emit();});await page.locator('#desk-error').waitFor();assert.equal(await page.locator('#desk-accept').isDisabled(),true);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
     await page.evaluate(()=>{testState.tasks.find(t=>t.id===1).done_at=null;suggest();});await page.locator('#desk-review').waitFor();await page.locator('#desk-accept').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),5);
     // Immediate selection failures retain editable values for retry.
-    await openTime(5);await page.evaluate(()=>{testState.failDesk=true;});await pick('desk-start','15:30');await page.locator('#desk-time-error').waitFor();assert.equal(await task(5).locator('.desk-time').innerText(),'15:00\n20m');await page.evaluate(()=>{testState.failDesk=false;});await page.locator('#desk-start').press('Enter');await saved();await pick('desk-duration','30');await dismiss();assert.equal(await task(5).locator('.desk-time').innerText(),'15:30\n30m');
+    await openTime(5);await page.evaluate(()=>{testState.failDesk=true;});await pick('desk-start','15:30');await page.locator('#desk-time-error').waitFor();assert.equal(await task(5).locator('.desk-time').innerText(),'3:00\n20m');await page.evaluate(()=>{testState.failDesk=false;});await page.locator('#desk-start').press('Enter');await saved();await pick('desk-duration','30');await dismiss();assert.equal(await task(5).locator('.desk-time').innerText(),'3:30\n30m');
     // Inline tasks remain visible in a pending arrangement and survive its rejection.
     await page.locator('#add').click();await page.locator('#new-title').fill('Send the production notes');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===7);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await page.locator('#add').click();await page.locator('#new-title').fill('Confirm tomorrow’s session');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===8);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),7);
@@ -68,7 +82,7 @@ module.exports = async (browser, installMock, url, errors) => {
     const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.52);await pick('desk-duration','30');assert.deepEqual(await page.evaluate(()=>{const item=testState.desk.proposal.items.find(i=>i.id===3);return{start:item.start,duration:item.duration};}),{start:'13:15',duration:30});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
     // Typed custom values apply on Enter; x clears one field immediately.
-    await openTime(2);await page.locator('#desk-start').fill('930');await page.locator('#desk-start').press('Enter');await saved();await page.locator('#desk-duration').fill('1h 15m');await page.locator('#desk-duration').press('Enter');await saved();assert.equal(await task(2).locator('.desk-time').innerText(),'09:30\n75m');await page.locator('#desk-duration-clear').click();await saved();assert.equal(await task(2).locator('.desk-time').innerText(),'09:30');
+    await openTime(2);await page.locator('#desk-start').fill('930');await page.locator('#desk-start').press('Enter');await saved();await page.locator('#desk-duration').fill('1h 15m');await page.locator('#desk-duration').press('Enter');await saved();assert.equal(await task(2).locator('.desk-time').innerText(),'9:30\n75m');await page.locator('#desk-duration-clear').click();await saved();assert.equal(await task(2).locator('.desk-time').innerText(),'9:30');
     await page.screenshot({path:'/tmp/tinytasks-desk-compact-picker.png'});
     await page.locator('#desk-start').fill('25:99');await page.locator('#desk-start').press('Enter');await page.locator('#desk-time-error').waitFor();assert.ok((await page.locator('#desk-time-error').innerText()).includes('Enter a time'));await dismiss();
     await page.screenshot({path:'/tmp/tinytasks-desk-drag-schedule.png'});

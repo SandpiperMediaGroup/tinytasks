@@ -57,7 +57,8 @@ class DeskController {
     const minute = this.minutes(value);
     if (minute == null) return "—";
     const date = new Date(); date.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", ...(period ? {} : { hour12: false }) });
+    const parts = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(date);
+    return parts.filter(part => period || part.type !== "dayPeriod").map(part => part.value).join("").trim();
   }
   async load() {
     const sequence = ++this.sequence;
@@ -100,7 +101,7 @@ class DeskController {
   updateClock() {
     if (!this.active || !this.state || !this.hasTimes && !this.timelineDrag) return;
     const now = new Date(), minute = now.getHours() * 60 + now.getMinutes();
-    this.$("desk-now-pill").textContent = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    this.$("desk-now-pill").textContent = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
     const start = this.minutes(this.state.work_start), end = this.minutes(this.state.work_end);
     const progress = Math.max(0, Math.min(100, (minute - start) / (end - start) * 100));
     this.$("desk-now-marker").style.left = `${progress}%`;

@@ -18,6 +18,9 @@ followed by **Lists & Chats**. These lists are the same chat sections in `tasks.
 Empty lists are saved in the file and can sync between computers.
 They remain available in the sidebar but do not create empty groups in All. Personal tasks
 without a named chat also appear as **Personal** in the sidebar.
+Each task belongs to one list or chat. All uses that same home for **Lists & Chats** grouping;
+tasks without a named home are grouped under **Personal**, regardless of which agent added them.
+An agent name is attribution, not another list. **Grouping → Agent** can still group by that attribution.
 Opening a list shows its name and icon in the toolbar, without a redundant list group heading.
 An enabled sidebar collapses below 720 pixels and returns when the window widens;
 your saved preference stays enabled. Enabling it in a narrow window expands the task window.

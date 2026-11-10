@@ -34,9 +34,19 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(await row('Personal').count(), 1);
     assert.equal(await row('Later').count(), 1);
     assert.equal(await page.locator('#open section[data-chat="Later"]').count(), 0);
+    // Agent attribution must not invent a second list for an unfiled task.
+    await page.evaluate(() => { testState.tasks.find(t => t.id === 2).agent = 'Nuthatch'; testState.emit(); });
+    const personalGroup = page.locator('#open section[data-chat=""]');
+    await personalGroup.locator('.group-head').filter({hasText:'Personal'}).waitFor();
+    assert.equal(await personalGroup.locator('.task[data-task-id="2"]').count(), 1);
+    assert.equal(await page.locator('#open .task[data-task-id="2"]').count(), 1);
+    assert.equal(await page.locator('#open .group-head').filter({hasText:'Nuthatch'}).count(), 0);
+    assert.equal(await personalGroup.locator('.agent-badge[aria-label="Edit agent"]').count(), 1);
+    assert.equal(await row('Personal').locator('.n').innerText(), '1');
     await select('Personal');
     assert.equal(await page.locator('#heading').innerText(), 'Personal');
     assert.equal(await page.locator('#open .task').count(), 1);
+    assert.equal(await page.locator('#open .task[data-task-id="2"]').count(), 1);
     assert.equal(await page.locator('#open .group-head').count(), 0);
     assert.equal(await page.locator('#heading-icon svg').count(), 1);
     await select('Billing launch');

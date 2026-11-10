@@ -211,7 +211,7 @@ function row(t, parent = null, index = 0, deskItem = null) {
 
   // A row leaves out whatever its group header already says.
   const by = noteId != null || parent || deskItem ? "" : groupBy;
-  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : by !== "chat" && by !== "agent");
+  const showIcon = properties.agent && (parent ? t.agent !== parent.agent : by !== "agent" && (by !== "chat" || !t.chat));
   const showChat = properties.chat && (parent ? t.chat !== parent.chat : by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
 
@@ -513,7 +513,7 @@ function groupsOf(open) {
   const key = {
     time: (t) => timeBucket(t.created_at),
     completed: (t) => timeBucket(t.done_at),
-    chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : t.agent ? ["a:" + agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
+    chat: (t) => (t.chat ? ["c:" + t.chat, t.chat] : ["", ""]),
     agent: (t) => (t.agent ? [agentInfo(t.agent).name, agentInfo(t.agent).name] : ["", ""]),
     // Headers show just the pill (the hint names like "Today" read as dates up here).
     priority: (t) => (t.priority == null ? [9, "No priority"] : [t.priority, `P${t.priority}`]),

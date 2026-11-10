@@ -128,6 +128,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const url = pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
+    if (process.env.SCROLL_INTERACTIONS_ONLY) {
+      await require('./scroll-interactions.cjs')(browser, installMock, url, errors);
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (process.env.DESK_INTERACTIONS_ONLY) {
       await require('./desk-interactions.cjs')(browser, installMock, url, errors);
       assert.deepEqual(errors, []);
@@ -826,6 +831,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await require('./list-interactions.cjs')(browser, installMock, url, errors);
     await require('./sidebar-interactions.cjs')(browser, installMock, url, errors);
     await require('./desk-interactions.cjs')(browser, installMock, url, errors);
+    await require('./scroll-interactions.cjs')(browser, installMock, url, errors);
     assert.deepEqual(errors, []);
     console.log('PASS: display/group persistence, editing and retry, notes, subtasks, My desk, drag/keyboard order, grouping and ordering in both directions, per-view layouts, preference migration, progress, compact alignment, hover/focus controls, narrow layout, themes, settings keyboard access, theme persistence and note syncing, shared task menus, context-click and keyboard actions, growing task/subtask entry, resizing, and composition handling.');
   } finally { await browser.close(); }

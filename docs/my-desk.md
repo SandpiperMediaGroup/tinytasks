@@ -17,13 +17,22 @@ below **Due date** in the task's context menu. That action is available for task
 including when you open their menu from another list.
 
 The anchored picker accepts times such as `9:30 AM`, `14:30`, or `930`, with 15-minute suggestions.
-Choose an optional duration or type one, such as `30 min` or `1h 15m`. Save applies the change;
-Cancel leaves it alone. **Clear** removes both the start time and duration. Duration requires
+The two timing rows use the same compact controls as grouping and ordering. Selecting a time
+or duration applies it immediately; typed values apply on Enter or when leaving the field.
+Use the **×** inside a field to clear it. Clearing the time also clears its duration.
+Choose an optional duration or type one, such as `30 min` or `1h 15m`. Duration requires
 a start time and must end within the same day. The timeline uses bars for durations and dots
 for start times without a duration, with a labeled pill marking the current time.
 Hover or focus a task marker to highlight its row; click to edit its time.
 Tasks outside the configured work hours remain in the desk, with only the portion within
 work hours shown on the timeline.
+
+Drag a My Desk task onto the timeline to schedule it. The drop indicator snaps to 15-minute
+increments within work hours. Dropping applies the start time and opens duration choices;
+choosing a duration applies it immediately. Dismissing the choices keeps the dropped time.
+If every task is untimed, the timeline appears temporarily while dragging so you can schedule
+the first task. Escape cancels a drag. Proposed arrangements support the same interaction;
+changes stay in the proposal until the whole arrangement is accepted.
 
 Set **Work starts** and **Work ends** in **Settings → My Desk**. Changing work hours changes the
 timeline's range; it does not reschedule tasks. The desk's membership, times, and any pending

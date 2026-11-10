@@ -215,8 +215,12 @@ fn review_desk(app: AppHandle, date: String, proposal_id: String, accept: bool) 
 
 #[tauri::command]
 fn edit_desk_time(app: AppHandle, date: String, item: desk::Item, proposal_id: Option<String>) -> Res<desk::Snapshot> {
-    store::change(|list| desk::edit_time(list, &date, item, proposal_id.as_deref()))?;
-    desk_reply(&app)
+    let state = store::change(|list| {
+        desk::edit_time(list, &date, item, proposal_id.as_deref())?;
+        desk::snapshot(list)
+    })?;
+    let _ = app.emit("tasks-changed", ());
+    Ok(state)
 }
 
 #[tauri::command]

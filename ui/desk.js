@@ -14,14 +14,24 @@ class DeskController {
     this.$ = id => document.getElementById(id);
     this.$("desk-accept").onclick = () => this.review(true);
     this.$("desk-decline").onclick = () => this.review(false);
-    this.$("desk-time-cancel").onclick = () => this.closeTime();
-    this.$("desk-time-clear").onclick = () => { this.$("desk-start").value = this.$("desk-duration").value = ""; this.saveTime(); };
     this.$("desk-time-form").onsubmit = event => { event.preventDefault(); this.saveTime(); };
     for (const id of ["desk-start", "desk-duration"]) {
       const input = this.$(id);
-      input.onfocus = () => this.showChoices(id);
-      input.oninput = () => { this.$("desk-time-error").hidden = true; this.showChoices(id, true); };
+      input.onclick = () => this.showChoices(id);
+      input.oninput = () => { this.dirty = true; this.updateClearButtons(); this.$("desk-time-error").hidden = true; this.showChoices(id, true); };
+      input.onblur = () => { if (!this.$("desk-time-dialog").hidden && this.dirty) this.saveTime(); };
       input.onkeydown = event => this.choiceKey(event, id);
+      this.$(`${id}-toggle`).onpointerdown = event => event.preventDefault();
+      this.$(`${id}-toggle`).onclick = () => {
+        if (this.choiceField === id) this.hideChoices();
+        else { input.focus({preventScroll:true}); this.showChoices(id); }
+      };
+      this.$(`${id}-clear`).onpointerdown = event => event.preventDefault();
+      this.$(`${id}-clear`).onclick = () => {
+        input.value = "";
+        if (id === "desk-start") this.$("desk-duration").value = "";
+        this.dirty = true; this.updateClearButtons(); this.saveTime();
+      };
     }
     document.addEventListener("pointerdown", event => {
       if (!this.$("desk-time-dialog").hidden && !this.$("desk-time-dialog").contains(event.target)) this.closeTime(false);
@@ -88,7 +98,7 @@ class DeskController {
     this.updateClock();
   }
   updateClock() {
-    if (!this.active || !this.state || !this.hasTimes) return;
+    if (!this.active || !this.state || !this.hasTimes && !this.timelineDrag) return;
     const now = new Date(), minute = now.getHours() * 60 + now.getMinutes();
     this.$("desk-now-pill").textContent = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     const start = this.minutes(this.state.work_start), end = this.minutes(this.state.work_end);
@@ -151,27 +161,83 @@ class DeskController {
     const item = (proposal ? proposal.items : this.state?.items || []).find(item => item.id === task.id);
     return item && task.done_at == null ? { item, proposalId: proposal?.id || null } : null;
   }
-  async openTime(task, item, anchor, proposalId = this.active ? this.state.proposal?.id || null : null) {
+  beginTimelineDrag(task) {
+    if (!this.active || this.dropSaving) return;
+    const context = this.contextItem(task);
+    if (!context) return;
+    this.timelineDrag = { task, context, date: this.state.date, workStart: this.state.work_start, workEnd: this.state.work_end };
+    document.body.classList.add("desk-timeline-dragging");
+    this.$("desk-timeline").hidden = false;
+    this.updateClock();
+  }
+  previewTimelineDrop(event) {
+    if (!this.timelineDrag) return null;
+    const timeline = this.$("desk-timeline").getBoundingClientRect(), track = this.$("desk-markers").getBoundingClientRect();
+    const start = this.minutes(this.timelineDrag.workStart), end = this.minutes(this.timelineDrag.workEnd);
+    const minimum = Math.ceil(start / 15) * 15, maximum = Math.floor((end - 1) / 15) * 15;
+    const hit = track.width > 0 && minimum <= maximum && event.clientX >= track.left && event.clientX <= track.right && event.clientY >= timeline.top - 22 && event.clientY <= timeline.bottom + 10;
+    this.$("desk-drop-preview").hidden = !hit;
+    this.$("desk-timeline").classList.toggle("desk-drop-target", hit);
+    if (!hit) return null;
+    const minute = Math.max(minimum, Math.min(maximum, Math.round((start + (event.clientX - track.left) / track.width * (end - start)) / 15) * 15));
+    const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+    this.$("desk-drop-preview").style.left = `${(minute - start) / (end - start) * 100}%`;
+    this.$("desk-drop-time").textContent = this.time(time, true);
+    const width = this.$("desk-drop-time").offsetWidth, position = (minute - start) / (end - start) * track.width;
+    this.$("desk-drop-time").style.left = `${Math.max(-position, Math.min(-width / 2, track.width - position - width))}px`;
+    return time;
+  }
+  endTimelineDrag() {
+    this.timelineDrag = null;
+    document.body.classList.remove("desk-timeline-dragging");
+    this.$("desk-drop-preview").hidden = true;
+    this.$("desk-timeline").classList.remove("desk-drop-target");
+    this.$("desk-timeline").hidden = !this.hasTimes;
+  }
+  async scheduleDrop(drag, start) {
+    this.dropSaving = true;
+    let duration = drag.context.item.duration;
+    if (duration && this.minutes(start) + duration > 1440) duration = null;
+    const item = { id: drag.task.id, start, duration };
+    try {
+      const result = await this.invoke("edit_desk_time", { date: drag.date, proposalId: drag.context.proposalId, item });
+      await this.refresh();
+      this.endTimelineDrag();
+      const marker = this.$("desk-markers").querySelector(`[data-task-id="${item.id}"]`);
+      await this.openTime(drag.task, item, marker, drag.context.proposalId ? result.proposal?.id || drag.context.proposalId : null, "desk-duration", true);
+    } catch (error) {
+      this.endTimelineDrag();
+      this.error = String(error);
+      this.render(this.active, this.tasks);
+    } finally { this.dropSaving = false; }
+  }
+  async openTime(task, item, anchor, proposalId = this.active ? this.state.proposal?.id || null : null, focusField = "desk-start", showChoices = false) {
     if (this.savingTime) return;
-    const editing = { id: task.id, date: this.state.date, proposalId };
+    const editing = { id: task.id, date: this.state.date, proposalId, saved: { start: item.start, duration: item.duration } };
     if (!await this.finishEditing()) return;
     this.closeTime(false);
     this.editing = editing;
+    this.dirty = false;
     this.anchor = anchor?.isConnected ? anchor : document.querySelector(`.task[data-task-id="${task.id}"] > .line`) || this.$("view");
     this.$("desk-start").value = item.start ? this.time(item.start, true) : "";
     this.$("desk-duration").value = item.duration ? this.durationLabel(item.duration) : "";
     this.$("desk-time-error").hidden = true;
-    this.$("desk-time-clear").hidden = !item.start;
+    this.updateClearButtons();
     this.$("desk-time-dialog").setAttribute("aria-label", `Desk time for ${task.title}`);
     this.place(this.$("desk-time-dialog"), this.anchor);
-    this.$("desk-start").focus();
-    this.$("desk-start").select();
+    this.$(focusField).focus({preventScroll:true});
+    this.$(focusField).select();
+    if (showChoices) this.showChoices(focusField);
   }
   closeTime(focus = true) {
     if (this.$("desk-time-dialog").hidden) return;
+    if (this.dirty && !this.savingTime) this.saveTime();
     this.$("desk-time-dialog").hidden = true;
     this.hideChoices();
-    if (focus) (document.querySelector(`.task[data-task-id="${this.editing?.id}"] .desk-time`) || document.querySelector(`.task[data-task-id="${this.editing?.id}"] > .line`) || this.$("view")).focus();
+    if (focus) (document.querySelector(`.task[data-task-id="${this.editing?.id}"] .desk-time`) || document.querySelector(`.task[data-task-id="${this.editing?.id}"] > .line`) || this.$("view")).focus({ preventScroll: true });
+  }
+  updateClearButtons() {
+    for (const id of ["desk-start", "desk-duration"]) this.$(`${id}-clear`).hidden = !this.$(id).value;
   }
   positionTime() {
     const anchor = this.anchor?.isConnected ? this.anchor : document.querySelector(`.task[data-task-id="${this.editing?.id}"] > .line`) || this.$("view");
@@ -248,9 +314,12 @@ class DeskController {
     const field = this.choiceField, choice = this.choices[index];
     this.$(field).value = choice.value == null ? "" : field === "desk-start" ? this.time(choice.value, true) : this.durationLabel(choice.value);
     if (field === "desk-start" && choice.value == null) this.$("desk-duration").value = "";
+    this.dirty = true; this.updateClearButtons();
     this.hideChoices(); this.$("desk-time-error").hidden = true;
+    this.saveTime();
   }
   choiceKey(event, field) {
+    if (event.isComposing) return;
     if (event.key === "Tab") { this.hideChoices(); return; }
     if (["ArrowDown", "ArrowUp"].includes(event.key)) {
       event.preventDefault();
@@ -259,27 +328,40 @@ class DeskController {
       this.highlightChoice();
       this.$(field === "desk-start" ? "desk-time-options" : "desk-duration-options").children[this.choiceIndex].scrollIntoView({ block: "nearest" });
     } else if (event.key === "Enter" && this.choiceField) {
-      if (this.choiceIndex >= 0) { event.preventDefault(); this.choose(this.choiceIndex); } else this.hideChoices();
+      event.preventDefault();
+      if (this.choiceIndex >= 0) this.choose(this.choiceIndex); else { this.hideChoices(); this.saveTime(); }
+    } else if (event.key === "Enter") {
+      event.preventDefault(); this.saveTime();
     }
   }
   async saveTime() {
     if (this.savingTime || !this.editing || !this.$("desk-time-form").reportValidity()) return;
+    const editing = this.editing;
     const start = this.parseTime(this.$("desk-start").value);
     const duration = this.parseDuration(this.$("desk-duration").value);
     const error = start === undefined ? "Enter a time like 9:30 AM or 14:30." : duration === undefined || duration != null && (!Number.isInteger(duration) || duration < 1 || duration > 1440) ? "Enter a duration like 30 min or 1 hr." : duration != null && (!start || this.minutes(start) + duration > 1440) ? "Duration needs a time and must end within today." : "";
     if (error) { this.$("desk-time-error").textContent = error; this.$("desk-time-error").hidden = false; this.hideChoices(); this.positionTime(); return; }
+    if (start === editing.saved.start && duration === editing.saved.duration) { this.dirty = false; return; }
     this.hideChoices();
-    this.savingTime = true; this.$("desk-time-save").disabled = true;
+    this.savingTime = true;
     this.$("desk-start").readOnly = this.$("desk-duration").readOnly = true;
     try {
-      await this.invoke("edit_desk_time", { date: this.editing.date, proposalId: this.editing.proposalId, item: { id: this.editing.id, start, duration } });
+      const result = await this.invoke("edit_desk_time", { date: editing.date, proposalId: editing.proposalId, item: { id: editing.id, start, duration } });
+      editing.saved = { start, duration };
+      if (editing.proposalId) editing.proposalId = result.proposal?.id || editing.proposalId;
+      if (this.editing === editing) {
+        this.dirty = false;
+        this.$("desk-start").value = start ? this.time(start, true) : "";
+        this.$("desk-duration").value = duration ? this.durationLabel(duration) : "";
+        this.updateClearButtons();
+        this.$("desk-time-error").hidden = true;
+      }
       await this.refresh();
-      this.closeTime();
     } catch (error) {
       this.$("desk-time-error").textContent = String(error);
       this.$("desk-time-error").hidden = false;
       this.positionTime();
-    } finally { this.savingTime = false; this.$("desk-time-save").disabled = false; this.$("desk-start").readOnly = this.$("desk-duration").readOnly = false; }
+    } finally { this.savingTime = false; this.$("desk-start").readOnly = this.$("desk-duration").readOnly = false; }
   }
   async review(accept) {
     const proposal = this.state?.proposal;

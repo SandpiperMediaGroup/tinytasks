@@ -112,6 +112,8 @@ Drag the empty header space to move the window.
   The timeline appears when tasks have times, with a current-time pill and task markers. Work start/end hours
   are in **Settings → My Desk**. The desk and pending suggestions clear overnight; your tasks
   stay in their lists. See [My Desk and agent arrangements](docs/my-desk.md).
+  Drag a desk task onto the timeline to schedule in 15-minute increments, then choose its
+  duration. The timing controls apply selections immediately; use × to clear either field.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
 - **Show sidebar**, in the title menu or Settings, expands a narrow window to show My Desk,

@@ -238,6 +238,11 @@ section:first-child .group-head { padding-top: 16px; }
 #desk-now-marker { position: absolute; top: 0; width: 0; height: 0; z-index: 1; pointer-events: none; }
 #desk-now-marker::after { content: ""; position: absolute; top: -8px; left: 0; width: 1px; height: 19px; background: var(--danger); }
 #desk-now-pill { position: absolute; top: -28px; padding: 2px 6px; border-radius: 999px; background: var(--danger); color: var(--bg); font-size: 11px; line-height: 16px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#desk-drop-preview { position: absolute; top: -8px; height: 19px; width: 1px; background: var(--accent); pointer-events: none; z-index: 2; }
+#desk-drop-time { position: absolute; top: -20px; padding: 2px 6px; border-radius: 5px; background: var(--ink); color: var(--bg); font-size: 11px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.desk-drop-target #desk-now-marker { visibility: hidden; }
+.desk-drop-target .desk-track { background: color-mix(in srgb, var(--accent) 50%, transparent); }
+.desk-timeline-dragging #desk-timeline { outline: 1px dashed var(--line); outline-offset: 10px; border-radius: 3px; }
 #desk-markers { position: absolute; inset: 0; }
 .desk-marker { position: absolute; top: -12px; height: 27px; min-width: 7px; padding: 0; border-radius: 3px; color: var(--soft); }
 .desk-marker::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 7px; border-radius: 3px; background: currentColor; opacity: .65; pointer-events: none; }
@@ -279,21 +284,19 @@ section:first-child .group-head { padding-top: 16px; }
 .desk-duration-field { position: relative; }
 .desk-duration-field input { padding-right: 36px; }
 .desk-duration-field > span { position: absolute; right: 8px; top: 9px; font-size: 11px; }
-#desk-time-save, #work-hours-save { color: var(--ink); background: var(--bg-hover); }
+#work-hours-save { color: var(--ink); background: var(--bg-hover); }
 #work-hours { margin: 12px 0 22px; }
 #work-hours .dialog-actions { margin-top: 10px; }
-#desk-time-dialog { width: 300px; max-width: calc(100vw - 16px); padding: 0; z-index: 30; }
+#desk-time-dialog { width: 232px; max-width: calc(100vw - 16px); padding: 8px; z-index: 30; }
 .desk-picker-heading { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.desk-picker-fields { display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 9px 8px; padding: 12px; }
-.desk-picker-fields label { font-size: 12px; font-weight: 500; }
-.desk-picker-fields input { width: 100%; min-width: 0; height: 32px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg-menu); color: var(--ink); font: inherit; font-size: 13px; user-select: text; -webkit-user-select: text; }
-.desk-picker-fields input::placeholder { color: var(--muted); }
-#desk-time-dialog .desk-picker-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
-#desk-time-dialog .desk-picker-actions button { display: inline-flex; justify-content: center; width: auto; padding: 6px 10px; border-radius: 5px; font-size: 12px; }
+.menu .desk-field-control { display: flex; align-items: center; gap: 2px; padding: 2px 5px 2px 7px; }
+.desk-field-control input { flex: 1; width: 0; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: inherit; font: inherit; user-select: text; -webkit-user-select: text; }
+.desk-field-control input::placeholder { color: var(--muted); }
+.desk-field-control:focus-within { border-color: var(--accent); }
+#desk-time-dialog .desk-field-control button { flex: none; display: grid; place-items: center; width: 13px; height: 19px; padding: 0; border-radius: 3px; color: var(--muted); }
+#desk-time-dialog .desk-field-control button svg { width: 11px; height: 11px; }
 #desk-time-dialog button::after { display: none; }
-#desk-time-dialog #desk-time-save { background: color-mix(in srgb, var(--ink) 65%, var(--accent)); color: var(--bg); }
-#desk-time-clear { margin-right: auto; color: var(--soft); }
-#desk-time-error { padding: 0 12px; margin: 0 0 10px; }
+#desk-time-error { padding: 0; margin: 5px 0 0; }
 .desk-picker-options { position: fixed; z-index: 31; overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-menu); box-shadow: var(--shadow); }
 #desk-time-dialog .desk-picker-options button { display: block; width: 100%; padding: 7px 8px; min-height: 32px; font-size: 12px; white-space: nowrap; text-align: left; }
 #desk-time-dialog .desk-picker-options button[aria-selected="true"] { background: var(--bg-hover); }

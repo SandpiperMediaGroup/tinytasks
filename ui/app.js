@@ -340,8 +340,8 @@ function row(t, parent = null, index = 0, deskItem = null) {
     line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
     line.onpointerdown = (e) => beginSubtaskDrag(e, line, t.id, parent.id);
   }
-  else if (t.parent_id == null && noteId == null) {
-    line.title = "Drag to another list section or sidebar list.";
+  else if ((t.parent_id == null || deskItem) && noteId == null) {
+    line.title = deskItem ? "Drag onto the timeline to schedule in 15-minute increments." : "Drag to another list section or sidebar list.";
     line.onpointerdown = e => beginTaskDrag(e, line, t);
   }
   if (noteId === t.id) $("note-complete").replaceChildren(check);
@@ -880,9 +880,11 @@ function beginTaskDrag(event, line, task) {
       draggingTask = task.id; line.setPointerCapture(start.pointer);
       line.parentElement.classList.add("dragging");
       closeFloating();
+      desk.beginTimelineDrag(task);
     }
     clearTarget();
-    target = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-chat]");
+    const timelineTime = desk.previewTimelineDrop(e);
+    target = timelineTime == null && task.parent_id == null ? document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-chat]") : null;
     if (target && target.dataset.chat !== task.chat) target.classList.add("list-drop-target");
     else target = null;
     const scroller = e.clientX < $("main").getBoundingClientRect().left ? $("sidebar") : $("main");
@@ -896,18 +898,27 @@ function beginTaskDrag(event, line, task) {
     document.removeEventListener("pointerup", end);
     document.removeEventListener("pointercancel", end);
     if (line.hasPointerCapture(start.pointer)) line.releasePointerCapture(start.pointer);
+    document.removeEventListener("keydown", cancel);
     clearTarget(); line.parentElement.classList.remove("dragging");
     const dragged = draggingTask != null;
     draggingTask = null;
     if (!dragged) return;
+    const timelineTime = e.type === "pointerup" ? desk.previewTimelineDrop(e) : null;
+    const timelineDrag = desk.timelineDrag;
     suppressSubtaskClick = true;
     setTimeout(() => { suppressSubtaskClick = false; }, 0);
-    if (e.type === "pointerup" && target) await act("edit_task", { id: task.id, chat: target.dataset.chat });
-    else render();
+    if (timelineTime != null && timelineDrag) await desk.scheduleDrop(timelineDrag, timelineTime);
+    else {
+      desk.endTimelineDrag();
+      if (e.type === "pointerup" && target) await act("edit_task", { id: task.id, chat: target.dataset.chat });
+      else render();
+    }
   };
+  const cancel = e => { if (e.key === "Escape") { e.preventDefault(); end({ pointerId: start.pointer, type: "pointercancel" }); } };
   document.addEventListener("pointermove", move, { passive: false });
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
+  document.addEventListener("keydown", cancel);
 }
 
 // ---- editing a task in place ----
@@ -1230,7 +1241,14 @@ const taskMenu = $("task-menu");
 let taskMenuId = null;
 let actionReturnId = null;
 function focusTask(id) {
-  (document.querySelector(`.task[data-task-id="${id}"] > .line`) || document.querySelector(".task > .line") || $("view")).focus();
+  const main = $("main"), bounds = main.getBoundingClientRect();
+  const visible = [...main.querySelectorAll(".task > .line")].find(line => {
+    const row = line.getBoundingClientRect();
+    return row.bottom > bounds.top && row.top < bounds.bottom;
+  });
+  // A moved/deleted task is gone from this list. Restore focus nearby without
+  // scrolling the viewport back to the first row (or to a newly sorted row).
+  (document.querySelector(`.task[data-task-id="${id}"] > .line`) || visible || $("view")).focus({ preventScroll: true });
 }
 function closeTaskMenu(focus = false) {
   const id = taskMenuId;

@@ -95,7 +95,7 @@
     <div id="desk-head" hidden>
       <div class="desk-date-row"><h2 id="desk-date"></h2></div>
       <div id="desk-timeline">
-        <div class="desk-track"><div id="desk-markers" role="group" aria-label="Tasks during work hours"></div><span id="desk-now-marker"><span id="desk-now-pill"></span></span></div>
+        <div class="desk-track"><div id="desk-markers" role="group" aria-label="Tasks during work hours"></div><span id="desk-now-marker"><span id="desk-now-pill"></span></span><span id="desk-drop-preview" hidden><span id="desk-drop-time"></span></span></div>
         <div id="desk-hours" aria-hidden="true"></div>
       </div>
       <div id="desk-review" hidden>
@@ -120,14 +120,15 @@
   <div id="desk-time-dialog" class="menu floating desk-time-popover" role="dialog" aria-labelledby="desk-time-heading" hidden>
     <form id="desk-time-form">
       <h2 id="desk-time-heading" class="desk-picker-heading">Desk time</h2>
-      <div class="desk-picker-fields">
-        <label for="desk-start">Time</label><input id="desk-start" type="text" placeholder="No time" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="desk-time-options">
-        <label for="desk-duration">Duration</label><input id="desk-duration" type="text" placeholder="No duration" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="desk-duration-options">
+      <div class="layout-setting">
+        <label for="desk-start">Time</label><div class="layout-picker desk-field-control"><input id="desk-start" type="text" placeholder="No time" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="desk-time-options"><button id="desk-start-clear" type="button" aria-label="Clear time" hidden><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button><button id="desk-start-toggle" type="button" aria-label="Choose time"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button></div>
+      </div>
+      <div class="layout-setting">
+        <label for="desk-duration">Duration</label><div class="layout-picker desk-field-control"><input id="desk-duration" type="text" placeholder="No duration" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="desk-duration-options"><button id="desk-duration-clear" type="button" aria-label="Clear duration" hidden><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button><button id="desk-duration-toggle" type="button" aria-label="Choose duration"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg></button></div>
       </div>
       <div id="desk-time-options" class="desk-picker-options" role="listbox" aria-label="Start time suggestions" hidden></div>
       <div id="desk-duration-options" class="desk-picker-options" role="listbox" aria-label="Duration suggestions" hidden></div>
       <p id="desk-time-error" role="alert" hidden></p>
-      <div class="desk-picker-actions"><button type="button" id="desk-time-clear">Clear</button><button type="button" id="desk-time-cancel">Cancel</button><button type="submit" id="desk-time-save">Save</button></div>
     </form>
   </div>
 

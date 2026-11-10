@@ -515,7 +515,11 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .subtask > .details > .details-inner > .details-pad { padding: 0 0 7px 25px; }
 .subtask > .details .body { font-size: 12px; }
 .subtask:last-child { border-bottom: none; }
-.subtask.dragging { opacity: .4; }
+.task.dragging { opacity: .4; }
+.task-dragging, .task-dragging * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+.task-drag-preview { position: fixed; left: 0; top: 0; z-index: 80; display: flex; align-items: center; gap: 9px; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-menu); color: var(--ink); box-shadow: var(--shadow); pointer-events: none; font-size: 13px; line-height: 18px; }
+.drag-preview-check { flex: none; width: 15px; height: 15px; border: 1.5px solid var(--muted); border-radius: 50%; }
+.drag-preview-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subtask.drop-target { box-shadow: 0 -2px var(--accent); }
 .new-subtask .check { border-style: dashed; }
 .new-subtask textarea { resize: none; overflow: hidden; display: block; margin: 0; line-height: inherit; width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; }

@@ -55,9 +55,12 @@ module.exports = async (browser, installMock, url, errors) => {
     const drag=async(id,fraction,cancel=false)=>{
       const title=await task(id).locator(':scope > .line .title-text').boundingBox();
       await page.mouse.move(title.x+5,title.y+title.height/2);await page.mouse.down();await page.mouse.move(title.x+20,title.y+title.height/2,{steps:3});
+      await page.locator('.task-drag-preview').waitFor();assert.equal(await page.locator('.drag-preview-title').innerText(),await task(id).locator(':scope > .line .title-text').innerText());assert.equal(await page.locator('.task-drag-preview').evaluate(el=>getComputedStyle(el).pointerEvents),'none');
       await page.locator('#desk-timeline').waitFor();const track=await page.locator('.desk-track').boundingBox();
       await page.mouse.move(track.x+track.width*fraction,track.y+1,{steps:10});await page.locator('#desk-drop-preview').waitFor();
-      if(cancel)await page.keyboard.press('Escape');await page.mouse.up();
+      const ghost=await page.locator('.task-drag-preview').boundingBox();assert.ok(ghost.x>=0&&ghost.x+ghost.width<=page.viewportSize().width);assert.ok(Math.abs(ghost.y-(track.y+17))<2);await page.screenshot({path:'/tmp/tinytasks-drag-preview.png'});
+      if(cancel==='blur')await page.evaluate(()=>window.dispatchEvent(new Event('blur')));else if(cancel)await page.keyboard.press('Escape');await page.mouse.up();
+      assert.equal(await page.locator('.task-drag-preview').count(),0);assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('task-dragging')),false);
       if(!cancel){await page.locator('#desk-time-dialog').waitFor();await page.locator('#desk-duration-options').waitFor();}
     };
     assert.equal(await page.locator('#desk-time-save,#desk-time-cancel').count(),0);
@@ -79,7 +82,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.evaluate(()=>{testState.desk.items=[];testState.emit();});await page.locator('#desk-timeline').waitFor({state:'hidden'});assert.equal(await page.locator('.desk-time').count(),0);assert.equal(await page.locator('.desk-section-heading').count(),0);
     // A first drag reveals the timeline; drops snap to quarter hours and ask duration.
     await drag(2,0.373);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await pick('desk-duration','45');await dismiss();assert.equal(await task(2).locator('.desk-time').innerText(),'12:00\n45m');assert.equal(await page.locator('.desk-section-heading').innerText(),'Unscheduled');assert.match(await page.locator('#desk-now-pill').innerText(),/\d.*:/);
-    const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
+    const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);await drag(4,0.7,'blur');assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.52);await pick('desk-duration','30');assert.deepEqual(await page.evaluate(()=>{const item=testState.desk.proposal.items.find(i=>i.id===3);return{start:item.start,duration:item.duration};}),{start:'13:15',duration:30});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
     // Typed custom values apply on Enter; x clears one field immediately.
     await openTime(2);await page.locator('#desk-start').fill('930');await page.locator('#desk-start').press('Enter');await saved();await page.locator('#desk-duration').fill('1h 15m');await page.locator('#desk-duration').press('Enter');await saved();assert.equal(await task(2).locator('.desk-time').innerText(),'9:30\n75m');await page.locator('#desk-duration-clear').click();await saved();assert.equal(await task(2).locator('.desk-time').innerText(),'9:30');

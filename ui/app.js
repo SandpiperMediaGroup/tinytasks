@@ -350,11 +350,29 @@ function row(t, parent = null, index = 0, deskItem = null) {
 }
 
 // Pointer dragging works consistently in desktop webviews and doesn't launch an OS text drag.
+function taskDragPreview(title) {
+  const preview = document.createElement("div");
+  preview.className = "task-drag-preview";
+  preview.setAttribute("aria-hidden", "true");
+  const check = document.createElement("span"); check.className = "drag-preview-check";
+  const text = document.createElement("span"); text.className = "drag-preview-title"; text.textContent = title;
+  preview.append(check, text); document.body.append(preview);
+  document.body.classList.add("task-dragging");
+  return {
+    move(event) {
+      const width = preview.offsetWidth, height = preview.offsetHeight;
+      const x = event.clientX + width + 22 <= innerWidth ? event.clientX + 14 : Math.max(8, event.clientX - width - 14);
+      const y = event.clientY + height + 24 <= innerHeight ? event.clientY + 16 : Math.max(8, event.clientY - height - 16);
+      preview.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    },
+    remove() { preview.remove(); document.body.classList.remove("task-dragging"); },
+  };
+}
 let suppressSubtaskClick = false;
 function beginSubtaskDrag(event, line, id, parentId) {
   if (event.button !== 0 || editingId != null || event.target.closest("button, input, textarea")) return;
   const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
-  let destination = null;
+  let destination = null, preview = null;
   const move = (e) => {
     if (e.pointerId !== start.pointer) return;
     if (!line.isConnected) { end({ pointerId: start.pointer, type: "pointercancel" }); return; }
@@ -364,7 +382,9 @@ function beginSubtaskDrag(event, line, id, parentId) {
       draggingSubtask = { id, parentId };
       line.setPointerCapture(start.pointer);
       line.parentElement.classList.add("dragging");
+      preview = taskDragPreview(tasks.find(task => task.id === id)?.title || "Task");
     }
+    preview.move(e);
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".task.subtask");
     const siblings = childrenOf(parentId);
     destination = target ? siblings.findIndex(t => t.id === Number(target.dataset.taskId)) : -1;
@@ -379,6 +399,9 @@ function beginSubtaskDrag(event, line, id, parentId) {
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", end);
     document.removeEventListener("pointercancel", end);
+    document.removeEventListener("keydown", cancel);
+    window.removeEventListener("blur", cancel);
+    preview?.remove();
     const dragged = draggingSubtask != null;
     draggingSubtask = null;
     if (line.hasPointerCapture(start.pointer)) line.releasePointerCapture(start.pointer);
@@ -390,9 +413,12 @@ function beginSubtaskDrag(event, line, id, parentId) {
       else render();
     }
   };
+  const cancel = e => { if (e.type === "blur" || e.key === "Escape") { e.preventDefault(); end({ pointerId: start.pointer, type: "pointercancel" }); } };
   document.addEventListener("pointermove", move, { passive: false });
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
+  document.addEventListener("keydown", cancel);
+  window.addEventListener("blur", cancel);
 }
 
 async function moveSubtask(parentId, id, position, focus = false) {
@@ -869,7 +895,7 @@ $("list-dialog-form").onsubmit = async e => {
 function beginTaskDrag(event, line, task) {
   if (event.button !== 0 || editingId != null || event.target.closest('button, input, textarea, .sub, .row-status')) return;
   const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
-  let target = null;
+  let target = null, preview = null;
   const clearTarget = () => document.querySelectorAll(".list-drop-target").forEach(el => el.classList.remove("list-drop-target"));
   const move = e => {
     if (e.pointerId !== start.pointer) return;
@@ -881,7 +907,9 @@ function beginTaskDrag(event, line, task) {
       line.parentElement.classList.add("dragging");
       closeFloating();
       desk.beginTimelineDrag(task);
+      preview = taskDragPreview(task.title);
     }
+    preview.move(e);
     clearTarget();
     const timelineTime = desk.previewTimelineDrop(e);
     target = timelineTime == null && task.parent_id == null ? document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-chat]") : null;
@@ -899,6 +927,8 @@ function beginTaskDrag(event, line, task) {
     document.removeEventListener("pointercancel", end);
     if (line.hasPointerCapture(start.pointer)) line.releasePointerCapture(start.pointer);
     document.removeEventListener("keydown", cancel);
+    window.removeEventListener("blur", cancel);
+    preview?.remove();
     clearTarget(); line.parentElement.classList.remove("dragging");
     const dragged = draggingTask != null;
     draggingTask = null;
@@ -914,11 +944,12 @@ function beginTaskDrag(event, line, task) {
       else render();
     }
   };
-  const cancel = e => { if (e.key === "Escape") { e.preventDefault(); end({ pointerId: start.pointer, type: "pointercancel" }); } };
+  const cancel = e => { if (e.type === "blur" || e.key === "Escape") { e.preventDefault(); end({ pointerId: start.pointer, type: "pointercancel" }); } };
   document.addEventListener("pointermove", move, { passive: false });
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
   document.addEventListener("keydown", cancel);
+  window.addEventListener("blur", cancel);
 }
 
 // ---- editing a task in place ----

@@ -6,14 +6,22 @@ desk immediately. Use `get_desk` and `suggest_desk` for timed plans.
 
 My Desk arranges existing tasks and subtasks for the current local day. It has a compact time
 gutter to the left of the checkbox: a start time and an optional duration in minutes. Tasks
-follow their start times; unscheduled tasks come last in their arrangement order. Times are
+follow their start times; untimed tasks appear in a separate **Unscheduled** section. If every
+task is untimed, My Desk shows a normal list without a time gutter or timeline. Times are
 shown only on My Desk and do not change task due dates, priorities, list membership, or subtask
 order. Completing a task here is the same completion as in any other view.
 
-Use **+** to add an existing task, or **Put on My desk** in a task's menu. Click a time to edit
-it; leave both fields empty to remove its scheduled time. Duration requires a start time and
-must end within the same day. The timeline uses bars for durations and dots for start times
-without a duration. Hover or focus a marker to highlight its task; click to edit its time.
+Use **+** to create a new task inline, just as in the other lists. To add an existing task,
+find it in its list and choose **Put on My desk**. Click a scheduled time, or choose **Desk time**
+below **Due date** in the task's context menu. That action is available for tasks on your desk,
+including when you open their menu from another list.
+
+The anchored picker accepts times such as `9:30 AM`, `14:30`, or `930`, with 15-minute suggestions.
+Choose an optional duration or type one, such as `30 min` or `1h 15m`. Save applies the change;
+Cancel leaves it alone. **Clear** removes both the start time and duration. Duration requires
+a start time and must end within the same day. The timeline uses bars for durations and dots
+for start times without a duration, with a labeled pill marking the current time.
+Hover or focus a task marker to highlight its row; click to edit its time.
 Tasks outside the configured work hours remain in the desk, with only the portion within
 work hours shown on the timeline.
 
@@ -51,8 +59,9 @@ optional positive integer minutes, at most 1440, ending within that day. `agent`
 a display name; otherwise TinyTasks uses the MCP client's name. An empty `items` array proposes
 clearing the desk. New suggestions replace pending suggestions, preserving the accepted desk.
 
-The preview marks additions and time changes. The user can edit its times and add tasks before
-accepting. **Decline** removes the proposal and restores the accepted arrangement. **Accept**
+The preview marks additions and time changes. The user can edit its times and create tasks before
+accepting. A task the user creates on My Desk also appears in the suggestion, and remains on the
+desk if the suggestion is declined. **Decline** removes the proposal and restores the accepted arrangement. **Accept**
 applies all proposed desk membership and times together, without changing the underlying task
 details or due dates. Review actions check the proposal version and day; accepting also checks
 that every task is still open and present. A stale window cannot accept a newer suggestion.

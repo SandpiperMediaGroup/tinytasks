@@ -231,11 +231,13 @@ section:first-child .group-head { padding-top: 16px; }
 #desk-head[hidden], #desk-review[hidden], #desk-error[hidden] { display: none; }
 .desk-date-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 #desk-date { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -.3px; }
-#desk-now { color: var(--soft); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-#desk-timeline { margin: 22px 0 18px; }
+#desk-timeline { margin: 34px 0 20px; }
+.desk-view:not(.desk-has-times) #desk-head { margin-bottom: 14px; }
+.desk-section-heading { margin: 24px 14px 6px; font-size: 12px; font-weight: 500; color: var(--soft); }
 .desk-track { position: relative; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 10%, transparent); }
-#desk-elapsed { height: 100%; background: color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 2px; }
-#desk-now-marker { position: absolute; top: -3px; width: 9px; height: 9px; transform: translateX(-50%); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--desk-bg); pointer-events: none; }
+#desk-now-marker { position: absolute; top: 0; width: 0; height: 0; z-index: 1; pointer-events: none; }
+#desk-now-marker::after { content: ""; position: absolute; top: -8px; left: 0; width: 1px; height: 19px; background: var(--danger); }
+#desk-now-pill { position: absolute; top: -28px; padding: 2px 6px; border-radius: 999px; background: var(--danger); color: var(--bg); font-size: 11px; line-height: 16px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #desk-markers { position: absolute; inset: 0; }
 .desk-marker { position: absolute; top: -12px; height: 27px; min-width: 7px; padding: 0; border-radius: 3px; color: var(--soft); }
 .desk-marker::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 7px; border-radius: 3px; background: currentColor; opacity: .65; pointer-events: none; }
@@ -252,27 +254,24 @@ section:first-child .group-head { padding-top: 16px; }
 #desk-accept:disabled, #desk-decline:disabled { opacity: .5; cursor: default; }
 #desk-error, #desk-time-error, #work-hours-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 #sidebar .desk-review-badge { color: var(--soft); background: var(--bg-hover); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
-.task.desk-task { --desk-gutter: 112px; position: relative; border-bottom: 0; border-left: 2px solid transparent; }
-.desk-task::after { content: ""; position: absolute; bottom: 0; left: var(--desk-gutter); right: 0; height: 1px; background: var(--line); pointer-events: none; }
-.desk-task > .line { gap: 10px; padding: 10px 8px; min-height: 44px; }
-.desk-task > .line > .desk-time { display: grid; grid-template-columns: 44px 30px; gap: 5px; align-items: center; width: 94px; flex: none; text-align: left; font-size: 13px; font-variant-numeric: tabular-nums; border-radius: 3px; }
+.task.desk-task { position: relative; border-left: 2px solid transparent; }
+.task.desk-timed { --desk-gutter: 112px; border-bottom: 0; }
+.desk-timed::after { content: ""; position: absolute; bottom: 0; left: var(--desk-gutter); right: 0; height: 1px; background: var(--line); pointer-events: none; }
+.desk-timed > .line { gap: 10px; padding: 10px 8px; min-height: 44px; }
+.desk-timed > .line > .desk-time { display: grid; grid-template-columns: 44px 30px; gap: 5px; align-items: center; width: 94px; flex: none; text-align: left; font-size: 13px; font-variant-numeric: tabular-nums; border-radius: 3px; }
 .desk-time:hover { color: var(--accent); }
 .desk-duration { color: var(--soft); font-size: 11px; }
-.desk-task > .line > .text { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
-.desk-task > .line .title { min-width: 0; flex: 1; }
-.desk-task > .line .sub { margin-top: 0; flex: none; max-width: 38%; }
-.desk-task > .line .time, .desk-task > .line .time-sub, .desk-task:not(.open) > .line .parent-context { display: none; }
-.desk-task > .details > .details-inner > .details-pad { padding-left: calc(var(--desk-gutter) + 30px); }
+.desk-timed > .line > .text { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+.desk-timed > .line .title { min-width: 0; flex: 1; }
+.desk-timed > .line .sub { margin-top: 0; flex: none; max-width: 38%; }
+.desk-timed > .line .time, .desk-timed > .line .time-sub, .desk-timed:not(.open) > .line .parent-context { display: none; }
+.desk-timed > .details > .details-inner > .details-pad { padding-left: calc(var(--desk-gutter) + 30px); }
 .desk-task[data-change="added"] { border-left-color: var(--p3); background: color-mix(in srgb, var(--accent) 3%, transparent); }
 .desk-task[data-change="changed"] { border-left-color: var(--accent); }
 .desk-task.timeline-active { background: var(--bg-hover); }
-.desk-task > .line > .check:disabled { cursor: default; }
-.desk-task > .line > .check:disabled:hover { border-color: var(--muted); }
-.desk-task > .line > .check:disabled:hover svg { opacity: 0; }
-.desk-dialog { width: 340px; max-width: calc(100vw - 32px); padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-menu); color: var(--ink); box-shadow: var(--shadow); }
-.desk-dialog::backdrop { background: #0005; }
-.desk-dialog h2 { margin: 0 0 10px; font-size: 16px; }
-#desk-time-title { color: var(--soft); font-size: 13px; overflow-wrap: anywhere; }
+.desk-timed > .line > .check:disabled { cursor: default; }
+.desk-timed > .line > .check:disabled:hover { border-color: var(--muted); }
+.desk-timed > .line > .check:disabled:hover svg { opacity: 0; }
 .desk-time-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .desk-time-fields label { min-width: 0; display: block; font-size: 12px; color: var(--soft); }
 .desk-time-fields label > span { font-size: 11px; }
@@ -283,16 +282,26 @@ section:first-child .group-head { padding-top: 16px; }
 #desk-time-save, #work-hours-save { color: var(--ink); background: var(--bg-hover); }
 #work-hours { margin: 12px 0 22px; }
 #work-hours .dialog-actions { margin-top: 10px; }
-#desk-picker-tasks { max-height: min(420px, 55vh); overflow-y: auto; }
-#desk-picker-tasks > button { width: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 10px 4px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-#desk-picker-tasks > button span { font-size: 11px; color: var(--muted); }
-#desk-picker-tasks > button:hover { background: var(--bg-hover); }
-#desk-picker-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+#desk-time-dialog { width: 300px; max-width: calc(100vw - 16px); padding: 0; z-index: 30; }
+.desk-picker-heading { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.desk-picker-fields { display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 9px 8px; padding: 12px; }
+.desk-picker-fields label { font-size: 12px; font-weight: 500; }
+.desk-picker-fields input { width: 100%; min-width: 0; height: 32px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg-menu); color: var(--ink); font: inherit; font-size: 13px; user-select: text; -webkit-user-select: text; }
+.desk-picker-fields input::placeholder { color: var(--muted); }
+#desk-time-dialog .desk-picker-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+#desk-time-dialog .desk-picker-actions button { display: inline-flex; justify-content: center; width: auto; padding: 6px 10px; border-radius: 5px; font-size: 12px; }
+#desk-time-dialog button::after { display: none; }
+#desk-time-dialog #desk-time-save { background: color-mix(in srgb, var(--ink) 65%, var(--accent)); color: var(--bg); }
+#desk-time-clear { margin-right: auto; color: var(--soft); }
+#desk-time-error { padding: 0 12px; margin: 0 0 10px; }
+.desk-picker-options { position: fixed; z-index: 31; overflow-y: auto; overscroll-behavior: contain; padding: 4px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-menu); box-shadow: var(--shadow); }
+#desk-time-dialog .desk-picker-options button { display: block; width: 100%; padding: 7px 8px; min-height: 32px; font-size: 12px; white-space: nowrap; text-align: left; }
+#desk-time-dialog .desk-picker-options button[aria-selected="true"] { background: var(--bg-hover); }
 @container (max-width: 500px) {
-  .task.desk-task { --desk-gutter: 94px; }
-  .desk-task > .line { gap: 8px; padding-left: 2px; padding-right: 2px; }
-  .desk-task > .line > .desk-time { width: 84px; grid-template-columns: 40px 27px; font-size: 12px; }
-  .desk-task > .line .sub { display: none; }
+  .task.desk-timed { --desk-gutter: 94px; }
+  .desk-timed > .line { gap: 8px; padding-left: 2px; padding-right: 2px; }
+  .desk-timed > .line > .desk-time { width: 84px; grid-template-columns: 40px 27px; font-size: 12px; }
+  .desk-timed > .line .sub { display: none; }
   #desk-hours > span:nth-child(even) { visibility: hidden; }
 }
 @media (max-width: 600px) { .desk-view #main { padding: 18px 14px 24px; } #desk-date { font-size: 17px; } }
@@ -576,11 +585,11 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
   .row-status .more { opacity: 1; pointer-events: auto; }
 }
 @container (max-width: 340px) {
-  body:not(.sticky-note) .task:not(.desk-task) > .line { display: grid; grid-template-columns: 20px minmax(0, 1fr) 26px; position: relative; row-gap: 2px; }
-  body:not(.sticky-note) .task:not(.desk-task) > .line > .check { grid-column: 1; grid-row: 1 / 3; }
-  body:not(.sticky-note) .task:not(.desk-task) > .line > .text { grid-column: 2; grid-row: 1; }
-  body:not(.sticky-note) .task:not(.desk-task) > .line > .row-status { grid-column: 2; grid-row: 2; position: static; min-height: 0; padding-right: 0; }
-  body:not(.sticky-note) .task:not(.desk-task) > .line > .row-status .more { top: 50%; right: 10px; }
+  body:not(.sticky-note) .task:not(.desk-timed) > .line { display: grid; grid-template-columns: 20px minmax(0, 1fr) 26px; position: relative; row-gap: 2px; }
+  body:not(.sticky-note) .task:not(.desk-timed) > .line > .check { grid-column: 1; grid-row: 1 / 3; }
+  body:not(.sticky-note) .task:not(.desk-timed) > .line > .text { grid-column: 2; grid-row: 1; }
+  body:not(.sticky-note) .task:not(.desk-timed) > .line > .row-status { grid-column: 2; grid-row: 2; position: static; min-height: 0; padding-right: 0; }
+  body:not(.sticky-note) .task:not(.desk-timed) > .line > .row-status .more { top: 50%; right: 10px; }
   body:not(.sticky-note) .task.subtask > .line { grid-template-columns: 17px minmax(0, 1fr) 26px; }
   body:not(.sticky-note) .row-status .time { display: inline; }
   body:not(.sticky-note) .time-sub { display: none; }

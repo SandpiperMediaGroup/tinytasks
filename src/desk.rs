@@ -209,6 +209,14 @@ pub fn set_hours(list: &mut List, start: &str, end: &str) -> Result<(), String> 
     write(list, &saved)
 }
 
+/// A task the user creates on My Desk remains theirs if they later decline a suggestion.
+/// Include it in the preview as well, so saving an inline row never makes it disappear.
+pub fn include_created_task(list: &mut List, id: i64) -> Result<(), String> {
+    let state = snapshot(list)?;
+    if let Some(proposal) = state.proposal { add_item(list, &state.date, id, Some(&proposal.id))?; }
+    Ok(())
+}
+
 pub fn rollover(list: &mut List) -> Result<(), String> {
     if list.desk_metadata().is_some() {
         let saved = saved(list, &store::today())?;
@@ -319,5 +327,19 @@ mod tests {
         let id = list.add(store::NewTask { title: "Unrelated", details: "", agent: "", chat: "Work", link: "", priority: None, due: None, mydesk: false });
         assert_ne!(id, 2);
         assert!(review(&mut list, &store::today(), &proposal.id, true).is_err());
+    }
+
+    #[test]
+    fn user_created_desk_tasks_remain_visible_when_a_suggestion_is_declined() {
+        let mut list = list();
+        suggest(&mut list, &store::today(), "Dot", vec![item(2, "10:00")]).unwrap();
+        let id = list.add(store::NewTask { title: "User's new task", details: "", agent: "", chat: "", link: "", priority: None, due: None, mydesk: true });
+        include_created_task(&mut list, id).unwrap();
+        let state = snapshot(&list).unwrap();
+        let proposal = state.proposal.unwrap();
+        assert!(proposal.items.iter().any(|item| item.id == id && item.start.is_none()));
+        review(&mut list, &store::today(), &proposal.id, false).unwrap();
+        assert!(snapshot(&list).unwrap().items.iter().any(|item| item.id == id));
+        assert_eq!(list.get(id).unwrap().due, None);
     }
 }

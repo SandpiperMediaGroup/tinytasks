@@ -85,7 +85,7 @@ try {
 } catch {}
 let tasks = [];
 let lastJson = "";
-const desk = new DeskController({ invoke, refresh: () => refresh(), finishEditing: async () => editingId == null || await finishEditing?.(true) });
+const desk = new DeskController({ invoke, refresh: () => refresh(), place, finishEditing: async () => editingId == null || await finishEditing?.(true) });
 const childrenOf = (id) => tasks.filter(t => t.parent_id === id).sort((a, b) => a.position - b.position || a.id - b.id);
 let draggingSubtask = null;
 let draggingTask = null;
@@ -528,7 +528,12 @@ function render() {
   $("group").hidden = isDesk;
   const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view).filter(t => selectedChat == null || t.chat === selectedChat);
   if (noteId != null) $("note-complete").replaceChildren();
-  const groups = noteId != null || isDesk ? [{ label: "", items: open }] : groupsOf(open);
+  const deskItems = new Map(isDesk ? desk.entries(tasks).map(item => [item.id, item]) : []);
+  const hasTimes = isDesk && [...deskItems.values()].some(item => item.start);
+  const groups = isDesk && hasTimes ? [
+    { label: "", items: open.filter(task => deskItems.get(task.id)?.start) },
+    { label: "Unscheduled", items: open.filter(task => !deskItems.get(task.id)?.start) },
+  ].filter(group => group.items.length) : noteId != null || isDesk ? [{ label: "", items: open }] : groupsOf(open);
   const headers = !isDesk && groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
 
   $("open").replaceChildren(
@@ -537,6 +542,8 @@ function render() {
       if (groupBy === "chat" && noteId == null && !isDesk) sec.dataset.chat = g.sample?.chat || "";
       const ul = document.createElement("ul");
       ul.id = `group-items-${index}`;
+      if (isDesk) sec.dataset.deskSection = hasTimes && !g.label ? "scheduled" : "unscheduled";
+      if (isDesk && g.label) sec.append(Object.assign(document.createElement("h2"), { className: "desk-section-heading", textContent: g.label }));
       if (headers) {
         const h = document.createElement("h2");
         const toggle = document.createElement("button");
@@ -566,7 +573,7 @@ function render() {
         h.appendChild(toggle);
         sec.appendChild(h);
       }
-      ul.append(...g.items.map(t => row(t, null, 0, isDesk ? desk.entries(tasks).find(item => item.id === t.id) : null)));
+      ul.append(...g.items.map(t => row(t, null, 0, deskItems.get(t.id))));
       sec.appendChild(ul);
       return sec;
     })
@@ -580,7 +587,7 @@ function render() {
   $("heading-icon").hidden = noteId != null || selectedChat == null && !isDesk;
   $("heading-icon").replaceChildren(...(isDesk ? [symbolIcon("desk")] : selectedChat != null ? [listIcon(selectedChat)] : []));
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
-  $("add").title = isDesk ? "Add an existing task to My Desk" : "Add a task";
+  $("add").title = "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", selectedChat == null && b.dataset.view === view);
     b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
@@ -1021,11 +1028,12 @@ new ResizeObserver(() => {
   entryWidth = width;
   $("main").querySelectorAll("textarea").forEach(fitEntry);
 }).observe($("main"));
-$("add").onclick = () => view === "desk" && selectedChat == null ? desk.openPicker() : openNewTask(false);
+$("add").onclick = () => openNewTask(false);
 function openNewTask(atEnd = false) {
   if (noteId != null || problem) return;
   if (view === "done") { view = "all"; store.set("view", view); useViewLayout(); render(); }
   if (atEnd) $("main").appendChild(form);
+  else if (view === "desk" && selectedChat == null) $("open").before(form);
   else $("main").prepend(form);
   form.hidden = false;
   fitEntry(input);
@@ -1037,7 +1045,7 @@ function openNewTask(atEnd = false) {
 $("main").ondblclick = e => {
   if (e.target.closest(".task, button, input, textarea, form, #problem")) return;
   const bottom = $("open").getBoundingClientRect().bottom;
-  if (e.clientY >= bottom) { if (view === "desk" && selectedChat == null) desk.openPicker(); else openNewTask(true); }
+  if (e.clientY >= bottom) openNewTask(true);
 };
 let savingNew = null;
 function saveNewTask() {
@@ -1048,7 +1056,8 @@ function saveNewTask() {
   savingNew = (async () => {
     try {
       const list = await invoke("add_task", { title, mydesk: view === "desk", chat: selectedChat || null, due: view === "today" ? daysFrom(0) : view === "upcoming" ? daysFrom(1) : null });
-      input.value = ""; fitEntry(input); $("notice").hidden = true; update(list);
+      input.value = ""; fitEntry(input); $("notice").hidden = true;
+      if (view === "desk") await refresh(); else update(list);
       return true;
     } catch (err) { notice(`Couldn't save: ${err}`); input.focus(); return false; }
     finally { savingNew = null; input.readOnly = false; }
@@ -1246,6 +1255,8 @@ async function openTaskMenu(id, point = null) {
   set("first-subtask", "Add subtask", task.parent_id != null);
   set("set-desk", task.mydesk ? "Remove from My desk" : "Put on My desk");
   set("set-due", task.due ? `Due date · ${dueText(task.due)}` : "Due date");
+  const deskContext = desk.contextItem(task);
+  set("set-desk-time", desk.active && deskContext?.item.start ? `Desk time · ${desk.time(deskContext.item.start, true)}` : "Desk time", !deskContext);
   set("set-prio", task.priority != null ? `Priority · P${task.priority}` : "Priority");
   set("open-link", "Open link", !task.link);
   set("delete", childrenOf(id).length ? "Delete task and subtasks" : "Delete task");
@@ -1271,6 +1282,11 @@ taskMenu.onclick = async e => {
   if (action === "set-prio") { openPrioMenu(anchor, t); prioMenu.querySelector('[aria-checked="true"]').focus(); return; }
   if (action === "set-due") { openDueMenu(anchor, t); dueMenu.querySelector('[data-quick="0"]').focus(); return; }
   if (action === "set-chat") { openListMenu(t, anchor); return; }
+  if (action === "set-desk-time") {
+    const context = desk.contextItem(t);
+    if (context) await desk.openTime(t, context.item, anchor, context.proposalId);
+    return;
+  }
   closeTaskMenu(); actionReturnId = null;
   if (action === "first-subtask") return startNewSubtask(t.id);
   if (action === "set-desk") await act("set_desk", { id: t.id, on: !t.mydesk });
@@ -1330,6 +1346,7 @@ function place(menu, btn) {
   menu.style.top = r.bottom + 4 + h < innerHeight ? `${r.bottom + 4}px` : `${Math.max(8, r.top - 4 - h)}px`;
 }
 function closeFloating() {
+  desk.closeTime(false);
   closeTaskMenu();
   actionReturnId = null;
   closeLayoutOptions();

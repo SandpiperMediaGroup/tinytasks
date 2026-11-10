@@ -106,9 +106,10 @@ Drag the empty header space to move the window.
   or by the agent.
 - **My Desk** is today's arrangement of existing tasks. An agent can suggest a plan for you to
   **Accept** or **Decline** as a whole. A suggestion does not replace your current desk until
-  accepted. Add existing tasks with **+** or the lamp action in a task’s menu.
+  accepted. **+** creates a new task inline; add an existing task from its list using the lamp action.
   Set start times and optional durations in the separate left gutter; these never change due dates.
-  The timeline shows task spans and start-time dots, plus the current time. Work start/end hours
+  Untimed tasks have their own section, and a completely untimed desk looks like a normal list.
+  The timeline appears when tasks have times, with a current-time pill and task markers. Work start/end hours
   are in **Settings → My Desk**. The desk and pending suggestions clear overnight; your tasks
   stay in their lists. See [My Desk and agent arrangements](docs/my-desk.md).
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list

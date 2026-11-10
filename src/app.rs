@@ -267,7 +267,9 @@ fn add_task(app: AppHandle, title: String, mydesk: bool, chat: Option<String>, d
     if !title.is_empty() {
         store::change(|l| {
             let t = store::NewTask { title, details: "", agent: "", chat: chat.as_deref().unwrap_or(""), link: "", priority: None, due: due.as_deref(), mydesk };
-            Ok(l.add(t))
+            let id = l.add(t);
+            if mydesk { desk::include_created_task(l, id)?; }
+            Ok(id)
         })?;
     }
     reply(&app)

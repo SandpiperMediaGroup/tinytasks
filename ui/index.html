@@ -93,9 +93,9 @@
     <div id="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" aria-valuemin="140" aria-valuemax="400" aria-valuenow="220" tabindex="0" hidden></div>
   <main id="main">
     <div id="desk-head" hidden>
-      <div class="desk-date-row"><h2 id="desk-date"></h2><span id="desk-now"></span></div>
+      <div class="desk-date-row"><h2 id="desk-date"></h2></div>
       <div id="desk-timeline">
-        <div class="desk-track"><div id="desk-elapsed"></div><div id="desk-markers" role="group" aria-label="Tasks during work hours"></div><span id="desk-now-marker" aria-hidden="true"></span></div>
+        <div class="desk-track"><div id="desk-markers" role="group" aria-label="Tasks during work hours"></div><span id="desk-now-marker"><span id="desk-now-pill"></span></span></div>
         <div id="desk-hours" aria-hidden="true"></div>
       </div>
       <div id="desk-review" hidden>
@@ -117,30 +117,26 @@
   </main>
   </div>
 
-  <dialog id="desk-time-dialog" class="desk-dialog" aria-labelledby="desk-time-heading">
+  <div id="desk-time-dialog" class="menu floating desk-time-popover" role="dialog" aria-labelledby="desk-time-heading" hidden>
     <form id="desk-time-form">
-      <h2 id="desk-time-heading">Desk time</h2>
-      <p id="desk-time-title"></p>
-      <div class="desk-time-fields">
-        <label for="desk-start">Start time<input id="desk-start" type="time"></label>
-        <label for="desk-duration">Duration <span>(optional)</span><div class="desk-duration-field"><input id="desk-duration" type="number" min="1" max="1440" step="1"><span>min</span></div></label>
+      <h2 id="desk-time-heading" class="desk-picker-heading">Desk time</h2>
+      <div class="desk-picker-fields">
+        <label for="desk-start">Time</label><input id="desk-start" type="text" placeholder="No time" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="desk-time-options">
+        <label for="desk-duration">Duration</label><input id="desk-duration" type="text" placeholder="No duration" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="desk-duration-options">
       </div>
+      <div id="desk-time-options" class="desk-picker-options" role="listbox" aria-label="Start time suggestions" hidden></div>
+      <div id="desk-duration-options" class="desk-picker-options" role="listbox" aria-label="Duration suggestions" hidden></div>
       <p id="desk-time-error" role="alert" hidden></p>
-      <div class="dialog-actions"><button type="button" id="desk-time-cancel">Cancel</button><button type="submit" id="desk-time-save">Apply</button></div>
+      <div class="desk-picker-actions"><button type="button" id="desk-time-clear">Clear</button><button type="button" id="desk-time-cancel">Cancel</button><button type="submit" id="desk-time-save">Save</button></div>
     </form>
-  </dialog>
-  <dialog id="desk-picker" class="desk-dialog" aria-labelledby="desk-picker-heading">
-    <h2 id="desk-picker-heading">Add to Desk</h2>
-    <div id="desk-picker-tasks"></div>
-    <p id="desk-picker-error" role="alert" hidden></p>
-    <div class="dialog-actions"><button id="desk-picker-close">Cancel</button></div>
-  </dialog>
+  </div>
 
   <div id="task-menu" class="menu floating" role="menu" aria-label="Task actions" hidden>
     <button class="open-note" data-action="open-note" role="menuitem"><svg viewBox="0 0 24 24"><path d="M16 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11z"/><path d="M16 21v-5h5"/></svg><span>Open as sticky note</span></button>
     <button class="first-subtask" data-action="first-subtask" role="menuitem"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Add subtask</span></button>
     <button class="set-desk" data-action="set-desk" role="menuitem"><svg viewBox="0 0 24 24"><path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/></svg><span>Put on my desk</span></button>
     <button class="set-due" data-action="set-due" role="menuitem" aria-haspopup="dialog"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span>Due date</span></button>
+    <button data-action="set-desk-time" role="menuitem" aria-haspopup="dialog" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Desk time</span></button>
     <button class="set-prio" data-action="set-prio" role="menuitem" aria-haspopup="menu"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Priority</span></button>
     <button data-action="set-chat" role="menuitem"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v11H3zM14 4h7m-3-3 3 3-3 3"/></svg><span>Move to list…</span></button>
     <button class="open-link" data-action="open-link" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg><span>Open link</span></button>

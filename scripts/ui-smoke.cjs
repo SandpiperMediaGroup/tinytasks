@@ -107,6 +107,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           if (cmd === 'add_task') {
             if (window.testState.failSave) throw new Error('File unavailable');
             tasks.push({ ...tasks[0], id: Math.max(...tasks.map(t => t.id)) + 1, title: args.title, details: '', agent: '', chat: args.chat || '', priority: null, due: args.due || null, done_at: null, parent_id: null, mydesk: args.mydesk });
+            if (args.mydesk && desk.proposal) { desk.proposal.items.push({id:tasks.at(-1).id,start:null,duration:null});desk.proposal.id=`edited-${proposalSequence++}`; }
           }
           if (cmd === 'add_subtask') {
             if (window.testState.failSave) throw new Error('File unavailable');

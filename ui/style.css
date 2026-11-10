@@ -42,7 +42,7 @@ body {
 }
 
 header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 12px 10px 8px 16px;
   border-bottom: 1px solid var(--line);
 }
@@ -50,17 +50,18 @@ h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
 #count { color: var(--muted); font-weight: 500; margin-left: 4px; }
 
 /* The header is the view menu. */
-header > .menu-wrap { min-width: 0; }
+header > .menu-wrap { flex: 1; min-width: 0; }
 .view-btn {
   display: flex; align-items: center; gap: 4px;
   margin: -4px 0 -4px -8px; padding: 4px 6px 4px 8px; border-radius: 7px;
 }
 .view-btn:hover, .view-btn[aria-expanded="true"] { background: var(--bg-hover); }
 .view-btn .chev { width: 16px; height: 16px; color: var(--muted); }
-#heading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#heading { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #heading-icon { display: inline-flex; flex: none; margin-right: 3px; }
 #heading-icon .agent-badge, #heading-icon .nav-icon { width: 16px; height: 16px; }
-.view-btn { max-width: 100%; }
+.view-btn { max-width: calc(100% + 8px); }
+#count, .view-btn .chev, .tools { flex-shrink: 0; }
 #view-menu { left: -8px; right: auto; min-width: 200px; }
 #view-menu .n { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
 #view-menu button svg { width: 16px; height: 16px; margin-right: 9px; color: var(--muted); flex: none; }
@@ -554,10 +555,8 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 
 /* The macOS window controls and app controls share one native title-bar row. */
 .mac-titlebar > header { height: 44px; min-height: 44px; flex: none; padding: 0 10px 0 94px; gap: 8px; }
-.mac-titlebar > header > .menu-wrap { flex: 1; }
-.mac-titlebar .view-btn { max-width: calc(100% + 8px); transform: translateY(1px); }
+.mac-titlebar .view-btn { transform: translateY(1px); }
 .mac-titlebar #heading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mac-titlebar #count, .mac-titlebar .view-btn .chev, .mac-titlebar .tools { flex-shrink: 0; }
 .mac-titlebar #view-menu { min-width: 190px; max-width: calc(100vw - 86px); }
 .mac-titlebar .settings-header { height: 44px; min-height: 44px; padding: 0 10px 0 94px; }
 @media (max-width: 310px) {

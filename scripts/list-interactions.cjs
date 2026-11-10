@@ -284,12 +284,39 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(await page.locator('#notice').isVisible(), false, 'Background update failures stay quiet');
     await page.evaluate(() => { testState.failUpdate = false; testState.update.update_available = false; testState.emitUpdate(); });
     await settings.close();
+    // Today includes all open due dates through today, even old overdue tasks.
+    const previousTodayCount = Number(await page.locator('#primary-nav button').nth(1).locator('.n').innerText());
+    await page.evaluate(() => {
+      const day = offset => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+      const base = { ...testState.tasks[0], chat: 'Due-date checks', parent_id: null, done_at: null, mydesk: false };
+      testState.tasks.push(
+        { ...base, id: 100, title: 'Long-overdue action', due: '2020-01-01', created_at: 1577836800 },
+        { ...base, id: 101, title: 'Due yesterday', due: day(-1) },
+        { ...base, id: 102, title: 'Due today', due: day(0) },
+        { ...base, id: 103, title: 'Due tomorrow', due: day(1) },
+        { ...base, id: 104, title: 'No due date', due: null },
+        { ...base, id: 105, title: 'Already completed', due: day(-1), done_at: Date.now() / 1000 },
+      );
+      testState.emit();
+    });
     await page.locator('#primary-nav button').nth(1).click();
     assert.equal(await page.locator('#heading').innerText(), 'Today');
     assert.equal(await task(1).isVisible(), true);
+    for (const id of [100, 101, 102]) assert.equal(await task(id).isVisible(), true);
+    for (const id of [103, 104, 105]) assert.equal(await task(id).count(), 0);
+    assert.equal(Number(await page.locator('#primary-nav button').nth(1).locator('.n').innerText()), previousTodayCount + 3);
+    await page.locator('#view').click();
+    assert.equal(Number(await page.locator('#view-menu [data-view="today"] .n').innerText()), previousTodayCount + 3);
+    await page.keyboard.press('Escape');
     await page.locator('#primary-nav button').nth(2).click();
     assert.equal(await page.locator('#heading').innerText(), 'Upcoming');
     assert.equal(await task(1).count(), 0);
+    assert.equal(await task(103).isVisible(), true);
+    for (const id of [100, 101, 102, 104, 105]) assert.equal(await task(id).count(), 0);
+    await page.evaluate(() => {
+      for (let i = testState.tasks.length - 1; i >= 0; i--) if (testState.tasks[i].id >= 100 && testState.tasks[i].id <= 105) testState.tasks.splice(i, 1);
+      testState.emit();
+    });
     await page.locator('#primary-nav button').nth(3).click();
     await page.evaluate(() => {
       const parent = testState.tasks[0];

@@ -574,6 +574,44 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       assert.ok(controls.left >= 72 && controls.viewRight <= controls.toolsLeft && controls.right <= 280);
     }
     await actions.setViewportSize({width:360,height:620});
+    // Windows uses the shared header layout, without the Mac traffic-light inset.
+    const windowsContext = await browser.newContext({ viewport: { width: 360, height: 620 } });
+    await windowsContext.addInitScript(installMock);
+    await windowsContext.addInitScript(() => Object.defineProperty(navigator, 'platform', { value: 'Win32' }));
+    const windowsPage = await windowsContext.newPage();
+    windowsPage.on('pageerror', e => errors.push(e.message));
+    await windowsPage.goto(url);
+    await windowsPage.locator('.task').first().waitFor();
+    assert.equal(await windowsPage.locator('body').evaluate(el => el.classList.contains('mac-titlebar')), false);
+    const headerGeometry = () => windowsPage.evaluate(() => {
+      const heading = document.getElementById('heading'), view = document.getElementById('view');
+      const tools = document.querySelector('header .tools').getBoundingClientRect();
+      return { titleWidth: heading.clientWidth, titleFullWidth: heading.scrollWidth,
+        viewRight: view.getBoundingClientRect().right, toolsLeft: tools.left, toolsRight: tools.right, viewport: innerWidth };
+    });
+    for (const width of [280, 360, 720, 1120]) {
+      await windowsPage.setViewportSize({ width, height: 620 });
+      for (const view of ['all', 'desk', 'today', 'upcoming', 'done']) {
+        await windowsPage.locator('#view').click();
+        await windowsPage.locator(`#view-menu [data-view="${view}"]`).click();
+        const geometry = await headerGeometry();
+        assert.ok(geometry.titleWidth >= geometry.titleFullWidth, `Windows ${view} title is truncated at ${width}px`);
+        assert.ok(geometry.viewRight <= geometry.toolsLeft && geometry.toolsRight <= width, `Windows header controls overlap at ${width}px`);
+      }
+    }
+    await windowsPage.locator('#view').click();
+    await windowsPage.locator('#sidebar-toggle').click();
+    await windowsPage.locator('#add-list').click();
+    await windowsPage.locator('#new-list-name').fill('Website refresh and launch planning');
+    await windowsPage.locator('#new-list-name').press('Enter');
+    for (const width of [280, 360, 720, 1120]) {
+      await windowsPage.setViewportSize({ width, height: 620 });
+      const geometry = await headerGeometry();
+      assert.ok(geometry.viewRight <= geometry.toolsLeft && geometry.toolsRight <= width);
+      if (width === 360) assert.ok(geometry.titleWidth >= 140, 'Windows list titles should use the available toolbar width');
+      if (width >= 720) assert.equal(geometry.titleWidth, geometry.titleFullWidth, 'A wide Windows window should show the whole list title');
+    }
+    await windowsContext.close();
     const actionTask = actions.locator('.task[data-task-id="1"]');
     const actionLine = actionTask.locator(':scope > .line');
     const more = actionLine.locator('.more');

@@ -297,10 +297,11 @@ class DeskController {
     this.highlightChoice();
   }
   positionChoices(field) {
-    const input = this.$(field), rect = input.getBoundingClientRect(), list = this.$(field === "desk-start" ? "desk-time-options" : "desk-duration-options");
+    const input = this.$(field), rect = input.closest(".desk-field-control").getBoundingClientRect(), list = this.$(field === "desk-start" ? "desk-time-options" : "desk-duration-options");
     const panel = this.$("desk-time-dialog").getBoundingClientRect();
     const below = innerHeight - panel.bottom - 12, above = panel.top - 12, down = above < 80 && below > above;
-    list.style.width = `${rect.width}px`; list.style.left = `${rect.left}px`;
+    const width = Math.min(innerWidth - 16, Math.max(140, rect.width));
+    list.style.width = `${width}px`; list.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
     list.style.maxHeight = `${Math.max(50, Math.min(240, down ? below : above))}px`;
     list.style.top = `${down ? panel.bottom + 4 : Math.max(8, panel.top - list.offsetHeight - 4)}px`;
   }

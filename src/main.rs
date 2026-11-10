@@ -3,6 +3,7 @@
 
 mod app;
 mod store;
+mod desk;
 mod launch;
 mod mcp;
 mod notify;

@@ -85,6 +85,7 @@ try {
 } catch {}
 let tasks = [];
 let lastJson = "";
+const desk = new DeskController({ invoke, refresh: () => refresh(), finishEditing: async () => editingId == null || await finishEditing?.(true) });
 const childrenOf = (id) => tasks.filter(t => t.parent_id === id).sort((a, b) => a.position - b.position || a.id - b.id);
 let draggingSubtask = null;
 let draggingTask = null;
@@ -170,7 +171,7 @@ function attributeControl(el, label, action) {
   };
 }
 
-function row(t, parent = null, index = 0) {
+function row(t, parent = null, index = 0, deskItem = null) {
   const li = tpl.content.firstElementChild.cloneNode(true);
   li.dataset.taskId = t.id;
   const done = t.done_at != null;
@@ -209,7 +210,7 @@ function row(t, parent = null, index = 0) {
   id.hidden = !properties.id;
 
   // A row leaves out whatever its group header already says.
-  const by = noteId != null || parent ? "" : groupBy;
+  const by = noteId != null || parent || deskItem ? "" : groupBy;
   const showIcon = properties.agent && (parent ? t.agent !== parent.agent : by !== "chat" && by !== "agent");
   const showChat = properties.chat && (parent ? t.chat !== parent.chat : by !== "chat");
   if (showIcon || showChat) li.querySelector(".src").replaceWith(source(t, { icon: showIcon, chat: showChat }));
@@ -325,7 +326,7 @@ function row(t, parent = null, index = 0) {
   if (t.parent_id == null) {
     // A child selected for My desk has its own row there; don't render a duplicate inside its parent.
     const nestedChildren = children.map((child, i) => ({ child, i })).filter(({ child }) =>
-      (properties.completed || child.done_at == null) && !(view === "desk" && noteId == null && child.mydesk && child.done_at == null));
+      (properties.completed || child.done_at == null) && !(view === "desk" && noteId == null && tasksForView("desk").some(task => task.id === child.id)));
     const section = li.querySelector(".subtasks");
     section.hidden = nestedChildren.length === 0;
     const mode = section.querySelector(".mode-chip");
@@ -344,6 +345,7 @@ function row(t, parent = null, index = 0) {
     line.onpointerdown = e => beginTaskDrag(e, line, t);
   }
   if (noteId === t.id) $("note-complete").replaceChildren(check);
+  if (deskItem) desk.decorate(li, t, deskItem);
   return li;
 }
 
@@ -508,26 +510,31 @@ function groupsOf(open) {
 
 const VIEWS = {
   all: { name: "Tasks", empty: "All clear.", show: (t) => t.done_at == null },
-  desk: { name: "My desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
+  desk: { name: "My Desk", empty: "Nothing on your desk.", show: (t) => t.done_at == null && t.mydesk },
   today: { name: "Today", empty: "Nothing due today.", show: t => t.done_at == null && t.due && daysUntil(t.due) <= 0 },
   upcoming: { name: "Upcoming", empty: "Nothing upcoming.", show: t => t.done_at == null && t.due && daysUntil(t.due) > 0 },
   done: { name: "Completed", empty: "Nothing finished this week.", show: (t) => t.done_at != null },
 };
-const tasksForView = (name) => tasks.filter(t => (name === "desk" || t.parent_id == null) && VIEWS[name].show(t));
+const tasksForView = (name) => name === "desk" && desk.state
+  ? desk.entries(tasks).map(item => tasks.find(task => task.id === item.id))
+  : tasks.filter(t => (name === "desk" || t.parent_id == null) && VIEWS[name].show(t));
 
 function render() {
   if (editingId != null || draggingSubtask != null || draggingTask != null || reorderingList) return;
   if (taskMenuId != null) closeFloating();
   const v = VIEWS[view];
+  const isDesk = view === "desk" && selectedChat == null && noteId == null;
+  desk.render(isDesk, tasks);
+  $("group").hidden = isDesk;
   const open = noteId != null ? tasks.filter(t => t.id === noteId) : tasksForView(view).filter(t => selectedChat == null || t.chat === selectedChat);
   if (noteId != null) $("note-complete").replaceChildren();
-  const groups = noteId != null ? [{ label: "", items: open }] : groupsOf(open);
-  const headers = groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
+  const groups = noteId != null || isDesk ? [{ label: "", items: open }] : groupsOf(open);
+  const headers = !isDesk && groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
 
   $("open").replaceChildren(
     ...groups.map((g, index) => {
       const sec = document.createElement("section");
-      if (groupBy === "chat" && noteId == null) sec.dataset.chat = g.sample?.chat || "";
+      if (groupBy === "chat" && noteId == null && !isDesk) sec.dataset.chat = g.sample?.chat || "";
       const ul = document.createElement("ul");
       ul.id = `group-items-${index}`;
       if (headers) {
@@ -559,7 +566,7 @@ function render() {
         h.appendChild(toggle);
         sec.appendChild(h);
       }
-      ul.append(...g.items.map(t => row(t)));
+      ul.append(...g.items.map(t => row(t, null, 0, isDesk ? desk.entries(tasks).find(item => item.id === t.id) : null)));
       sec.appendChild(ul);
       return sec;
     })
@@ -570,9 +577,10 @@ function render() {
   $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
   $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
   $("heading").textContent = noteId != null ? "Sticky note" : selectedChat != null ? selectedChat || "Personal" : v.name;
-  $("heading-icon").hidden = noteId != null || selectedChat == null;
-  $("heading-icon").replaceChildren(...(selectedChat != null ? [listIcon(selectedChat)] : []));
+  $("heading-icon").hidden = noteId != null || selectedChat == null && !isDesk;
+  $("heading-icon").replaceChildren(...(isDesk ? [symbolIcon("desk")] : selectedChat != null ? [listIcon(selectedChat)] : []));
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
+  $("add").title = isDesk ? "Add an existing task to My Desk" : "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {
     b.setAttribute("aria-checked", selectedChat == null && b.dataset.view === view);
     b.querySelector(".n").textContent = tasksForView(b.dataset.view).length || "";
@@ -616,6 +624,7 @@ function renderSidebar() {
   };
   $("primary-nav").replaceChildren(...[["desk", "My Desk"], ["today", "Today"], ["upcoming", "Upcoming"], ["all", "All"], ["done", "Completed"]].map(([name, label]) => {
     const button = navButton(label, tasksForView(name).length, selectedChat == null && view === name, () => selectView(name));
+    if (name === "desk" && desk.state?.proposal) { button.querySelector(".n").textContent = "Review"; button.querySelector(".n").classList.add("desk-review-badge"); }
     button.prepend(symbolIcon(name));
     return button;
   }));
@@ -965,15 +974,22 @@ function update(list) {
   if (editingId == null) render();
 }
 
+let refreshSequence = 0;
 async function refresh() {
+  const sequence = ++refreshSequence;
   try {
-    if (noteId == null) {
-      const names = await invoke("list_chats");
-      if (JSON.stringify(names) !== JSON.stringify(chatNames)) { chatNames = Array.isArray(names) ? names.filter(n => typeof n === "string") : []; renderSidebar(); }
-    }
-    const list = await invoke(noteId != null ? "list_note" : "list", noteId != null ? { id: noteId } : undefined);
-    if (problem || JSON.stringify(list) !== lastJson) update(list);
+    const [list, names, deskChanged] = await Promise.all([
+      invoke(noteId != null ? "list_note" : "list", noteId != null ? { id: noteId } : undefined),
+      noteId == null ? invoke("list_chats") : null,
+      noteId == null ? desk.load() : false,
+    ]);
+    if (sequence !== refreshSequence) return;
+    const chatsChanged = names && JSON.stringify(names) !== JSON.stringify(chatNames);
+    if (chatsChanged) chatNames = Array.isArray(names) ? names.filter(n => typeof n === "string") : [];
+    if (problem || deskChanged || chatsChanged || JSON.stringify(list) !== lastJson) update(list);
+    else desk.updateClock();
   } catch (e) {
+    if (sequence !== refreshSequence) return;
     problem = String(e);
     tasks = [];
     lastJson = "";
@@ -985,6 +1001,7 @@ async function refresh() {
 async function act(cmd, args) {
   try {
     const list = await invoke(cmd, args);
+    if (noteId == null) await desk.load();
     update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
   } catch (e) {
     notice(String(e));
@@ -1004,7 +1021,7 @@ new ResizeObserver(() => {
   entryWidth = width;
   $("main").querySelectorAll("textarea").forEach(fitEntry);
 }).observe($("main"));
-$("add").onclick = () => openNewTask(false);
+$("add").onclick = () => view === "desk" && selectedChat == null ? desk.openPicker() : openNewTask(false);
 function openNewTask(atEnd = false) {
   if (noteId != null || problem) return;
   if (view === "done") { view = "all"; store.set("view", view); useViewLayout(); render(); }
@@ -1020,7 +1037,7 @@ function openNewTask(atEnd = false) {
 $("main").ondblclick = e => {
   if (e.target.closest(".task, button, input, textarea, form, #problem")) return;
   const bottom = $("open").getBoundingClientRect().bottom;
-  if (e.clientY >= bottom) openNewTask(true);
+  if (e.clientY >= bottom) { if (view === "desk" && selectedChat == null) desk.openPicker(); else openNewTask(true); }
 };
 let savingNew = null;
 function saveNewTask() {
@@ -1561,6 +1578,7 @@ window.addEventListener("storage", (e) => {
 // Coming back to the window: fresh "2h" labels, and yesterday's desk cleared.
 window.addEventListener("focus", () => { if (editingId == null) { render(); refresh(); } });
 refresh();
+setInterval(() => { if (noteId == null && view === "desk" && !document.hidden) refresh(); }, 30000);
 
 // The native command shares a daily cache between windows. Background failures stay quiet.
 if (noteId == null) {

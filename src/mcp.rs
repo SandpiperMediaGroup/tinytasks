@@ -2,7 +2,7 @@
 //! and to see which ones the user has checked off. Writes go straight into the markdown
 //! file; the desktop app watches it and notifies the user.
 
-use crate::store;
+use crate::{desk, store};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 
@@ -44,7 +44,9 @@ pub fn run() {
                         Use subtasks for related steps toward one outcome; use ordered steps when sequence matters and a checklist otherwise. \
                         Create the parent first, then use its returned ID as parent_id in add_tasks; keep unrelated actions separate. \
                         Use list_tasks to see what they have checked off before relying on it. \
-                        When the user asks what to focus on, pick a few open tasks and put them on their desk with set_desk."
+                        When preparing the user's day, call get_desk for their local date, work hours and current arrangement, \
+                        then list_tasks and suggest_desk with existing open task IDs, start times and optional durations. \
+                        A suggestion waits for the user's Accept/Decline in My Desk; never report it as accepted or change due dates to schedule work."
                 }))
             }
             "ping" => Ok(json!({})),
@@ -160,11 +162,34 @@ fn tools() -> Value {
             }
         },
         {
+            "name": "get_desk",
+            "description": "Read the user's local date, work_start/work_end hours (HH:MM), accepted My Desk items, and any pending suggestion. Times and durations belong only to today's Desk and do not affect due dates or lists. Call before suggesting an arrangement, and use list_tasks for the task titles and details.",
+            "annotations": { "readOnlyHint": true },
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "suggest_desk",
+            "description": "Suggest the complete arrangement for today's My Desk using existing open tasks or subtasks. Read get_desk first for the local date and work hours. Replaces a pending suggestion, never the accepted desk. The user reviews the whole plan with Accept/Decline. Keep the plan realistic; start is HH:MM, duration is optional minutes, and neither changes a due date. An empty items array proposes clearing the desk. Suggestions expire overnight.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "date": { "type": "string", "description": "The local YYYY-MM-DD returned by get_desk. Must be today." },
+                    "items": { "type": "array", "maxItems": 200, "items": {
+                        "type": "object", "additionalProperties": false,
+                        "properties": {
+                            "id": { "type": "integer", "description": "Existing open task or subtask ID. Each ID appears once." },
+                            "start": { "type": ["string", "null"], "description": "HH:MM in the user's local time; omit or null to leave unscheduled." },
+                            "duration": { "type": ["integer", "null"], "minimum": 1, "maximum": 1440, "description": "Optional minutes. Requires start and must end within the same day." }
+                        }, "required": ["id"]
+                    } },
+                    "agent": { "type": "string", "description": "Optional display name; normally detected from the MCP client." }
+                },
+                "required": ["date", "items"]
+            }
+        },
+        {
             "name": "set_desk",
-            "description": "Decide what's on the user's desk: the few open tasks they should focus on today. \
-                Replaces whatever was there; the desk clears overnight. Use it when the user asks what to focus on or what's next; \
-                usually 1-5 tasks. An empty list clears the desk.",
-            "annotations": { "idempotentHint": true },
+            "description": "Compatibility shortcut: suggest these open task IDs for today's My Desk without times. This now creates a pending suggestion for the user's Accept/Decline; it does not directly replace the accepted desk. Prefer get_desk and suggest_desk for timed arrangements. An empty list proposes clearing the desk.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "ids": { "type": "array", "items": { "type": "integer" } } },
@@ -236,7 +261,9 @@ fn call(client: &str, params: &Value) -> Value {
         }),
         "update_task" => update_task(args),
         "reorder_subtasks" => reorder_subtasks(args),
-        "set_desk" => set_desk(args),
+        "get_desk" => store::load().and_then(|list| desk::snapshot(&list)).and_then(|snapshot| serde_json::to_string_pretty(&snapshot).map_err(|e| e.to_string())),
+        "suggest_desk" => suggest_desk(client, args),
+        "set_desk" => set_desk(client, args),
         "complete_tasks" => for_ids(args, |l, id| l.set_done(id, true), "Checked off"),
         "remove_tasks" => for_ids(args, |l, id| l.delete(id), "Removed"),
         other => Err(format!("unknown tool: {other}")),
@@ -339,17 +366,22 @@ fn reorder_subtasks(args: &Value) -> Result<String, String> {
     Ok(format!("Reordered subtasks of #{parent_id}."))
 }
 
-fn set_desk(args: &Value) -> Result<String, String> {
-    let ids: Vec<i64> = args["ids"].as_array().ok_or("`ids` must be an array")?.iter().filter_map(id_of).collect();
-    let on_desk = store::change(|list| {
-        let open: Vec<i64> = ids.iter().copied().filter(|id| list.get(*id).is_some_and(|t| t.done_at.is_none())).collect();
-        list.set_desk(&open);
-        Ok(open)
-    })?;
-    Ok(match on_desk.len() {
-        0 => "The desk is clear.".into(),
-        _ => format!("On the desk: {}", on_desk.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(", ")),
-    })
+fn suggest_desk(client: &str, args: &Value) -> Result<String, String> {
+    let date = args["date"].as_str().ok_or("`date` must be the local date from get_desk")?;
+    let items: Vec<desk::Item> = serde_json::from_value(args["items"].clone()).map_err(|e| format!("Invalid arrangement: {e}"))?;
+    let agent = args["agent"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or(client);
+    store::change(|list| desk::suggest(list, date, agent, items))?;
+    crate::launch::ensure_app_running();
+    Ok("Suggested an arrangement for today's My Desk. It is waiting for the user's Accept/Decline; the accepted desk and due dates are unchanged.".into())
+}
+
+fn set_desk(client: &str, args: &Value) -> Result<String, String> {
+    let items = args["ids"].as_array().ok_or("`ids` must be an array")?.iter()
+        .map(|v| id_of(v).map(|id| desk::Item { id, start: None, duration: None }).ok_or("Every item in `ids` must be a task id"))
+        .collect::<Result<Vec<_>, _>>()?;
+    store::change(|list| desk::suggest(list, &store::today(), client, items))?;
+    crate::launch::ensure_app_running();
+    Ok("Suggested these tasks for today's My Desk. Waiting for the user's Accept/Decline.".into())
 }
 
 /// Accepts 12, "12" and "#12" (add_tasks reports ids as "#12").

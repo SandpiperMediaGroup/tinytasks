@@ -1,6 +1,6 @@
 [package]
 name = "tinytasks"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 description = "A sticky-note task list your AI agents can write to (via MCP), kept in a markdown file."
 license = "MIT"

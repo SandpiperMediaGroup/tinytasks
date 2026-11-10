@@ -2,9 +2,9 @@
 //! another computer through a synced folder), pops a notification, keeps the tray badge current.
 
 use crate::store::{self, Task};
-use crate::{launch, notify, trayicon};
+use crate::{desk, launch, notify, trayicon};
 use std::collections::HashSet;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -36,7 +36,7 @@ pub fn run(background: bool) {
             list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
             location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
             open_settings, close_settings, list_chats, create_list, rename_list, archive_list, delete_list,
-            ensure_sidebar_visible, app_info, check_for_updates
+            ensure_sidebar_visible, app_info, check_for_updates, get_desk, review_desk, edit_desk_time, add_to_desk, set_work_hours
         ])
         .setup(move |app| {
             launch::clear_quiet_request();
@@ -129,7 +129,7 @@ fn watch(app: AppHandle, identity_just_registered: bool) {
         if identity_just_registered {
             std::thread::sleep(Duration::from_secs(4)); // let Windows index the new shortcut
         }
-        let mut last: Option<(std::path::PathBuf, Option<(Option<SystemTime>, u64)>)> = None;
+        let mut last = None;
         let mut ticks = 0u32;
         loop {
             ticks += 1;
@@ -138,11 +138,11 @@ fn watch(app: AppHandle, identity_just_registered: bool) {
             }
             let path = store::path();
             let stamp = std::fs::metadata(&path).ok().map(|m| (m.modified().ok(), m.len()));
-            let now = Some((path, stamp));
+            let now = Some((path, stamp, store::today()));
             if now != last {
                 last = now;
                 // Give tasks typed straight into the file their ids and dates (writes only if needed).
-                let _ = store::change(|_| Ok(()));
+                let _ = store::change(desk::rollover);
                 if let Ok(list) = store::load() {
                     notify::new_tasks(&app, &unseen(&list));
                     update_badge(&app, &list);
@@ -193,6 +193,42 @@ fn reply(app: &AppHandle) -> Res<Vec<Task>> {
 #[tauri::command]
 fn list() -> Res<Vec<Task>> {
     Ok(store::for_ui(&store::load()?))
+}
+
+#[tauri::command]
+fn get_desk() -> Res<desk::Snapshot> {
+    desk::snapshot(&store::load()?)
+}
+
+fn desk_reply(app: &AppHandle) -> Res<desk::Snapshot> {
+    let list = store::load()?;
+    update_badge(app, &list);
+    let _ = app.emit("tasks-changed", ());
+    desk::snapshot(&list)
+}
+
+#[tauri::command]
+fn review_desk(app: AppHandle, date: String, proposal_id: String, accept: bool) -> Res<desk::Snapshot> {
+    store::change(|list| desk::review(list, &date, &proposal_id, accept))?;
+    desk_reply(&app)
+}
+
+#[tauri::command]
+fn edit_desk_time(app: AppHandle, date: String, item: desk::Item, proposal_id: Option<String>) -> Res<desk::Snapshot> {
+    store::change(|list| desk::edit_time(list, &date, item, proposal_id.as_deref()))?;
+    desk_reply(&app)
+}
+
+#[tauri::command]
+fn add_to_desk(app: AppHandle, date: String, id: i64, proposal_id: Option<String>) -> Res<desk::Snapshot> {
+    store::change(|list| desk::add_item(list, &date, id, proposal_id.as_deref()))?;
+    desk_reply(&app)
+}
+
+#[tauri::command]
+fn set_work_hours(app: AppHandle, start: String, end: String) -> Res<desk::Snapshot> {
+    store::change(|list| desk::set_hours(list, &start, &end))?;
+    desk_reply(&app)
 }
 
 /// A note remains readable after completion, including beyond the list's retention window.

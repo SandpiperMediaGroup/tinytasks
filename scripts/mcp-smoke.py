@@ -34,7 +34,8 @@ with tempfile.TemporaryDirectory(prefix='tinytasks-mcp-') as folder:
     try:
         request('initialize', dict(clientInfo=dict(name='codex-test'), protocolVersion='2025-06-18'))
         names = {t['name'] for t in request('tools/list', {})['tools']}
-        assert 'reorder_subtasks' in names
+        assert {'reorder_subtasks', 'get_desk', 'suggest_desk', 'set_desk'} <= names
+        assert 'review_desk' not in names  # only the user in the app can accept a proposal
         call('add_tasks', dict(tasks=[dict(title='Billing launch', details='Parent notes')], chat='Launch', link='https://example.com/chat', ordered=True))
         parent = listed()[0]['id']
         call('add_tasks', dict(parent_id=parent, tasks=[dict(title='Create key', details='Use production'), dict(title='Add secret'), dict(title='Test checkout')]))
@@ -43,6 +44,30 @@ with tempfile.TemporaryDirectory(prefix='tinytasks-mcp-') as folder:
         assert [t['position'] for t in children] == [0, 1, 2]
         assert all(t['parent_id'] == parent and t['chat'] == 'Launch' and t['link'] == 'https://example.com/chat' for t in children)
         assert children[0]['details'] == 'Use production'
+        # A planner reads local day/work hours, then proposes existing IDs with desk-only times.
+        desk = json.loads(call('get_desk', {}))
+        assert desk['work_start'] == '09:00' and desk['work_end'] == '17:00'
+        originals = listed()
+        arrangement = dict(date=desk['date'], items=[dict(id=parent, start='09:00', duration=30), dict(id=ids[0], start='10:00')])
+        assert 'waiting' in call('suggest_desk', arrangement).lower()
+        pending = json.loads(call('get_desk', {}))
+        assert pending['items'] == [] and pending['proposal']['agent'] == 'codex-test'
+        assert pending['proposal']['items'][0]['duration'] == 30
+        assert listed() == originals
+        before = task_file.read_text()
+        for bad in [dict(date='2000-01-01', items=arrangement['items']),
+                    dict(date=desk['date'], items=[dict(id=9999, start='09:00')]),
+                    dict(date=desk['date'], items=[dict(id=parent, start='25:00')]),
+                    dict(date=desk['date'], items=[dict(id=parent, duration=20)]),
+                    dict(date=desk['date'], items=[dict(id=parent), dict(id=parent)]),
+                    dict(date=desk['date'], items=[dict(id=parent, fixed=True)])]:
+            call('suggest_desk', bad, error=True)
+            assert task_file.read_text() == before
+        call('set_desk', dict(ids=[ids[0]]))
+        shortcut = json.loads(call('get_desk', {}))
+        assert shortcut['proposal']['id'] != pending['proposal']['id']
+        assert shortcut['proposal']['items'] == [dict(id=ids[0], start=None, duration=None)]
+        assert shortcut['items'] == [] and listed() == originals
         call('reorder_subtasks', dict(parent_id=parent, ids=ids[::-1]))
         assert [t['id'] for t in listed(parent_id=parent)] == ids[::-1]
         call('update_task', dict(id=parent, ordered=False))
@@ -74,7 +99,7 @@ with tempfile.TemporaryDirectory(prefix='tinytasks-mcp-') as folder:
         assert len(listed(parent_id=parent)) == 4
         call('remove_tasks', dict(ids=[parent]))
         assert listed() == []
-        print('PASS: real MCP creation, inherited context, mode/order persistence, atomic validation, stale-order rejection, completion, parent reopening, edits, and cascade deletion.')
+        print('PASS: real MCP desk discovery, review-only suggestions, timed arrangements, compatibility shortcut, atomic validation, unchanged tasks, creation, inherited context, ordering, completion, edits, and cascade deletion.')
     finally:
         process.stdin.close()
         process.wait(timeout=10)

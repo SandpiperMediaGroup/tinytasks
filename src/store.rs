@@ -702,6 +702,20 @@ impl Entry {
 }
 
 impl List {
+    /// Shared desk metadata lives outside list sections, in a single hidden Markdown line.
+    pub fn desk_metadata(&self) -> Option<&str> {
+        self.blocks.iter().find_map(|block| match block {
+            Block::Text(line) => line.strip_prefix("<!-- tinytasks-desk ")?.strip_suffix(" -->"),
+            _ => None,
+        })
+    }
+
+    pub fn set_desk_metadata(&mut self, json: &str) {
+        let line = format!("<!-- tinytasks-desk {json} -->");
+        self.blocks.retain(|block| !matches!(block, Block::Text(text) if text.starts_with("<!-- tinytasks-desk ") && text.ends_with(" -->")));
+        self.blocks.insert(0, Block::Text(line));
+    }
+
     pub fn tasks(&self) -> impl Iterator<Item = &Task> {
         self.blocks.iter().filter_map(|b| match b {
             Block::Task(e) => Some(&e.task),
@@ -733,7 +747,7 @@ impl List {
     }
 
     fn max_id(&self) -> i64 {
-        self.tasks().map(|t| t.id).max().unwrap_or(0)
+        self.tasks().map(|t| t.id).max().unwrap_or(0).max(crate::desk::reserved_id(self))
     }
 
     /// Ids and dates for tasks typed by hand (or by an agent editing the file), and fresh ids

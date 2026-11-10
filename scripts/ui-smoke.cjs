@@ -16,7 +16,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         { id: 2, title: 'Review the pricing page', details: '', agent: '', chat: '', priority: 2, due: null, created_at: now - 86400, done_at: null, mydesk: true, link: '' },
       ];
       const listeners = {};
+      const date = new Date(), today = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      const desk = { date: today, work_start: '09:00', work_end: '17:00', items: [], proposal: null, proposal_error: null };
+      let proposalSequence = 1;
+      const deskState = () => {
+        const items = tasks.filter(t => t.mydesk && t.done_at == null).map(t => desk.items.find(item => item.id === t.id) || { id: t.id, start: null, duration: null });
+        const proposal_error = desk.proposal?.items.some(item => !tasks.some(t => t.id === item.id && t.done_at == null)) ? 'Some suggested tasks are no longer available.' : null;
+        return structuredClone({ ...desk, items, proposal_error });
+      };
       window.testState = { tasks, chats: ['Billing launch', 'Later'], archives: [], calls: [], failSave: false, failUpdate: false, failLists: false,
+        desk, failDesk: false,
         update: { current_version: '0.1.0', latest_version: '0.1.0', update_available: false },
         emit: () => listeners['tasks-changed']?.(), emitUpdate: () => listeners['updates-changed']?.({ payload: structuredClone(testState.update) }) };
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.testClipboard = text; } } });
@@ -25,6 +34,32 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         core: { invoke: async (cmd, args = {}) => {
           window.testState.calls.push({ cmd, args });
           const t = tasks.find(t => t.id === args.id);
+          if (cmd === 'list' && testState.delayListOnce) {
+            const delay = testState.delayListOnce, snapshot = structuredClone(tasks); testState.delayListOnce = 0;
+            await new Promise(resolve => setTimeout(resolve, delay)); return snapshot;
+          }
+          if (cmd === 'get_desk') return deskState();
+          if (['review_desk', 'edit_desk_time', 'add_to_desk', 'set_work_hours'].includes(cmd)) {
+            if (testState.failDesk) throw new Error('File unavailable');
+            if (cmd === 'set_work_hours') { desk.work_start = args.start; desk.work_end = args.end; return deskState(); }
+            if (args.date !== desk.date) throw new Error('This desk is from another day. Refresh My Desk.');
+            if (args.proposalId && desk.proposal?.id !== args.proposalId) throw new Error('The suggestion changed. Refresh My Desk before reviewing it.');
+            if (cmd === 'review_desk') {
+              if (!desk.proposal || desk.proposal_error) throw new Error('The suggestion is no longer available.');
+              if (args.accept) { desk.items = structuredClone(desk.proposal.items); tasks.forEach(t => { t.mydesk = desk.items.some(item => item.id === t.id); }); }
+              desk.proposal = null;
+            } else if (cmd === 'edit_desk_time') {
+              const item = args.item;
+              if (item.duration && (!item.start || Number(item.start.slice(0,2))*60+Number(item.start.slice(3))+item.duration > 1440)) throw new Error('Duration needs a start time and must end within the day.');
+              if (args.proposalId) {
+                desk.proposal.items = desk.proposal.items.map(entry => entry.id === item.id ? structuredClone(item) : entry); desk.proposal.id = `edited-${proposalSequence++}`;
+              } else { desk.items = deskState().items.map(entry => entry.id === item.id ? structuredClone(item) : entry); }
+            } else if (cmd === 'add_to_desk') {
+              if (args.proposalId) { desk.proposal.items.push({ id:args.id, start:null, duration:null }); desk.proposal.id = `edited-${proposalSequence++}`; }
+              else t.mydesk = true;
+            }
+            return deskState();
+          }
           if (cmd === 'app_info') return { version: '0.1.0', mcp: { mcpServers: { tinytasks: { command: 'C:\\Program Files\\TinyTasks\\tinytasks.exe', args: ['mcp'] } } } };
           if (cmd === 'check_for_updates') {
             if (testState.failUpdate) throw new Error('Could not reach GitHub. Please try again.');
@@ -92,6 +127,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const url = pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
+    if (process.env.DESK_INTERACTIONS_ONLY) {
+      await require('./desk-interactions.cjs')(browser, installMock, url, errors);
+      assert.deepEqual(errors, []);
+      return;
+    }
     if (process.env.LIST_INTERACTIONS_ONLY) {
       await require('./list-interactions.cjs')(browser, installMock, url, errors);
       assert.deepEqual(errors, []);
@@ -377,10 +417,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const deskChild = desk.locator('#open > section > ul > .task[data-task-id="4"]');
     assert.equal(await desk.locator('.task[data-task-id="1"], .task[data-task-id="3"], .task[data-task-id="5"]').count(), 0);
     assert.equal(await desk.locator('#count').innerText(), '2');
+    await deskChild.locator(':scope > .line').focus();
+    await desk.keyboard.press('Enter');
     assert.equal(await deskChild.locator('.parent-context').innerText(), 'Connect the payment flow');
     assert.equal(await deskChild.locator('.parent-context svg').count(), 1);
     assert.equal(await deskChild.locator('.subtask-number').count(), 0);
-    await deskChild.locator('.parent-context').click();
     assert.equal(await deskChild.locator('.body').innerText(), 'Open the environment settings. Add STRIPE_KEY, then redeploy.');
     await deskChild.locator(':scope > .line').click({ button: 'right' });
     assert.equal(await desk.locator('#task-menu .first-subtask').isVisible(), false);
@@ -519,10 +560,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await layout.locator('#group-menu').isVisible(), false);
     await layout.locator('#view').click();
     await layout.locator('[data-view="desk"]').click();
-    assert.equal(await layout.locator('#group-field').getAttribute('data-value'), 'time');
-    await layout.locator('#group').click();
-    await chooseLayout('#group-field', 'none');
-    await chooseLayout('#order-field', 'priority');
+    assert.equal(await layout.locator('#group').isVisible(), false);
+    assert.equal(await layout.locator('.group-head').count(), 0);
     await layout.locator('#view').click();
     await layout.locator('[data-view="done"]').click();
     assert.equal(await layout.locator('#group-field').getAttribute('data-value'), 'none');
@@ -785,6 +824,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await appearance.evaluate(() => testState.calls.some(c => ['edit_task', 'set_done', 'set_priority', 'set_desk', 'delete_task'].includes(c.cmd))), false);
     await require('./list-interactions.cjs')(browser, installMock, url, errors);
     await require('./sidebar-interactions.cjs')(browser, installMock, url, errors);
+    await require('./desk-interactions.cjs')(browser, installMock, url, errors);
     assert.deepEqual(errors, []);
     console.log('PASS: display/group persistence, editing and retry, notes, subtasks, My desk, drag/keyboard order, grouping and ordering in both directions, per-view layouts, preference migration, progress, compact alignment, hover/focus controls, narrow layout, themes, settings keyboard access, theme persistence and note syncing, shared task menus, context-click and keyboard actions, growing task/subtask entry, resizing, and composition handling.');
   } finally { await browser.close(); }

@@ -104,8 +104,13 @@ Drag the empty header space to move the window.
 - **+** adds your own task. The entry field wraps and grows as you type; Enter saves and Escape cancels. Subtask entry works the same way. Agents see those too.
 - **Priority** (P0 to P3) and a **due date** can be set by you (flag and calendar in the task menu)
   or by the agent.
-- **Your desk** is what you're focusing on today. Ask an agent "what should I focus on?" and it
-  puts a few tasks there, or use the lamp action in a task’s menu. The desk clears overnight.
+- **My Desk** is today's arrangement of existing tasks. An agent can suggest a plan for you to
+  **Accept** or **Decline** as a whole. A suggestion does not replace your current desk until
+  accepted. Add existing tasks with **+** or the lamp action in a task’s menu.
+  Set start times and optional durations in the separate left gutter; these never change due dates.
+  The timeline shows task spans and start-time dots, plus the current time. Work start/end hours
+  are in **Settings → My Desk**. The desk and pending suggestions clear overnight; your tasks
+  stay in their lists. See [My Desk and agent arrangements](docs/my-desk.md).
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
 - **Show sidebar**, in the title menu or Settings, expands a narrow window to show My Desk,
@@ -119,8 +124,9 @@ Drag the empty header space to move the window.
 - **Grouping and ordering** share a compact two-row menu. Group by date added, chat, agent,
   priority, due date, or choose No grouping. Order tasks within each group by priority, due date,
   date added, or name; Completed also offers date completed. Each row has a direction control.
-  Missing dates and priorities stay last. Tasks, My desk, and Completed remember their own
-  choices and collapsed groups. Subtasks keep their saved order.
+  Missing dates and priorities stay last. Task views and Completed remember their own
+  choices and collapsed groups. My Desk follows its start times, with unscheduled items last.
+  Subtasks keep their saved order.
   Completed also offers grouping by **Date completed**, with Today, Yesterday, This week,
   and Earlier headings.
 - **Subtasks** live in a task's details. Use **Add subtask** in the task’s **⋯** menu to add the
@@ -183,7 +189,9 @@ configure Claude Desktop. For clients accepting the `mcpServers` JSON format:
 ```
 
 Agents get `add_tasks`, `list_tasks`, `update_task`, `complete_tasks`, `remove_tasks` and
-`set_desk`, plus `reorder_subtasks`. Tool access and remembering to use it are separate steps.
+`get_desk`, `suggest_desk`, `set_desk`, plus `reorder_subtasks`. `set_desk` is an untimed
+suggestion shortcut; both desk-writing tools wait for user review. Tool access and remembering
+to use it are separate steps.
 Save the following in each agent's supported persistent memory or instructions (for example,
 `CLAUDE.md` or `AGENTS.md`, at the scope where you want it to apply):
 
@@ -196,8 +204,10 @@ Save the following in each agent's supported persistent memory or instructions (
 > otherwise. Keep independent actions separate. Create the parent first, then add its steps with
 > `parent_id`. When resuming, use `list_tasks` to see what I've finished. Only mark tasks complete
 > when I say they're done or you have verified the outcome. When I ask what to focus on, use
-> `set_desk` for a few relevant tasks; the desk resets each day. Report a failed write rather
-> than claiming success.
+> `get_desk` for my local date and work hours, then `suggest_desk` with existing open task IDs,
+> start times, and optional durations. Keep the plan realistic. I accept or decline the whole
+> arrangement in My Desk; a suggestion is not an accepted plan. Desk times are separate from
+> due dates, and the desk resets each day. Report a failed write rather than claiming success.
 
 After connecting a client, start a new chat or reload its tools, then verify `list_tasks` works.
 See the [setup guide](docs/agent-setup.md) for cloud-file-only agents and a complete setup check.
@@ -255,7 +265,8 @@ parent link is recovered as an ordinary task so it cannot disappear from the lis
 
 ## Checks
 
-`cargo test --offline` covers markdown round trips and subtask behavior. After `cargo build`,
+`cargo test --offline` covers Markdown round trips, subtasks, daily desk expiry, and arrangement
+validation and review. After `cargo build`,
 run `python3 scripts/mcp-smoke.py` for the real agent protocol with temporary task/state folders.
 With Playwright installed, `node scripts/ui-smoke.cjs` exercises the UI with a mocked desktop
 bridge. `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` may point to an existing install.

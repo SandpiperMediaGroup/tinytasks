@@ -329,6 +329,14 @@ section:first-child .group-head { padding-top: 16px; }
 @media (pointer: coarse) { .desk-review-actions button { min-height: 44px; } }
 
 .task { border-bottom: 1px solid var(--line); }
+body:not(.desk-view):not(.sticky-note) #open > section > ul > .task {
+  position: relative;
+  border-bottom-color: transparent;
+}
+body:not(.desk-view):not(.sticky-note) #open > section > ul > .task::after {
+  content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px;
+  height: 1px; background: var(--line); pointer-events: none;
+}
 .line {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; cursor: pointer;

@@ -91,7 +91,7 @@ are available and call `list_tasks`. Confirm it sees the intended existing list;
 empty result alone does not establish that an existing shared list was found.
 
 For day planning, verify `get_desk` and `suggest_desk` are available too. Read the local date and
-work hours with `get_desk`, then submit existing open tasks with desk-only start times and
+current arrangement with `get_desk`, then submit existing open tasks with desk-only start times and
 optional durations. Suggestions wait for the user's whole-plan Accept/Decline in My Desk;
 never report a proposed arrangement as accepted. `set_desk` now creates an untimed suggestion
 for review. See [My Desk](my-desk.md) for the tool contract and an example.

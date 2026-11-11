@@ -8,6 +8,7 @@ class DeskArcPicker {
     this.retry = root.querySelector(".desk-arc-retry");
     this.live = root.querySelector(".desk-arc-live");
     this.selection = root.querySelector(".desk-arc-selection");
+    this.clear = root.querySelector(".desk-arc-clear");
     this.handles = Object.fromEntries([...root.querySelectorAll("[data-arc-part]")].map(el => [el.dataset.arcPart, el]));
     this.onDetent = onDetent;
     this.onError = onError;
@@ -51,13 +52,13 @@ class DeskArcPicker {
         }
       };
     }
-    root.querySelector(".desk-arc-clear-time").onclick = () => {
+    this.clear.onclick = () => {
       if (this.busy) return;
-      this.scheduled = false; this.duration = null; this.render(); this.commit();
-    };
-    root.querySelector(".desk-arc-clear-duration").onclick = () => {
-      if (this.busy) return;
-      this.duration = null; this.render(); this.commit();
+      this.scheduled = false;
+      this.duration = null;
+      this.render();
+      this.handles.start.focus({ preventScroll: true });
+      this.commit();
     };
     this.retry.onclick = () => this.commit();
   }
@@ -108,8 +109,7 @@ class DeskArcPicker {
     this.root.querySelector(".desk-arc-end-time").textContent = this.duration == null ? "—" : this.clock(end);
     this.root.querySelector(".desk-arc-end-unit").textContent = this.duration == null ? "" : this.period(end);
     this.root.querySelector(".desk-arc-duration").textContent = !this.scheduled ? "No time" : this.duration == null ? "No duration" : this.duration >= 60 ? `${Math.floor(this.duration / 60)}h${this.duration % 60 ? ` ${this.duration % 60}m` : ""}` : `${this.duration}m`;
-    this.root.querySelector(".desk-arc-clear-time").hidden = !this.scheduled;
-    this.root.querySelector(".desk-arc-clear-duration").hidden = this.duration == null;
+    this.clear.hidden = !this.scheduled;
     for (const [part, handle] of Object.entries(this.handles)) {
       const p = this.positions[part]; handle.style.left = `${p.x / 260 * 100}%`; handle.style.top = `${p.y / 260 * 100}%`;
       if (part === "move") handle.style.transform = `translate(-50%,-50%) rotate(${(startAngle + endAngle) / 2}deg)`;
@@ -121,7 +121,7 @@ class DeskArcPicker {
       handle.setAttribute("aria-valuenow", String(value)); handle.setAttribute("aria-valuetext", description);
       handle.title = `${part === "move" ? "Move time block" : part === "start" ? "Start time" : "End time"}: ${description}. Arrow keys: quarter hours; Alt/Option: 1 minute.`;
     }
-    this.root.querySelectorAll(".desk-arc-clear").forEach(button => { button.disabled = this.busy; });
+    this.clear.disabled = this.busy;
     this.retry.disabled = this.busy;
   }
   pointer(event) {

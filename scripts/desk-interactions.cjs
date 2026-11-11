@@ -1,9 +1,10 @@
 const assert = require('node:assert/strict');
 module.exports = async (browser, installMock, url, errors) => {
-  const context = await browser.newContext({ viewport: { width: 1024, height: 740 }, colorScheme: 'light', locale: 'en-GB' });
+  const context = await browser.newContext({ viewport: { width: 1024, height: 740 }, colorScheme: 'light', locale: 'en-GB', timezoneId: 'America/Los_Angeles' });
   await context.addInitScript(installMock);
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   try {
+    await page.clock.setFixedTime(new Date("2026-11-10T09:05:00-08:00"));
     await page.goto(url);
     await page.evaluate(() => { localStorage.clear(); localStorage.setItem('sidebar','1'); localStorage.setItem('appearance',JSON.stringify({theme:'parchment',mode:'light'})); });
     await page.reload();
@@ -20,8 +21,9 @@ module.exports = async (browser, installMock, url, errors) => {
       testState.desk.items = [{id:2,start:'10:30',duration:45},{id:4,start:'12:30',duration:null}];
       testState.chats = ['Personal','Studio','Client work','Operations'];
       window.originalTasks = structuredClone(testState.tasks);
-      window.suggest = () => { testState.desk.proposal = {id:'proposal-'+Date.now(),agent:'Dot',items:[
-        {id:1,start:'09:00',duration:20},{id:2,start:'10:00',duration:45},{id:3,start:'11:15',duration:25},
+      let proposalNumber = 0;
+      window.suggest = () => { testState.desk.proposal = {id:'proposal-'+(++proposalNumber),agent:'Dot',items:[
+        {id:1,start:'09:00',duration:80},{id:2,start:'10:00',duration:45},{id:3,start:'11:15',duration:25},
         {id:4,start:'12:30',duration:null},{id:5,start:'15:00',duration:20}]};testState.emit(); };
       suggest();
     });
@@ -30,6 +32,16 @@ module.exports = async (browser, installMock, url, errors) => {
     const rows = page.locator('#open > section > ul > .desk-task');
     assert.equal(await rows.count(),5);assert.equal(await page.locator('#desk-proposal-label').innerText(),'Dot’s suggestion');
     assert.equal(await page.locator('#desk-markers button').count(),5);assert.equal(await page.locator('#desk-markers [data-point="true"]').count(),1);
+    const markers = page.locator('#desk-markers');
+    const blocks = await markers.locator('button').evaluateAll(buttons => buttons.map(button => {
+      const box = button.getBoundingClientRect();
+      return { id: Number(button.dataset.taskId), x: box.x, y: box.y };
+    }));
+    assert.ok(blocks.find(block => block.id === 2).y > blocks.find(block => block.id === 1).y);
+    const leftEdge = (await page.locator('#desk-track').boundingBox()).x;
+    assert.equal(blocks.find(block => block.id === 1).x, leftEdge, 'An ongoing task starts at Now');
+    assert.equal((await page.locator('#desk-now').boundingBox()).x, leftEdge);
+    assert.equal(await page.locator('#heading-icon .lamp-rays').isVisible(), true);
     assert.equal(await page.locator('#group').isVisible(),false);assert.equal(await page.locator('.group-head').count(),0);
     assert.equal(await page.evaluate(()=>JSON.stringify(testState.tasks)===JSON.stringify(originalTasks)),true);
     assert.ok((await rows.evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height))).every(h=>h<72));
@@ -48,7 +60,8 @@ module.exports = async (browser, installMock, url, errors) => {
     }
     await page.setViewportSize({width:1024,height:740});
     assert.match(await page.locator('.desk-task[data-task-id="5"] .desk-time').innerText(),/3:00\s*pm.*20m/is);
-    assert.match(await page.locator('#desk-now-pill').innerText(),/\b(?:am|pm)\b/i);
+    assert.equal(await page.locator('#desk-now').innerText(), 'Now');
+    assert.match(await page.locator('#desk-timeline').getAttribute('aria-label'), /9:05\s*am to 3:05\s*pm/i);
     page.setDefaultTimeout(10000);
     const task=id=>page.locator(`.desk-task[data-task-id="${id}"]`);
     const dialog=page.locator('#desk-time-dialog');
@@ -92,7 +105,7 @@ module.exports = async (browser, installMock, url, errors) => {
       if(!cancel){await page.locator('#desk-time-dialog').waitFor();assert.equal(await handle('end').evaluate(el=>el===document.activeElement),true);}
     };
     assert.equal(await page.locator('#desk-time-save,#desk-time-cancel').count(),0);
-    await openTime(3);await adjust('move','ArrowRight');await dialog.locator('.desk-arc-clear-duration').press('Enter');await saved();assert.deepEqual(await item(3,true),{start:'11:30',duration:null});assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3)),false);
+    await openTime(3);await adjust('move','ArrowRight');await dialog.getByRole('button', { name: 'Clear time', exact: true }).press('Enter');await saved();assert.deepEqual(await item(3,true),{start:null,duration:null});assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3)),false);
     await dismiss();await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),2);assert.deepEqual(await item(2),{start:'10:30',duration:45});assert.equal(await page.evaluate(()=>JSON.stringify(testState.tasks)===JSON.stringify(originalTasks)),true);
     // Explicit 12-hour formatting even in a locale that defaults to 24-hour time.
     await openTime(4);assert.match(await dialog.locator('.desk-arc-time-line').first().innerText(),/12:30\s*pm/i);await dismiss();
@@ -131,20 +144,18 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await page.locator('#add').click();await page.locator('#new-title').fill('Confirm tomorrow’s session');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===8);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),7);
     await page.evaluate(()=>{testState.desk.items=[];testState.emit();});await page.locator('#desk-timeline').waitFor({state:'hidden'});assert.equal(await page.locator('.desk-time').count(),0);assert.equal(await page.locator('.desk-section-heading').count(),0);
     // A first drag reveals the timeline; drops snap to quarter hours and ask duration.
-    await drag(2,0.373);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await adjust('end','ArrowRight');await dismiss();assert.deepEqual(await item(2),{start:'12:00',duration:45});assert.deepEqual(await page.locator('.desk-section-heading').allTextContents(),['Midday','Unscheduled']);assert.match(await page.locator('#desk-now-pill').innerText(),/\d.*:/);
+    await drag(2,0.485);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await adjust('end','ArrowRight');await dismiss();assert.deepEqual(await item(2),{start:'12:00',duration:45});assert.deepEqual(await page.locator('.desk-section-heading').allTextContents(),['Midday','Unscheduled']);assert.equal(await page.locator('#desk-now').innerText(),'Now');
     const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);await drag(4,0.7,'blur');assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
-    await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.52);await adjust('end','ArrowRight');assert.deepEqual(await item(3,true),{start:'13:15',duration:30});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
-    // Clearing a duration keeps the start; clearing the start keeps desk membership.
+    await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.695);await adjust('end','ArrowRight');assert.deepEqual(await item(3,true),{start:'13:15',duration:30});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
+    // One clear button removes timing but keeps desk membership.
     await openTime(2);
-    const clearEnd = dialog.getByRole('button', { name: 'Clear duration' });
-    const clearStart = dialog.getByRole('button', { name: 'Clear time', exact: true });
-    for (const button of [clearStart, clearEnd]) {
-      assert.equal(await button.evaluate(el => getComputedStyle(el).opacity), '1');
-    }
-    await clearEnd.click();await saved();
-    assert.deepEqual(await item(2),{start:'12:00',duration:null});
-    assert.equal(await dialog.locator('.desk-arc-duration').innerText(),'No duration');
-    await clearStart.click();await saved();await dismiss();
+    const clear = dialog.getByRole('button', { name: 'Clear time', exact: true });
+    assert.equal(await dialog.locator('.desk-arc-clear').count(), 1);
+    const clearBox = await clear.boundingBox(), dialogBox = await dialog.boundingBox();
+    assert.ok(clearBox.x - dialogBox.x < 16 && dialogBox.y + dialogBox.height - (clearBox.y + clearBox.height) < 16);
+    await clear.click();await saved();
+    assert.deepEqual(await item(2),{start:null,duration:null});
+    await dismiss();
     await page.locator('#desk-timeline').waitFor({state:'hidden'});assert.equal(await page.locator('.desk-time').count(),0);
     assert.equal(await task(2).count(),1);
 
@@ -162,6 +173,22 @@ module.exports = async (browser, installMock, url, errors) => {
     }
     await openTime(1);await adjust('move','ArrowRight');await dismiss();
     assert.deepEqual(await headings(),['Midday','Afternoon','Evening','Unscheduled']);
+    assert.equal(await markers.locator('[data-task-id="4"]').count(), 0);
+    await page.setViewportSize({width:1280,height:740});
+    await markers.locator('[data-task-id="4"]').waitFor();
+    assert.match(await page.locator('#desk-timeline').getAttribute('aria-label'), /9:05\s*am to 9:05\s*pm/i);
+    await page.locator('#sidebar-resizer').press('End');
+    await markers.locator('[data-task-id="4"]').waitFor({state:'detached'});
+    assert.match(await page.locator('#desk-timeline').getAttribute('aria-label'), /9:05\s*am to 3:05\s*pm/i);
+    await page.locator('#sidebar-resizer').dblclick();
+
+    const morningGradient = await page.locator('#main').evaluate(el => getComputedStyle(el).backgroundImage);
+    await page.clock.setFixedTime(new Date("2026-11-10T16:30:00-08:00"));
+    await page.evaluate(() => testState.emit());
+    await markers.locator('[data-task-id="4"]').waitFor();
+    assert.equal(await markers.locator('[data-task-id="1"]').count(), 0);
+    assert.notEqual(await page.locator('#main').evaluate(el => getComputedStyle(el).backgroundImage), morningGradient);
+    await page.setViewportSize({width:1024,height:740});
     await page.screenshot({path:'/tmp/tinytasks-desk-dayparts.png'});
     for(const width of [280,360,720,1024]){
       await page.setViewportSize({width,height:width===280?240:520});
@@ -176,7 +203,12 @@ module.exports = async (browser, installMock, url, errors) => {
     await openTime(3);await page.screenshot({path:'/tmp/tinytasks-desk-arc-dark.png'});await dismiss();
     await task(1).locator(':scope > .line > .check').click();await task(1).waitFor({state:'detached'});await page.locator('#primary-nav button').filter({hasText:'Completed'}).click();assert.equal(await page.locator('.task[data-task-id="1"]').count(),1);assert.equal(await page.locator('#desk-head').isVisible(),false);
     await page.locator('#primary-nav button').filter({hasText:'All'}).click();assert.equal(await page.locator('.desk-time').count(),0);
-    const settings=await context.newPage();settings.on('pageerror',e=>errors.push(e.message));await settings.goto(url.replace('index.html','settings.html'));await settings.locator('#work-start').fill('17:00');await settings.locator('#work-end').fill('09:00');await settings.locator('#work-hours-save').click();assert.equal(await settings.locator('#work-hours-error').innerText(),'End time must be after start time.');await settings.locator('#work-start').fill('08:30');await settings.locator('#work-end').fill('16:30');await settings.locator('#work-hours-save').click();await settings.waitForFunction(()=>testState.desk.work_start==='08:30');await settings.close();
+    assert.equal(await page.locator('#primary-nav .desk-lamp .lamp-rays').isVisible(), false);
+    const settings=await context.newPage();
+    settings.on('pageerror',e=>errors.push(e.message));
+    await settings.goto(url.replace('index.html','settings.html'));
+    assert.equal(await settings.locator('#work-start,#work-end').count(), 0);
+    await settings.close();
     console.log('PASS: rotary start/end and move gestures, daypart groups, clearing, snapped drag/drop, cancellation, accepted/pending arrangements, stale editors, retry, inline creation, and narrow layouts.');
   } finally { await context.close(); }
 };

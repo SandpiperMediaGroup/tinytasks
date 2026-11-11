@@ -107,13 +107,13 @@ Drag the empty header space to move the window.
 - **My Desk** is today's arrangement of existing tasks. An agent can suggest a plan for you to
   **Accept** or **Decline** as a whole. A suggestion does not replace your current desk until
   accepted. **+** creates a new task inline; add an existing task from its list using the lamp action.
-  Set start times and optional durations in the separate left gutter; these never change due dates.
+  Set start times and optional durations with the dial beneath a task title. Desk times are separate from due dates.
   Untimed tasks have their own section, and a completely untimed desk looks like a normal list.
-  The timeline appears when tasks have times, with a current-time pill and task markers. Work start/end hours
-  are in **Settings → My Desk**. The desk and pending suggestions clear overnight; your tasks
+  The timeline shows the next six hours, or twelve on a wide window, and stacks overlapping tasks.
+  The desk and pending suggestions clear overnight; your tasks
   stay in their lists. See [My Desk and agent arrangements](docs/my-desk.md).
   Drag a desk task onto the timeline to schedule in 15-minute increments, then choose its
-  duration. The timing controls apply selections immediately; use × to clear either field.
+  duration. Use the dial's × to clear the scheduled time.
 - **Click the title** to switch between Tasks, My desk and Completed, or to change where the list
   is kept.
 - **Show sidebar**, in the title menu or Settings, expands a narrow window to show My Desk,
@@ -207,7 +207,7 @@ Save the following in each agent's supported persistent memory or instructions (
 > otherwise. Keep independent actions separate. Create the parent first, then add its steps with
 > `parent_id`. When resuming, use `list_tasks` to see what I've finished. Only mark tasks complete
 > when I say they're done or you have verified the outcome. When I ask what to focus on, use
-> `get_desk` for my local date and work hours, then `suggest_desk` with existing open task IDs,
+> `get_desk` for my local date and arrangement, then `suggest_desk` with existing open task IDs,
 > start times, and optional durations. Keep the plan realistic. I accept or decline the whole
 > arrangement in My Desk; a suggestion is not an accepted plan. Desk times are separate from
 > due dates, and the desk resets each day. Report a failed write rather than claiming success.

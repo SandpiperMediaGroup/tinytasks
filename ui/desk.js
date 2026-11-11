@@ -26,8 +26,9 @@ class DeskController {
       event.preventDefault(); event.stopImmediatePropagation();
       if (this.arc.drag) this.arc.cancelDrag(); else this.closeTime();
     }, true);
+    // The sidebar can change the available width without resizing the window.
+    new ResizeObserver(() => this.updateClock()).observe(this.$("desk-track"));
     window.addEventListener("resize", () => {
-      this.updateClock();
       if (this.$("desk-time-dialog").hidden) return;
       this.arc.cancelDrag(); this.positionTime();
     });
@@ -37,12 +38,17 @@ class DeskController {
     const [h, m] = value.split(":").map(Number);
     return h < 24 && m < 60 ? h * 60 + m : null;
   }
-  time(value, period = false) {
+  localMinute() {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }
+  formatMinute(minute) {
+    const date = new Date(minute * 60000);
+    return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC" });
+  }
+  time(value) {
     const minute = this.minutes(value);
-    if (minute == null) return "—";
-    const date = new Date(); date.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-    const parts = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(date);
-    return parts.filter(part => period || part.type !== "dayPeriod").map(part => part.value).join("").trim();
+    return minute == null ? "—" : this.formatMinute(minute);
   }
   async load() {
     const sequence = ++this.sequence;
@@ -73,60 +79,101 @@ class DeskController {
     this.tasks = tasks;
     document.body.classList.toggle("desk-view", active);
     this.hasTimes = this.entries(tasks).some(item => item.start);
-    document.body.classList.toggle("desk-has-times", active && this.hasTimes);
     this.renderedJson = JSON.stringify(this.state);
     this.$("desk-head").hidden = !active || !this.state;
     if (!active || !this.state) return;
     const state = this.state, proposal = state.proposal;
-    // Local noon avoids UTC date shifts and DST edges for date-only values.
-    const [y, m, d] = state.date.split("-").map(Number);
-    this.$("desk-date").textContent = new Date(y, m - 1, d, 12).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
     this.$("desk-review").hidden = !proposal;
     this.$("desk-proposal-label").textContent = proposal?.agent ? `${agentInfo(proposal.agent).name}’s suggestion` : "Suggested arrangement";
     this.$("desk-accept").disabled = this.busy || !!state.proposal_error;
     this.$("desk-decline").disabled = this.busy;
     this.$("desk-error").hidden = !(this.error || state.proposal_error);
     this.$("desk-error").textContent = this.error || state.proposal_error || "";
-    this.$("desk-timeline").hidden = !this.hasTimes;
-    this.renderTimeline();
-    this.updateClock();
+    this.$("desk-timeline").hidden = !this.hasTimes && !this.timelineDrag;
+    this.updateClock(true);
   }
-  updateClock() {
-    if (!this.active || !this.state || !this.hasTimes && !this.timelineDrag) return;
-    const now = new Date(), minute = now.getHours() * 60 + now.getMinutes();
-    this.$("desk-now-pill").textContent = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
-    const start = this.minutes(this.state.work_start), end = this.minutes(this.state.work_end);
-    const progress = Math.max(0, Math.min(100, (minute - start) / (end - start) * 100));
-    this.$("desk-now-marker").style.left = `${progress}%`;
-    const track = this.$("desk-markers").clientWidth, pill = this.$("desk-now-pill").offsetWidth, position = progress / 100 * track;
-    this.$("desk-now-pill").style.left = `${Math.max(-position, Math.min(-pill / 2, track - position - pill))}px`;
+  updateClock(force = false) {
+    if (!this.active || !this.state) return;
+    const now = this.localMinute();
+    const main = this.$("main");
+    main.dataset.deskPhase = now < 300 ? "night" : now < 720 ? "morning" : now < 840 ? "midday" :
+      now < 1080 ? "afternoon" : "evening";
+    if (this.$("desk-timeline").hidden) {
+      this.timeline = null;
+      return;
+    }
+    const start = this.timelineDrag?.minute ?? now;
+    const width = this.$("desk-track").clientWidth;
+    if (!width || !force && this.timeline?.start === start && this.timeline.width === width) return;
+    // Keep at least 80px per hour before expanding the range to 12 hours.
+    const span = width >= 960 ? 720 : 360;
+    this.timeline = { start, span, width };
+    this.renderTimeline(start, span, width);
   }
-  renderTimeline() {
-    const start = this.minutes(this.state.work_start), end = this.minutes(this.state.work_end), span = end - start;
-    this.$("desk-timeline").setAttribute("aria-label", `Work day, ${this.time(this.state.work_start, true)} to ${this.time(this.state.work_end, true)}`);
-    const labels = Array.from({ length: 5 }, (_, i) => {
-      const minute = i === 0 ? start : i === 4 ? end : Math.round((start + span * i / 4) / 5) * 5;
-      const value = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-      return Object.assign(document.createElement("span"), { textContent: this.time(value, true) });
-    });
-    this.$("desk-hours").replaceChildren(...labels);
-    this.$("desk-markers").replaceChildren(...this.entries(this.tasks).flatMap(item => {
+  renderTimeline(start, span, width) {
+    const end = start + span;
+    const timeline = this.$("desk-timeline");
+    timeline.setAttribute("aria-label", `Upcoming desk tasks from ${this.formatMinute(start)} to ${this.formatMinute(end)}`);
+    const now = this.$("desk-now");
+    now.title = this.formatMinute(start);
+    const ticks = [];
+    const pixelsPerHour = width * 60 / span;
+    const interval = (pixelsPerHour >= 80 ? 1 : pixelsPerHour >= 38 ? 2 : 3) * 60;
+    for (let minute = Math.ceil(start / interval) * interval; minute < end; minute += interval) {
+      const x = (minute - start) * width / span;
+      if (x < 48 || x > width - 72) continue;
+      const label = Object.assign(document.createElement("span"), { textContent: this.formatMinute(minute) });
+      label.style.left = `${x}px`;
+      ticks.push(label);
+    }
+    const last = Object.assign(document.createElement("span"), { textContent: this.formatMinute(end), className: "desk-range-end" });
+    this.$("desk-hours").replaceChildren(now, ...ticks, last);
+
+    const blocks = [];
+    for (const item of this.entries(this.tasks)) {
       const minute = this.minutes(item.start);
-      if (minute == null || minute >= end || (item.duration ? minute + item.duration <= start : minute < start)) return [];
-      const task = this.tasks.find(t => t.id === item.id), from = Math.max(start, minute), to = Math.min(end, minute + (item.duration || 0));
+      const finish = minute + (item.duration || 0);
+      if (minute == null || minute >= end || (item.duration ? finish <= start : minute < start)) continue;
+      const from = (Math.max(minute, start) - start) * width / span;
+      const to = (Math.min(finish, end) - start) * width / span;
+      const size = Math.max(9, to - from);
+      const left = Math.max(0, Math.min(width - size, item.duration ? from : from - size / 2));
+      blocks.push({ item, left, size });
+    }
+
+    // Use the drawn bounds, so even dots and very short tasks stay separately clickable.
+    const laneEnds = [];
+    const markers = this.$("desk-markers");
+    const focusedId = markers.contains(document.activeElement) ? document.activeElement.dataset.taskId : null;
+    this.$("open").querySelectorAll(".timeline-active").forEach(row => row.classList.remove("timeline-active"));
+    markers.replaceChildren(...blocks.sort((a, b) => a.left - b.left).map(({ item, left, size }) => {
+      let lane = laneEnds.findIndex(right => right + 2 <= left);
+      if (lane === -1) lane = laneEnds.length;
+      laneEnds[lane] = left + size;
+      const task = this.tasks.find(task => task.id === item.id);
       const marker = Object.assign(document.createElement("button"), { type: "button", className: "desk-marker" });
       marker.dataset.taskId = item.id;
       marker.dataset.point = !item.duration;
-      marker.style.left = `${(from - start) / span * 100}%`;
-      marker.style.width = `${(to - from) / span * 100}%`;
-      marker.title = `${task.title} · ${this.time(item.start, true)}${item.duration ? ` · ${item.duration} min` : ""}`;
+      marker.style.left = `${left}px`;
+      marker.style.width = `${size}px`;
+      marker.style.setProperty("--desk-lane", lane);
+      marker.title = `${task.title} · ${this.time(item.start)}${item.duration ? ` · ${item.duration} min` : ""}`;
       marker.setAttribute("aria-label", `Edit desk time: ${marker.title}`);
+      if (size >= 92) {
+        const title = Object.assign(document.createElement("span"), { textContent: task.title });
+        title.setAttribute("aria-hidden", "true");
+        marker.append(title);
+      }
       const highlight = on => document.querySelector(`.desk-task[data-task-id="${item.id}"]`)?.classList.toggle("timeline-active", on);
-      marker.onpointerenter = () => highlight(true); marker.onpointerleave = () => highlight(false);
-      marker.onfocus = () => highlight(true); marker.onblur = () => highlight(false);
+      marker.onpointerenter = () => highlight(true);
+      marker.onpointerleave = () => highlight(false);
+      marker.onfocus = () => highlight(true);
+      marker.onblur = () => highlight(false);
       marker.onclick = () => this.openTime(task, item, marker);
-      return [marker];
+      return marker;
     }));
+    this.$("desk-track").style.setProperty("--desk-lanes", Math.max(1, laneEnds.length));
+    if (focusedId) (markers.querySelector(`[data-task-id="${focusedId}"]`) || this.$("view")).focus({ preventScroll: true });
   }
   decorate(li, task, item) {
     li.classList.add("desk-task");
@@ -135,11 +182,11 @@ class DeskController {
     li.dataset.change = !this.state.proposal ? "same" : !baseline ? "added" : baseline.start !== item.start || baseline.duration !== item.duration ? "changed" : "same";
     if (item.start) {
       const button = Object.assign(document.createElement("button"), { type: "button", className: "desk-time" });
-      const time = Object.assign(document.createElement("span"), { textContent: this.time(item.start, true) });
+      const time = Object.assign(document.createElement("span"), { textContent: this.time(item.start) });
       const duration = Object.assign(document.createElement("span"), { className: "desk-duration", textContent: item.duration ? `${item.duration}m` : "" });
       button.append(time, duration);
-      button.title = baseline?.start && li.dataset.change === "changed" ? `Previously ${this.time(baseline.start, true)}${baseline.duration ? ` · ${baseline.duration} min` : ""}` : "Edit desk time";
-      button.setAttribute("aria-label", `Edit desk time for ${task.title}: ${this.time(item.start, true)}${item.duration ? `, ${item.duration} minutes` : ""}`);
+      button.title = baseline?.start && li.dataset.change === "changed" ? `Previously ${this.time(baseline.start)}${baseline.duration ? ` · ${baseline.duration} min` : ""}` : "Edit desk time";
+      button.setAttribute("aria-label", `Edit desk time for ${task.title}: ${this.time(item.start)}${item.duration ? `, ${item.duration} minutes` : ""}`);
       button.onclick = event => { event.stopPropagation(); this.openTime(task, item, button); };
       li.querySelector(".sub").prepend(button);
       li.querySelector(".time").textContent = li.querySelector(".time-sub").textContent = "";
@@ -159,25 +206,30 @@ class DeskController {
     if (!this.active || this.dropSaving) return;
     const context = this.contextItem(task);
     if (!context) return;
-    this.timelineDrag = { task, context, date: this.state.date, workStart: this.state.work_start, workEnd: this.state.work_end };
+    this.timelineDrag = { task, context, date: this.state.date, minute: this.localMinute() };
     document.body.classList.add("desk-timeline-dragging");
     this.$("desk-timeline").hidden = false;
     this.updateClock();
   }
   previewTimelineDrop(event) {
-    if (!this.timelineDrag) return null;
-    const timeline = this.$("desk-timeline").getBoundingClientRect(), track = this.$("desk-markers").getBoundingClientRect();
-    const start = this.minutes(this.timelineDrag.workStart), end = this.minutes(this.timelineDrag.workEnd);
-    const minimum = Math.ceil(start / 15) * 15, maximum = Math.floor((end - 1) / 15) * 15;
-    const hit = track.width > 0 && minimum <= maximum && event.clientX >= track.left && event.clientX <= track.right && event.clientY >= timeline.top - 22 && event.clientY <= timeline.bottom + 10;
+    if (!this.timelineDrag || !this.timeline) return null;
+    const timeline = this.$("desk-timeline").getBoundingClientRect();
+    const track = this.$("desk-track").getBoundingClientRect();
+    const { start, span } = this.timeline;
+    const minimum = Math.ceil(start / 15) * 15;
+    const maximum = Math.floor((Math.min(start + span, 1440) - 1) / 15) * 15;
+    const target = start + (event.clientX - track.left) * span / track.width;
+    const hit = track.width > 0 && minimum <= maximum && target >= start && target <= start + span &&
+      target < 1440 && event.clientY >= timeline.top - 4 && event.clientY <= timeline.bottom + 8;
     this.$("desk-drop-preview").hidden = !hit;
     this.$("desk-timeline").classList.toggle("desk-drop-target", hit);
     if (!hit) return null;
-    const minute = Math.max(minimum, Math.min(maximum, Math.round((start + (event.clientX - track.left) / track.width * (end - start)) / 15) * 15));
+    const minute = Math.max(minimum, Math.min(maximum, Math.round(target / 15) * 15));
     const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-    this.$("desk-drop-preview").style.left = `${(minute - start) / (end - start) * 100}%`;
-    this.$("desk-drop-time").textContent = this.time(time, true);
-    const width = this.$("desk-drop-time").offsetWidth, position = (minute - start) / (end - start) * track.width;
+    const position = (minute - start) * track.width / span;
+    this.$("desk-drop-preview").style.left = `${position}px`;
+    this.$("desk-drop-time").textContent = this.formatMinute(minute);
+    const width = this.$("desk-drop-time").offsetWidth;
     this.$("desk-drop-time").style.left = `${Math.max(-position, Math.min(-width / 2, track.width - position - width))}px`;
     return time;
   }
@@ -187,6 +239,7 @@ class DeskController {
     this.$("desk-drop-preview").hidden = true;
     this.$("desk-timeline").classList.remove("desk-drop-target");
     this.$("desk-timeline").hidden = !this.hasTimes;
+    this.updateClock();
   }
   async scheduleDrop(drag, start) {
     this.dropSaving = true;
@@ -215,9 +268,7 @@ class DeskController {
     this.anchor = anchor?.isConnected ? anchor : document.querySelector(`.task[data-task-id="${task.id}"] > .line`) || this.$("view");
     this.$("desk-time-heading").textContent = `Desk time for ${task.title}`;
     this.place(this.$("desk-time-dialog"), this.anchor);
-    const now = new Date(), workStart = this.minutes(this.state.work_start), workEnd = this.minutes(this.state.work_end);
-    const nextQuarter = Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
-    const suggested = Math.max(workStart, Math.min(nextQuarter, Math.floor((workEnd - 1) / 15) * 15));
+    const suggested = Math.min(1425, Math.ceil(this.localMinute() / 15) * 15);
     this.arc.open(item, suggested, value => this.saveTime(value, editing), focusPart);
     this.positionTime();
   }

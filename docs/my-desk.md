@@ -23,30 +23,30 @@ snaps to the clock's quarter hours. Moving the block snaps its start and keeps i
 The dial gives light feedback on supported Mac trackpads. Releasing applies the change, and
 Escape cancels an active drag. With a handle focused, use the arrow keys to jump to the next
 or previous quarter hour or hold Option (Alt) for one-minute steps. For a task without a
-duration, move the end handle to add one. Use the **×** beside either time to clear it.
-Clearing the start also clears its duration. A block must end within the same day. The timeline uses bars for durations and dots
-for start times without a duration, with a labeled pill marking the current time.
-Hover or focus a task marker to highlight its row; click to edit its time.
-Tasks outside the configured work hours remain in the desk, with only the portion within
-work hours shown on the timeline.
+duration, move the end handle to add one. Use the **×** in the lower-left corner to clear the
+start and duration. A block must end within the same day.
+
+The timeline starts at **Now** and shows the next six hours, or twelve when the timeline is
+at least 960 pixels wide. Tasks in progress start at the left edge, overlapping tasks stack
+on separate rows, and tasks with just a start time appear as dots. Hover or focus a marker
+to highlight its task row, or click it to edit the time.
 
 Drag a My Desk task onto the timeline to schedule it. The drop indicator snaps to 15-minute
-increments within work hours. Dropping applies the start time and opens the dial with the end
+increments from now through the end of today's visible timeline. Dropping applies the start time and opens the dial with the end
 handle focused. Dismissing the dial keeps the dropped time.
 If every task is untimed, the timeline appears temporarily while dragging so you can schedule
 the first task. Escape cancels a drag. Proposed arrangements support the same interaction;
 changes stay in the proposal until the whole arrangement is accepted.
 
-Set **Work starts** and **Work ends** in **Settings → My Desk**. Changing work hours changes the
-timeline's range; it does not reschedule tasks. The desk's membership, times, and any pending
-suggestion expire after the local day. The tasks and work-hour preference remain.
+The desk's membership, times, and any pending suggestion expire after the local day. The tasks
+remain in their lists.
 
 ## Agent suggestions
 
 Agents use the local stdio MCP connection already configured for TinyTasks. Reload client tools
 or start a new chat after updating TinyTasks to discover the new tools.
 
-1. Call `get_desk` for the user's local `date`, `work_start`, `work_end`, accepted `items`, and
+1. Call `get_desk` for the user's local `date`, accepted `items`, and
    any pending `proposal`. Call `list_tasks` to find existing open tasks and their details.
 2. Call `suggest_desk` with the date from `get_desk` and the **complete** proposed arrangement.
    Use a small, realistic selection of existing open task or subtask IDs. Each ID appears once.
@@ -86,7 +86,7 @@ planning a day. TinyTasks does not wake an agent or request schedule adjustments
 ## Storage
 
 Tasks keep their existing `@mydesk(YYYY-MM-DD)` membership. Desk times, arrangement order,
-work hours, and the pending proposal are kept in a single `<!-- tinytasks-desk … -->` JSON
+and the pending proposal are kept in a single `<!-- tinytasks-desk … -->` JSON
 comment at the top of `tasks.md`, outside list sections. Existing files need no migration;
 desk tasks without timing data start unscheduled. Markdown viewers hide the comment.
 

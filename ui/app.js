@@ -26,7 +26,7 @@ let reorderingList = false;
 let listIcons = Object.create(null);
 try { const saved = JSON.parse(store.get("listIcons", "{}")); if (saved && typeof saved === "object" && !Array.isArray(saved)) Object.assign(listIcons, saved); } catch {}
 const navIcons = {
-  desk: '<path d="M8 3h8l3.5 8h-15L8 3zM12 11v9M8 20h8"/>',
+  desk: '<path class="lamp-shade" d="M8 3h8l3.5 8h-15L8 3z"/><path d="M12 11v9M8 20h8"/><path class="lamp-rays" d="M5 14l-2 2m5-2-1 3M19 14l2 2m-5-2 1 3"/>',
   today: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1"/>',
   upcoming: '<path d="M20 10V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M4 9h16M8 2v4M16 2v4M14 16h7m-3-3 3 3-3 3"/>',
   done: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
@@ -35,6 +35,7 @@ const navIcons = {
 };
 function symbolIcon(name) {
   const el = document.createElement("span"); el.className = "nav-icon";
+  if (name === "desk") el.classList.add("desk-lamp");
   el.setAttribute("aria-hidden", "true");
   el.innerHTML = `<svg viewBox="0 0 24 24">${navIcons[Object.hasOwn(navIcons, name) ? name : "star"]}</svg>`;
   return el;
@@ -1120,6 +1121,7 @@ input.onblur = async () => {
 // ---- header tools ----
 // ---- the view menu (the header): what to show, and where the list lives ----
 const viewMenu = $("view-menu");
+viewMenu.querySelector('[data-view="desk"]').prepend(symbolIcon("desk"));
 const setViewMenu = (open) => {
   viewMenu.hidden = !open;
   $("view").setAttribute("aria-expanded", open);
@@ -1299,7 +1301,7 @@ async function openTaskMenu(id, point = null) {
   set("set-desk", task.mydesk ? "Remove from My desk" : "Put on My desk");
   set("set-due", task.due ? `Due date · ${dueText(task.due)}` : "Due date");
   const deskContext = desk.contextItem(task);
-  set("set-desk-time", desk.active && deskContext?.item.start ? `Desk time · ${desk.time(deskContext.item.start, true)}` : "Desk time", !deskContext);
+  set("set-desk-time", desk.active && deskContext?.item.start ? `Desk time · ${desk.time(deskContext.item.start)}` : "Desk time", !deskContext);
   set("set-prio", task.priority != null ? `Priority · P${task.priority}` : "Priority");
   set("open-link", "Open link", !task.link);
   set("delete", childrenOf(id).length ? "Delete task and subtasks" : "Delete task");

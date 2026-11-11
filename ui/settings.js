@@ -6,44 +6,6 @@ const updateSidebar = () => { try { sidebarInput.checked = localStorage.getItem(
 updateSidebar();
 sidebarInput.onchange = () => { try { localStorage.setItem("sidebar", sidebarInput.checked ? "1" : "0"); } catch {} };
 window.addEventListener("storage", e => { if (e.key === "sidebar" || e.key == null) updateSidebar(); });
-let hoursDirty = false;
-let hoursLoadSequence = 0;
-async function loadHours() {
-  const sequence = ++hoursLoadSequence;
-  try {
-    const desk = await invoke("get_desk");
-    if (hoursDirty || sequence !== hoursLoadSequence) return;
-    $("work-start").value = desk.work_start;
-    $("work-end").value = desk.work_end;
-  } catch (error) {
-    if (sequence !== hoursLoadSequence) return;
-    $("work-hours-error").textContent = String(error);
-    $("work-hours-error").hidden = false;
-  }
-}
-$("work-hours").oninput = () => { hoursDirty = true; $("work-hours-error").hidden = true; };
-$("work-hours").onsubmit = async e => {
-  e.preventDefault();
-  const start = $("work-start").value, end = $("work-end").value;
-  if (start >= end) {
-    $("work-hours-error").textContent = "End time must be after start time.";
-    $("work-hours-error").hidden = false;
-    return;
-  }
-  $("work-hours-save").disabled = true;
-  ++hoursLoadSequence;
-  $("work-start").readOnly = $("work-end").readOnly = true;
-  try {
-    await invoke("set_work_hours", { start, end });
-    hoursDirty = false;
-    $("work-hours-error").hidden = true;
-  } catch (error) {
-    $("work-hours-error").textContent = String(error);
-    $("work-hours-error").hidden = false;
-  } finally { $("work-hours-save").disabled = false; $("work-start").readOnly = $("work-end").readOnly = false; }
-};
-window.__TAURI__.event.listen("tasks-changed", loadHours);
-loadHours();
 if (/Mac/.test(navigator.platform)) settings.classList.add("mac-titlebar");
 for (const link of settings.querySelectorAll("[data-about-link]")) {
   link.onclick = async e => {

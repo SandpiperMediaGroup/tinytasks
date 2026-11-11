@@ -44,7 +44,7 @@ pub fn run() {
                         Use subtasks for related steps toward one outcome; use ordered steps when sequence matters and a checklist otherwise. \
                         Create the parent first, then use its returned ID as parent_id in add_tasks; keep unrelated actions separate. \
                         Use list_tasks to see what they have checked off before relying on it. \
-                        When preparing the user's day, call get_desk for their local date, work hours and current arrangement, \
+                        When preparing the user's day, call get_desk for their local date and current arrangement, \
                         then list_tasks and suggest_desk with existing open task IDs, start times and optional durations. \
                         A suggestion waits for the user's Accept/Decline in My Desk; never report it as accepted or change due dates to schedule work."
                 }))
@@ -163,13 +163,13 @@ fn tools() -> Value {
         },
         {
             "name": "get_desk",
-            "description": "Read the user's local date, work_start/work_end hours (HH:MM), accepted My Desk items, and any pending suggestion. Times and durations belong only to today's Desk and do not affect due dates or lists. Call before suggesting an arrangement, and use list_tasks for the task titles and details.",
+            "description": "Read the user's local date, accepted My Desk items, and any pending suggestion. Times and durations belong only to today's Desk and do not affect due dates or lists. Call before suggesting an arrangement, and use list_tasks for the task titles and details.",
             "annotations": { "readOnlyHint": true },
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "suggest_desk",
-            "description": "Suggest the complete arrangement for today's My Desk using existing open tasks or subtasks. Read get_desk first for the local date and work hours. Replaces a pending suggestion, never the accepted desk. The user reviews the whole plan with Accept/Decline. Keep the plan realistic; start is HH:MM, duration is optional minutes, and neither changes a due date. An empty items array proposes clearing the desk. Suggestions expire overnight.",
+            "description": "Suggest the complete arrangement for today's My Desk using existing open tasks or subtasks. Read get_desk first for the local date and current arrangement. Replaces a pending suggestion, never the accepted desk. The user reviews the whole plan with Accept/Decline. Keep the plan realistic; start is HH:MM, duration is optional minutes, and neither changes a due date. An empty items array proposes clearing the desk. Suggestions expire overnight.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

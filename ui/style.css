@@ -65,6 +65,8 @@ header > .menu-wrap { flex: 1; min-width: 0; }
 #view-menu { left: -8px; right: auto; min-width: 200px; }
 #view-menu .n { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
 #view-menu button svg { width: 16px; height: 16px; margin-right: 9px; color: var(--muted); flex: none; }
+#view-menu .desk-lamp { margin-right: 9px; }
+#view-menu .desk-lamp svg { margin: 0; color: inherit; }
 .menu-sep { height: 1px; background: var(--line); margin: 4px 2px; }
 #where {
   padding: 0 8px 4px; font-size: 12.5px; color: var(--soft);
@@ -227,37 +229,49 @@ section:first-child .group-head { padding-top: 16px; }
 
 /* Task rows */
 /* My Desk keeps the normal task alignment and adds timing below the title. */
-.desk-view #main { --desk-bg: color-mix(in srgb, var(--bg-hover) 18%, var(--bg)); background: var(--desk-bg); padding: 20px 22px 24px; }
+.desk-view #main {
+  --desk-tint: #eaa477;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--desk-tint) 10%, var(--bg)), var(--bg) 72%);
+}
+.desk-view #main[data-desk-phase="morning"] { --desk-tint: #efbc70; }
+.desk-view #main[data-desk-phase="midday"] { --desk-tint: #eed38a; }
+.desk-view #main[data-desk-phase="evening"] { --desk-tint: #8c79bf; }
+.desk-view #main[data-desk-phase="night"] { --desk-tint: #6083bd; }
+.desk-lamp .lamp-rays { display: none; }
+.desk-view .desk-lamp { color: var(--accent); }
+.desk-view .desk-lamp .lamp-shade { fill: color-mix(in srgb, var(--accent) 50%, transparent); }
+.desk-view .desk-lamp .lamp-rays { display: inline; }
+#desk-head { padding: 0 16px; }
 #desk-head[hidden], #desk-review[hidden], #desk-error[hidden] { display: none; }
-.desk-date-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-#desk-date { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -.3px; }
-#desk-timeline { margin: 34px 0 20px; }
-.desk-view:not(.desk-has-times) #desk-head { margin-bottom: 14px; }
-.desk-section-heading { margin: 24px 14px 6px; font-size: 12px; font-weight: 500; color: var(--soft); }
-.desk-track { position: relative; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 10%, transparent); }
-#desk-now-marker { position: absolute; top: 0; width: 0; height: 0; z-index: 1; pointer-events: none; }
-#desk-now-marker::after { content: ""; position: absolute; top: -8px; left: 0; width: 1px; height: 19px; background: var(--danger); }
-#desk-now-pill { position: absolute; top: -28px; padding: 2px 6px; border-radius: 999px; background: var(--danger); color: var(--bg); font-size: 11px; line-height: 16px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-#desk-drop-preview { position: absolute; top: -8px; height: 19px; width: 1px; background: var(--accent); pointer-events: none; z-index: 2; }
-#desk-drop-time { position: absolute; top: -20px; padding: 2px 6px; border-radius: 5px; background: var(--ink); color: var(--bg); font-size: 11px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.desk-drop-target #desk-now-marker { visibility: hidden; }
-.desk-drop-target .desk-track { background: color-mix(in srgb, var(--accent) 50%, transparent); }
-.desk-timeline-dragging #desk-timeline { outline: 1px dashed var(--line); outline-offset: 10px; border-radius: 3px; }
+#desk-timeline { margin: 12px 0 14px; border-radius: 3px; }
+.desk-section-heading { margin: 16px 16px 4px; font-size: 12px; font-weight: 500; color: var(--soft); }
+#desk-hours { position: relative; height: 21px; color: var(--soft); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#desk-hours > span { position: absolute; top: 0; transform: translateX(-50%); }
+#desk-hours > #desk-now { left: 0; transform: none; color: var(--ink); font-weight: 650; }
+#desk-hours > .desk-range-end { right: 0; transform: none; }
+.desk-track { position: relative; --desk-lane-height: 18px; height: calc(6px + var(--desk-lanes, 1) * var(--desk-lane-height)); border-top: 1px solid var(--line); }
+.desk-track::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 1px; background: var(--muted); }
 #desk-markers { position: absolute; inset: 0; }
-.desk-marker { position: absolute; top: -12px; height: 27px; min-width: 7px; padding: 0; border-radius: 3px; color: var(--soft); }
-.desk-marker::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 7px; border-radius: 3px; background: currentColor; opacity: .65; pointer-events: none; }
-.desk-marker::after { content: ""; position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: max(100%, 24px); height: 100%; }
-.desk-marker[data-point="true"] { transform: translateX(-50%); }
-.desk-marker[data-point="true"]::before { border-radius: 50%; }
-.desk-marker:hover, .desk-marker:focus-visible { color: var(--accent); }
-#desk-hours { display: flex; justify-content: space-between; margin-top: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.desk-marker {
+  position: absolute; top: calc(4px + var(--desk-lane) * var(--desk-lane-height));
+  height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 26%, var(--bg-menu));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 27%, var(--line));
+  color: var(--ink); text-align: left; overflow: hidden;
+}
+.desk-marker[data-point="true"] { top: calc(6px + var(--desk-lane) * var(--desk-lane-height)); height: 9px; border-radius: 50%; background: var(--accent); }
+.desk-marker:hover, .desk-marker:focus-visible { background: color-mix(in srgb, var(--accent) 50%, var(--bg-menu)); z-index: 1; }
+.desk-marker span { display: block; padding: 0 5px; font-size: 10px; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; pointer-events: none; }
+#desk-drop-preview { position: absolute; top: -1px; bottom: 0; width: 1px; background: var(--accent); pointer-events: none; z-index: 2; }
+#desk-drop-time { position: absolute; top: -23px; padding: 2px 6px; border-radius: 5px; background: var(--ink); color: var(--bg); font-size: 11px; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.desk-drop-target .desk-track { border-top-color: var(--accent); }
+.desk-timeline-dragging #desk-timeline { outline: 1px dashed var(--line); outline-offset: 5px; }
 #desk-review { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 0 0 8px; margin-bottom: 7px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .desk-review-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .desk-review-actions button { padding: 5px 9px; border-radius: 5px; font-size: 12px; }
 #desk-decline:hover { background: var(--bg-hover); }
 #desk-accept { background: color-mix(in srgb, var(--ink) 65%, var(--accent)); color: var(--bg); }
 #desk-accept:disabled, #desk-decline:disabled { opacity: .5; cursor: default; }
-#desk-error, #desk-time-error, #work-hours-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+#desk-error, #desk-time-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 #sidebar .desk-review-badge { color: var(--soft); background: var(--bg-hover); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
 .task.desk-task { position: relative; border-left: 2px solid transparent; }
 .desk-timed > .line > .text { display: block; }
@@ -272,13 +286,6 @@ section:first-child .group-head { padding-top: 16px; }
 .desk-task > .line > .check:disabled { cursor: default; }
 .desk-task > .line > .check:disabled:hover { border-color: var(--muted); }
 .desk-task > .line > .check:disabled:hover svg { opacity: 0; }
-.desk-time-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.desk-time-fields label { min-width: 0; display: block; font-size: 12px; color: var(--soft); }
-.desk-time-fields label > span { font-size: 11px; }
-.desk-time-fields input { display: block; width: 100%; min-width: 0; margin-top: 7px; padding: 7px; font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; user-select: text; -webkit-user-select: text; }
-#work-hours-save { color: var(--ink); background: var(--bg-hover); }
-#work-hours { margin: 12px 0 22px; }
-#work-hours .dialog-actions { margin-top: 10px; }
 #desk-time-dialog { width: 248px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; padding: 10px; z-index: 30; }
 .desk-picker-heading { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .desk-arc-area { --desk-arc-face: color-mix(in srgb, var(--bg-menu) 85%, var(--bg)); position: relative; width: min(208px, calc(100vh - 56px)); max-width: 100%; aspect-ratio: 1; margin: 8px auto; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -297,11 +304,11 @@ section:first-child .group-head { padding-top: 16px; }
 .desk-arc-grip { display: flex; gap: 3px; }
 .desk-arc-grip i { width: 2px; height: 10px; border-radius: 2px; background: var(--desk-arc-face); }
 .desk-arc-readout { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.desk-arc-time-line { position: relative; display: flex; align-items: baseline; justify-content: center; gap: 4px; padding: 0 26px; font-size: 18px; line-height: 1.25; font-weight: 500; white-space: nowrap; }
+.desk-arc-time-line { position: relative; display: flex; align-items: baseline; justify-content: center; gap: 4px; font-size: 18px; line-height: 1.25; font-weight: 500; white-space: nowrap; }
 .desk-arc-start-unit, .desk-arc-end-unit { color: var(--muted); font-size: 11px; }
 .desk-arc-duration { margin-top: 4px; color: var(--muted); font-size: 12px; }
-#desk-time-dialog .desk-arc-clear { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 21px; height: 21px; padding: 0; border-radius: 50%; color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, var(--desk-arc-face)); pointer-events: auto; }
-#desk-time-dialog .desk-arc-clear:hover, #desk-time-dialog .desk-arc-clear:focus-visible { background: color-mix(in srgb, var(--ink) 17%, var(--desk-arc-face)); }
+#desk-time-dialog .desk-arc-clear { position: absolute; left: 10px; bottom: 10px; display: grid; place-items: center; width: 21px; height: 21px; padding: 0; border-radius: 50%; color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, var(--bg-menu)); pointer-events: auto; }
+#desk-time-dialog .desk-arc-clear:hover, #desk-time-dialog .desk-arc-clear:focus-visible { background: color-mix(in srgb, var(--ink) 17%, var(--bg-menu)); }
 #desk-time-dialog .desk-arc-clear:disabled { opacity: .5; cursor: wait; }
 #desk-time-dialog .desk-arc-clear svg { width: 14px; height: 14px; stroke-width: 2; }
 #desk-time-dialog button::after { display: none; }
@@ -311,9 +318,7 @@ section:first-child .group-head { padding-top: 16px; }
 @media (pointer: coarse) {
   #desk-time-dialog .desk-arc-handle { width: 44px; height: 44px; }
 }
-@container (max-width: 500px) { #desk-hours > span:nth-child(even) { visibility: hidden; } }
-@media (max-width: 600px) { .desk-view #main { padding: 18px 14px 24px; } #desk-date { font-size: 17px; } }
-@media (pointer: coarse) { .desk-marker { top: -21px; height: 45px; } .desk-marker::before { top: 19px; } .desk-marker::after { width: max(100%, 44px); } .desk-review-actions button { min-height: 44px; } }
+@media (pointer: coarse) { .desk-review-actions button { min-height: 44px; } }
 
 .task { border-bottom: 1px solid var(--line); }
 .line {

@@ -26,7 +26,7 @@ let reorderingList = false;
 let listIcons = Object.create(null);
 try { const saved = JSON.parse(store.get("listIcons", "{}")); if (saved && typeof saved === "object" && !Array.isArray(saved)) Object.assign(listIcons, saved); } catch {}
 const navIcons = {
-  desk: '<path class="lamp-shade" d="M8 3h8l3.5 8h-15L8 3z"/><path d="M12 11v9M8 20h8"/><path class="lamp-rays" d="M5 14l-2 2m5-2-1 3M19 14l2 2m-5-2 1 3"/>',
+  desk: '<path class="lamp-shade" d="M8 3h8l3.5 8h-15L8 3z"/><path d="M12 11v9M8 20h8"/>',
   today: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1"/>',
   upcoming: '<path d="M20 10V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M4 9h16M8 2v4M16 2v4M14 16h7m-3-3 3 3-3 3"/>',
   done: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
@@ -555,6 +555,9 @@ function render() {
   if (noteId != null) $("note-complete").replaceChildren();
   const deskItems = new Map(isDesk ? desk.entries(tasks).map(item => [item.id, item]) : []);
   const groups = isDesk ? desk.sections(open, deskItems) : noteId != null ? [{ label: "", items: open }] : groupsOf(open);
+  const completed = selectedChat != null && noteId == null && properties.completed
+    ? tasks.filter(task => task.parent_id == null && task.chat === selectedChat && task.done_at != null)
+      .sort((a, b) => b.done_at - a.done_at) : [];
   const headers = !isDesk && groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
 
   $("open").replaceChildren(
@@ -599,10 +602,19 @@ function render() {
       return sec;
     })
   );
+  if (completed.length) {
+    const section = document.createElement("section");
+    section.className = "list-completed";
+    section.append(Object.assign(document.createElement("h2"), { className: "desk-section-heading", textContent: "Completed" }));
+    const list = document.createElement("ul");
+    list.append(...completed.map(task => row(task)));
+    section.append(list);
+    $("open").append(section);
+  }
   $("count").textContent = open.length || "";
   $("problem").hidden = !problem;
   $("problem").querySelector("p").textContent = problem;
-  $("empty").hidden = open.length > 0 || !form.hidden || !!problem;
+  $("empty").hidden = open.length > 0 || completed.length > 0 || !form.hidden || !!problem;
   $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
   $("heading").textContent = noteId != null ? "Sticky note" : selectedChat != null ? selectedChat || "Personal" : v.name;
   $("heading-icon").hidden = noteId != null || selectedChat == null && !isDesk;

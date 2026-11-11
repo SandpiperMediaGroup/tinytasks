@@ -41,7 +41,7 @@ module.exports = async (browser, installMock, url, errors) => {
     const leftEdge = (await page.locator('#desk-track').boundingBox()).x;
     assert.equal(blocks.find(block => block.id === 1).x, leftEdge, 'An ongoing task starts at Now');
     assert.equal((await page.locator('#desk-now').boundingBox()).x, leftEdge);
-    assert.equal(await page.locator('#heading-icon .lamp-rays').isVisible(), true);
+    assert.equal(await page.locator('.lamp-rays').count(), 0);
     assert.equal(await page.locator('#group').isVisible(),false);assert.equal(await page.locator('.group-head').count(),0);
     assert.equal(await page.evaluate(()=>JSON.stringify(testState.tasks)===JSON.stringify(originalTasks)),true);
     assert.ok((await rows.evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height))).every(h=>h<72));
@@ -74,13 +74,14 @@ module.exports = async (browser, installMock, url, errors) => {
       const entry=(pending?testState.desk.proposal.items:testState.desk.items).find(i=>i.id===id);
       return entry && {start:entry.start,duration:entry.duration};
     },{id,pending});
-    const turn=async(part,degrees,cancel=false)=>{
+    const turn=async(part,degrees,cancel=false,visible=true)=>{
       const dial=await dialog.locator('.desk-arc-area').boundingBox();
       const bounds=await handle(part).boundingBox();
       const cx=dial.x+dial.width/2,cy=dial.y+dial.height/2;
       const x=bounds.x+bounds.width/2,y=bounds.y+bounds.height/2;
       const radius=Math.hypot(x-cx,y-cy),initial=Math.atan2(y-cy,x-cx);
       const before=await editCount();
+      const beforeMarkers=await markers.innerHTML();
       await page.mouse.move(x,y);await page.mouse.down();
       await dialog.locator('.desk-arc-area[data-dragging="true"]').waitFor();
       for(let i=1;i<=12;i++){
@@ -88,6 +89,7 @@ module.exports = async (browser, installMock, url, errors) => {
         await page.mouse.move(cx+radius*Math.cos(angle),cy+radius*Math.sin(angle));
       }
       assert.equal(await editCount(),before,'Dragging previews without writing');
+      if (visible) assert.notEqual(await markers.innerHTML(),beforeMarkers,'The timeline previews the drag before release');
       if(cancel)await page.keyboard.press('Escape');
       await page.mouse.up();await saved();
       assert.equal(await editCount(),before+(cancel?0:1));
@@ -127,7 +129,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.evaluate(()=>{testState.failDesk=false;});await dialog.locator('.desk-arc-retry').click();await saved();
     assert.deepEqual(await item(5),{start:'15:15',duration:20});
     // An off-grid end snaps to a clock quarter when dragged, keeping the start.
-    await turn('end',7.5);
+    await turn('end',7.5,false,false);
     assert.deepEqual(await item(5),{start:'15:15',duration:30});
     await adjust('start','Alt+ArrowLeft');
     assert.deepEqual(await item(5),{start:'15:14',duration:31});
@@ -142,7 +144,7 @@ module.exports = async (browser, installMock, url, errors) => {
     // Inline tasks remain visible in a pending arrangement and survive its rejection.
     await page.locator('#add').click();await page.locator('#new-title').fill('Send the production notes');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===7);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await page.locator('#add').click();await page.locator('#new-title').fill('Confirm tomorrow’s session');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===8);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),7);
-    await page.evaluate(()=>{testState.desk.items=[];testState.emit();});await page.locator('#desk-timeline').waitFor({state:'hidden'});assert.equal(await page.locator('.desk-time').count(),0);assert.equal(await page.locator('.desk-section-heading').count(),0);
+    await page.evaluate(()=>{testState.desk.items=[];testState.emit();});await page.locator('#desk-timeline').waitFor({state:'visible'});assert.equal(await page.locator('.desk-time').count(),0);assert.equal(await page.locator('.desk-section-heading').count(),0);
     // A first drag reveals the timeline; drops snap to quarter hours and ask duration.
     await drag(2,0.485);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await adjust('end','ArrowRight');await dismiss();assert.deepEqual(await item(2),{start:'12:00',duration:45});assert.deepEqual(await page.locator('.desk-section-heading').allTextContents(),['Midday','Unscheduled']);assert.equal(await page.locator('#desk-now').innerText(),'Now');
     const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);await drag(4,0.7,'blur');assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
@@ -156,7 +158,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await clear.click();await saved();
     assert.deepEqual(await item(2),{start:null,duration:null});
     await dismiss();
-    await page.locator('#desk-timeline').waitFor({state:'hidden'});assert.equal(await page.locator('.desk-time').count(),0);
+    await page.locator('#desk-timeline').waitFor({state:'visible'});assert.equal(await page.locator('.desk-time').count(),0);
     assert.equal(await task(2).count(),1);
 
     await page.evaluate(()=>{
@@ -203,7 +205,12 @@ module.exports = async (browser, installMock, url, errors) => {
     await openTime(3);await page.screenshot({path:'/tmp/tinytasks-desk-arc-dark.png'});await dismiss();
     await task(1).locator(':scope > .line > .check').click();await task(1).waitFor({state:'detached'});await page.locator('#primary-nav button').filter({hasText:'Completed'}).click();assert.equal(await page.locator('.task[data-task-id="1"]').count(),1);assert.equal(await page.locator('#desk-head').isVisible(),false);
     await page.locator('#primary-nav button').filter({hasText:'All'}).click();assert.equal(await page.locator('.desk-time').count(),0);
-    assert.equal(await page.locator('#primary-nav .desk-lamp .lamp-rays').isVisible(), false);
+    assert.equal(await page.locator('.lamp-rays').count(), 0);
+    await page.locator('.sidebar-list[data-chat="Personal"] .nav-label').click();
+    await page.locator('.list-completed .task[data-task-id="1"]').waitFor();
+    await page.locator('.list-completed .task[data-task-id="1"] > .line > .check').click();
+    await page.locator('.list-completed').waitFor({state:'detached'});
+    assert.equal(await page.locator('.task[data-task-id="1"]').count(), 1);
     const settings=await context.newPage();
     settings.on('pageerror',e=>errors.push(e.message));
     await settings.goto(url.replace('index.html','settings.html'));

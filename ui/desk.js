@@ -17,6 +17,10 @@ class DeskController {
     this.arc = new DeskArcPicker(this.$("desk-time-dialog"), {
       onDetent: () => this.invoke("desk_haptic").catch(() => {}),
       onError: () => this.positionTime(),
+      onPreview: value => {
+        this.timePreview = this.editing && value ? { id: this.editing.id, ...value } : null;
+        this.updateClock(true);
+      },
     });
     document.addEventListener("pointerdown", event => {
       if (!this.$("desk-time-dialog").hidden && !this.$("desk-time-dialog").contains(event.target)) this.closeTime(false);
@@ -89,7 +93,7 @@ class DeskController {
     this.$("desk-decline").disabled = this.busy;
     this.$("desk-error").hidden = !(this.error || state.proposal_error);
     this.$("desk-error").textContent = this.error || state.proposal_error || "";
-    this.$("desk-timeline").hidden = !this.hasTimes && !this.timelineDrag;
+    this.$("desk-timeline").hidden = false;
     this.updateClock(true);
   }
   updateClock(force = false) {
@@ -130,7 +134,11 @@ class DeskController {
     this.$("desk-hours").replaceChildren(now, ...ticks, last);
 
     const blocks = [];
-    for (const item of this.entries(this.tasks)) {
+    const previewIsCurrent = this.editing?.date === this.state.date &&
+      this.editing.proposalId === (this.state.proposal?.id || null);
+    const items = this.entries(this.tasks).map(item =>
+      previewIsCurrent && this.timePreview?.id === item.id ? { ...item, ...this.timePreview } : item);
+    for (const item of items) {
       const minute = this.minutes(item.start);
       const finish = minute + (item.duration || 0);
       if (minute == null || minute >= end || (item.duration ? finish <= start : minute < start)) continue;
@@ -238,7 +246,7 @@ class DeskController {
     document.body.classList.remove("desk-timeline-dragging");
     this.$("desk-drop-preview").hidden = true;
     this.$("desk-timeline").classList.remove("desk-drop-target");
-    this.$("desk-timeline").hidden = !this.hasTimes;
+    this.$("desk-timeline").hidden = false;
     this.updateClock();
   }
   async scheduleDrop(drag, start) {
@@ -276,6 +284,8 @@ class DeskController {
     if (this.$("desk-time-dialog").hidden) return;
     const id = this.editing?.id;
     this.arc.close(); this.editing = null;
+    this.timePreview = null;
+    this.updateClock(true);
     this.$("desk-time-dialog").hidden = true;
     if (focus) (document.querySelector(`.task[data-task-id="${id}"] .desk-time`) || document.querySelector(`.task[data-task-id="${id}"] > .line`) || this.$("view")).focus({ preventScroll: true });
   }

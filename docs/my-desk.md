@@ -8,7 +8,7 @@ My Desk arranges existing tasks and subtasks for the current local day. Start ti
 durations appear beneath task titles. Scheduled tasks appear in time order under **Morning**
 (before noon), **Midday** (noon to 2 PM), **Afternoon** (2 to 6 PM), and **Evening** (6 PM onward).
 Untimed tasks appear under **Unscheduled**. If every task is untimed, My Desk shows a normal list
-without section headings or a timeline. Times are
+without section headings. The timeline stays visible above it. Times are
 shown only on My Desk and do not change task due dates, priorities, list membership, or subtask
 order. Completing a task here is the same completion as in any other view.
 
@@ -20,7 +20,7 @@ including when you open their menu from another list.
 The rotary picker shows the start, end, and duration in the center. Drag either endpoint to adjust
 that time, or drag the grip in the middle of the arc to move the whole block. The edited time
 snaps to the clock's quarter hours. Moving the block snaps its start and keeps its duration.
-The dial gives light feedback on supported Mac trackpads. Releasing applies the change, and
+The timeline previews dial adjustments as you drag. The dial gives light feedback on supported Mac trackpads. Releasing applies the change, and
 Escape cancels an active drag. With a handle focused, use the arrow keys to jump to the next
 or previous quarter hour or hold Option (Alt) for one-minute steps. For a task without a
 duration, move the end handle to add one. Use the **×** in the lower-left corner to clear the
@@ -34,8 +34,7 @@ to highlight its task row, or click it to edit the time.
 Drag a My Desk task onto the timeline to schedule it. The drop indicator snaps to 15-minute
 increments from now through the end of today's visible timeline. Dropping applies the start time and opens the dial with the end
 handle focused. Dismissing the dial keeps the dropped time.
-If every task is untimed, the timeline appears temporarily while dragging so you can schedule
-the first task. Escape cancels a drag. Proposed arrangements support the same interaction;
+The timeline is always visible, including when every task is untimed. Escape cancels a drag. Proposed arrangements support the same interaction;
 changes stay in the proposal until the whole arrangement is accepted.
 
 The desk's membership, times, and any pending suggestion expire after the local day. The tasks

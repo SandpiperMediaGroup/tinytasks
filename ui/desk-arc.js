@@ -1,7 +1,7 @@
 // A desk-only time range. Preview gestures locally and save once on release;
 // opening the picker never assigns a time or invents a duration.
 class DeskArcPicker {
-  constructor(root, { onDetent, onError }) {
+  constructor(root, { onDetent, onError, onPreview }) {
     this.root = root;
     this.area = root.querySelector(".desk-arc-area");
     this.error = root.querySelector(".desk-arc-error");
@@ -12,6 +12,7 @@ class DeskArcPicker {
     this.handles = Object.fromEntries([...root.querySelectorAll("[data-arc-part]")].map(el => [el.dataset.arcPart, el]));
     this.onDetent = onDetent;
     this.onError = onError;
+    this.onPreview = onPreview;
     this.generation = 0;
     this.lastDetent = -Infinity;
     this.positions = {};
@@ -123,6 +124,7 @@ class DeskArcPicker {
     }
     this.clear.disabled = this.busy;
     this.retry.disabled = this.busy;
+    this.onPreview?.(this.error.hidden ? this.value() : null);
   }
   pointer(event) {
     const b = this.area.getBoundingClientRect(), x = (event.clientX - b.x) / b.width * 260, y = (event.clientY - b.y) / b.height * 260;

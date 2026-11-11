@@ -245,7 +245,13 @@ section:first-child .group-head { padding-top: 16px; }
 #desk-head { padding: 0 16px; }
 #desk-head[hidden], #desk-review[hidden], #desk-error[hidden] { display: none; }
 #desk-timeline { position: relative; isolation: isolate; margin: 12px 0 14px; padding-left: 32px; border-radius: 3px; }
-#desk-timeline::before { content: ""; position: absolute; z-index: -1; pointer-events: none; left: 10px; top: -5px; right: 0; bottom: 0; clip-path: polygon(0 100%, 100% 0, 100% 100%); background: linear-gradient(90deg, color-mix(in srgb, var(--lamp-yellow) 20%, transparent), transparent 85%); }
+#desk-timeline::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  left: 18px; top: 9px; right: 0; bottom: -3px;
+  clip-path: polygon(0 0, 100% 75%, 100% 100%, 0 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--lamp-yellow) 12%, transparent), transparent 90%);
+  mask-image: linear-gradient(to bottom, #000 35%, transparent);
+}
 .desk-section-heading { margin: 16px 16px 4px; font-size: 12px; font-weight: 500; color: var(--soft); }
 #desk-hours { position: relative; height: 21px; color: var(--soft); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #desk-hours > span { position: absolute; top: 0; transform: translateX(-50%); }
@@ -260,7 +266,8 @@ section:first-child .group-head { padding-top: 16px; }
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 27%, var(--line));
   color: var(--ink); text-align: left; overflow: hidden;
 }
-.desk-marker[data-point="true"] { top: calc(6px + var(--desk-lane) * var(--desk-lane-height)); height: 9px; border-radius: 50%; background: var(--accent); }
+.desk-marker[data-point="true"] { background: transparent; box-shadow: none; }
+.desk-marker[data-point="true"]::before { content: ""; position: absolute; top: 2px; bottom: 2px; left: calc(50% - 1px); width: 2px; border-radius: 1px; background: var(--soft); }
 .desk-marker:hover, .desk-marker:focus-visible { background: color-mix(in srgb, var(--accent) 50%, var(--bg-menu)); z-index: 1; }
 .desk-marker span { display: block; padding: 0 5px; font-size: 10px; line-height: 14px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; pointer-events: none; }
 #desk-drop-preview { position: absolute; top: -1px; bottom: 0; width: 1px; background: var(--accent); pointer-events: none; z-index: 2; }

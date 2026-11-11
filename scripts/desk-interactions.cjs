@@ -42,6 +42,7 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(blocks.find(block => block.id === 1).x, leftEdge, 'An ongoing task starts at Now');
     assert.equal((await page.locator('#desk-now').boundingBox()).x, leftEdge);
     assert.equal(await page.locator('.lamp-rays').count(), 0);
+    assert.equal(await page.locator('#heading-icon').isVisible(), false);
     assert.equal(await page.locator('#group').isVisible(),false);assert.equal(await page.locator('.group-head').count(),0);
     assert.equal(await page.evaluate(()=>JSON.stringify(testState.tasks)===JSON.stringify(originalTasks)),true);
     assert.ok((await rows.evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height))).every(h=>h<72));
@@ -54,8 +55,13 @@ module.exports = async (browser, installMock, url, errors) => {
         const check = line.querySelector('.check').getBoundingClientRect();
         return {titleBottom:title.bottom, timingTop:timing.top, titleX:title.x, timingX:timing.x, checkX:check.x, contentX:line.getBoundingClientRect().x+parseFloat(getComputedStyle(line).paddingLeft)};
       });
-      assert.ok(metrics.timingTop >= metrics.titleBottom, 'Timing sits below the title');
-      assert.ok(Math.abs(metrics.titleX-metrics.timingX)<1, 'Timing aligns with title');
+      if (width === 1024) {
+        assert.ok(metrics.timingTop < metrics.titleBottom, 'Timing shares the title line when there is room');
+        assert.ok(metrics.timingX > metrics.titleX, 'Inline timing follows the title');
+      } else {
+        assert.ok(metrics.timingTop >= metrics.titleBottom, 'Timing wraps below the title in narrow layouts');
+        assert.ok(Math.abs(metrics.titleX-metrics.timingX)<1, 'Wrapped timing aligns with the title');
+      }
       assert.ok(Math.abs(metrics.checkX-metrics.contentX)<1, 'Checkbox keeps its usual left edge');
     }
     await page.setViewportSize({width:1024,height:740});

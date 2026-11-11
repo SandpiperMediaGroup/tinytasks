@@ -617,8 +617,8 @@ function render() {
   $("empty").hidden = open.length > 0 || completed.length > 0 || !form.hidden || !!problem;
   $("empty").textContent = noteId != null ? "This task was deleted." : v.empty;
   $("heading").textContent = noteId != null ? "Sticky note" : selectedChat != null ? selectedChat || "Personal" : v.name;
-  $("heading-icon").hidden = noteId != null || selectedChat == null && !isDesk;
-  $("heading-icon").replaceChildren(...(isDesk ? [symbolIcon("desk")] : selectedChat != null ? [listIcon(selectedChat)] : []));
+  $("heading-icon").hidden = noteId != null || selectedChat == null;
+  $("heading-icon").replaceChildren(...(selectedChat != null ? [listIcon(selectedChat)] : []));
   input.placeholder = view === "desk" ? "Add to your desk" : "Add a task";
   $("add").title = "Add a task";
   for (const b of viewMenu.querySelectorAll("[data-view]")) {

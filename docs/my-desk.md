@@ -5,7 +5,8 @@ the MCP `set_desk` shortcut now creates a pending suggestion instead of replacin
 desk immediately. Use `get_desk` and `suggest_desk` for timed plans.
 
 My Desk arranges existing tasks and subtasks for the current local day. Start times and optional
-durations appear beneath task titles. Scheduled tasks appear in time order under **Morning**
+durations appear alongside task titles when space allows and wrap beneath them in narrower windows.
+Scheduled tasks appear in time order under **Morning**
 (before noon), **Midday** (noon to 2 PM), **Afternoon** (2 to 6 PM), and **Evening** (6 PM onward).
 Untimed tasks appear under **Unscheduled**. If every task is untimed, My Desk shows a normal list
 without section headings. The timeline stays visible above it. Times are
@@ -28,7 +29,7 @@ start and duration. A block must end within the same day.
 
 The timeline starts at **Now** and shows the next six hours, or twelve when the timeline is
 at least 960 pixels wide. Tasks in progress start at the left edge, overlapping tasks stack
-on separate rows, and tasks with just a start time appear as dots. Hover or focus a marker
+on separate rows, and tasks with just a start time appear as neutral ticks. Hover or focus a marker
 to highlight its task row, or click it to edit the time.
 
 Drag a My Desk task onto the timeline to schedule it. The drop indicator snaps to 15-minute

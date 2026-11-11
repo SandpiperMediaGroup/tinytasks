@@ -283,8 +283,7 @@ section:first-child .group-head { padding-top: 16px; }
 #desk-error, #desk-time-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 #sidebar .desk-review-badge { color: var(--soft); background: var(--bg-hover); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
 .task.desk-task { position: relative; border-left: 2px solid transparent; }
-.desk-timed > .line > .text { display: block; }
-.desk-timed > .line .sub { display: flex; flex-wrap: wrap; margin-top: 3px; gap: 2px 8px; }
+.desk-timed > .line .sub { flex-wrap: wrap; gap: 2px 8px; }
 .desk-time { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--soft); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; border-radius: 3px; }
 .desk-time:hover { color: var(--accent); }
 .desk-duration:not(:empty)::before { content: "·"; margin-right: 6px; }

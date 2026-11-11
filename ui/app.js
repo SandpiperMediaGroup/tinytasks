@@ -302,6 +302,9 @@ function row(t, parent = null, index = 0, deskItem = null) {
     } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); line.onclick(); }
   };
 
+  const detailsIndicator = li.querySelector(".details-indicator");
+  detailsIndicator.hidden = !t.details?.trim() || noteId === t.id;
+  detailsIndicator.onclick = e => { e.stopPropagation(); line.onclick(); };
   const more = li.querySelector(".more");
   more.title = `Task actions\n${time.title}`;
   more.onpointerdown = e => { if (editingId != null && e.button === 0) e.preventDefault(); };

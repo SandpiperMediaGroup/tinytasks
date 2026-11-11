@@ -38,8 +38,8 @@ and can also be checked manually in Settings; installing a new release is manual
 Download the universal Mac DMG from the [latest release](https://github.com/SandpiperMediaGroup/tinytasks/releases/latest),
 open it, and drag **TinyTasks.app** to **Applications** before launching it. A ZIP download is also available.
 Both the app and DMG are Developer ID signed, notarized by Apple, and carry their notarization tickets.
-The app supports Apple silicon and Intel Macs. v0.2.1 includes the new sidebar and
-list-management improvements on both Windows and macOS.
+The app supports Apple silicon and Intel Macs. v0.3.6 adds daily My Desk planning,
+reviewable agent suggestions, and timeline scheduling on both Windows and macOS.
 
 For MCP setup, the installed Mac executable is `/Applications/TinyTasks.app/Contents/MacOS/tinytasks`.
 See [Connect your agents](#connect-your-agents) below. Release maintainers can follow [the release guide](docs/RELEASING.md).
@@ -84,6 +84,8 @@ Drag the empty header space to move the window.
 - **Click a task's text** to edit it directly. Click away or press Enter to save a title;
   use Ctrl/Cmd+Enter for details. Escape cancels. Click the rest of the row to open its details.
   Click the empty gutter or space beneath expanded details to collapse the task again.
+- **Hover a task with details** to reveal a small scribble beside its added-time label.
+  Click the scribble to open or close those details. Hovering does not highlight the whole row.
 - **Open a sticky note** from the task’s **⋯** menu, using the folded-corner note icon. Notes
   use a plain paper surface with text, checkboxes, and subtasks, without the list toolbar,
   metadata, or action strip. The main completion circle sits at the left of the top strip;

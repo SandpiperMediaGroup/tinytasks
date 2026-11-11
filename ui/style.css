@@ -341,7 +341,6 @@ body:not(.desk-view):not(.sticky-note) #open > section > ul > .task::after {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; cursor: pointer;
 }
-.line:hover { background: var(--bg-hover); }
 
 .check {
   flex: none; width: 20px; height: 20px;
@@ -530,7 +529,6 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .subtask > .line { isolation: isolate; }
 .subtask > .line:hover { background: none; }
 .subtask > .line::before { content: ""; position: absolute; inset: 0 -8px; z-index: -1; pointer-events: none; border-radius: 5px; }
-.subtask > .line:hover::before, .subtask > .line:focus-within::before { background: var(--bg-hover); }
 .subtask > .line .more { right: 0; }
 .subtask > .line:active { cursor: grabbing; }
 .subtask > .line .title { font-size: 13px; line-height: 1.4; }
@@ -606,7 +604,9 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 /* Overflow actions occupy the badge slot without adding height or moving task text. */
 .row-status { position: relative; display: flex; align-items: center; gap: 8px; flex: none; min-width: 26px; min-height: 20px; padding-right: 27px; }
 .row-status .more { position: absolute; top: 50%; transform: translateY(-50%); right: -3px; width: 26px; height: 26px; opacity: 0; pointer-events: none; }
+.row-status .details-indicator { flex: none; width: 26px; height: 20px; opacity: 0; pointer-events: none; }
 .line:hover > .row-status .more, .line:focus-within > .row-status .more, .row-status .more[aria-expanded="true"] { opacity: 1; pointer-events: auto; }
+.line:hover > .row-status .details-indicator, .line:focus-within > .row-status .details-indicator { opacity: 1; pointer-events: auto; }
 #task-menu { width: max-content; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
 #task-menu button { gap: 9px; font-size: 12px; }
 #task-menu button[hidden] { display: none; }

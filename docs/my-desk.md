@@ -27,10 +27,11 @@ or previous quarter hour or hold Option (Alt) for one-minute steps. For a task w
 duration, move the end handle to add one. Use the **×** in the lower-left corner to clear the
 start and duration. A block must end within the same day.
 
-The timeline starts at **Now** and shows the next six hours, or twelve when the timeline is
+The timeline starts at the lamp’s current-time line and shows the next six hours, or twelve when the timeline is
 at least 960 pixels wide. Tasks in progress start at the left edge, overlapping tasks stack
 on separate rows, and tasks with just a start time appear as neutral ticks. Hover or focus a marker
-to highlight its task row, or click it to edit the time.
+to highlight its task row, or click it to edit the time. Hover over the timeline to fade in the
+current time below the lamp and line; keyboard focus reveals it too. The far edge has no time label.
 
 Drag a My Desk task onto the timeline to schedule it. The drop indicator snaps to 15-minute
 increments from now through the end of today's visible timeline. Dropping applies the start time and opens the dial with the end

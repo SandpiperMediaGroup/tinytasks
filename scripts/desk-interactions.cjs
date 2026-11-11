@@ -40,7 +40,19 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.ok(blocks.find(block => block.id === 2).y > blocks.find(block => block.id === 1).y);
     const leftEdge = (await page.locator('#desk-track').boundingBox()).x;
     assert.equal(blocks.find(block => block.id === 1).x, leftEdge, 'An ongoing task starts at Now');
-    assert.equal((await page.locator('#desk-now').boundingBox()).x, leftEdge);
+    const lamp = await page.locator('.timeline-lamp').boundingBox();
+    assert.ok(Math.abs(lamp.x + lamp.width / 2 - leftEdge) < 1, 'Lamp is centered on the current-time line');
+    const current = await page.locator('#desk-now').boundingBox();
+    const track = await page.locator('#desk-track').boundingBox();
+    assert.ok(current.y >= track.y + track.height, 'Current time is below the line');
+    assert.equal(await page.locator('.desk-range-end').count(), 0);
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('desk-now')).opacity === '0');
+    await page.locator('#desk-hours').hover();
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('desk-now')).opacity === '1');
+    await page.screenshot({path:'/tmp/tinytasks-timeline-hover.png'});
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('desk-now')).opacity === '0');
     assert.equal(await page.locator('.lamp-rays').count(), 0);
     assert.equal(await page.locator('#heading-icon').isVisible(), false);
     assert.equal(await page.locator('#group').isVisible(),false);assert.equal(await page.locator('.group-head').count(),0);
@@ -65,8 +77,8 @@ module.exports = async (browser, installMock, url, errors) => {
       assert.ok(Math.abs(metrics.checkX-metrics.contentX)<1, 'Checkbox keeps its usual left edge');
     }
     await page.setViewportSize({width:1024,height:740});
-    assert.match(await page.locator('.desk-task[data-task-id="5"] .desk-time').innerText(),/3:00\s*pm.*20m/is);
-    assert.equal(await page.locator('#desk-now').innerText(), 'Now');
+    assert.match(await page.locator('.desk-task[data-task-id="5"] .desk-time').textContent(),/3:00\s*pm, 20m/is);
+    assert.match(await page.locator('#desk-now').innerText(), /9:05\s*am/i);
     assert.match(await page.locator('#desk-timeline').getAttribute('aria-label'), /9:05\s*am to 3:05\s*pm/i);
     page.setDefaultTimeout(10000);
     const task=id=>page.locator(`.desk-task[data-task-id="${id}"]`);
@@ -152,7 +164,7 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await page.locator('#add').click();await page.locator('#new-title').fill('Confirm tomorrow’s session');await page.locator('#new-title').press('Enter');await page.waitForFunction(()=>testState.tasks.length===8);await page.locator('#new-title').press('Escape');assert.equal(await rows.count(),6);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});assert.equal(await rows.count(),7);
     await page.evaluate(()=>{testState.desk.items=[];testState.emit();});await page.locator('#desk-timeline').waitFor({state:'visible'});assert.equal(await page.locator('.desk-time').count(),0);assert.equal(await page.locator('.desk-section-heading').count(),0);
     // A first drag reveals the timeline; drops snap to quarter hours and ask duration.
-    await drag(2,0.485);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await adjust('end','ArrowRight');await dismiss();assert.deepEqual(await item(2),{start:'12:00',duration:45});assert.deepEqual(await page.locator('.desk-section-heading').allTextContents(),['Midday','Unscheduled']);assert.equal(await page.locator('#desk-now').innerText(),'Now');
+    await drag(2,0.485);assert.equal(await page.evaluate(()=>testState.desk.items.find(i=>i.id===2).start),'12:00');await adjust('end','ArrowRight');await dismiss();assert.deepEqual(await item(2),{start:'12:00',duration:45});assert.deepEqual(await page.locator('.desk-section-heading').allTextContents(),['Midday','Unscheduled']);assert.match(await page.locator('#desk-now').innerText(),/9:05\s*am/i);
     const before=await page.evaluate(()=>JSON.stringify(testState.desk.items));await drag(4,0.7,true);assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);await drag(4,0.7,'blur');assert.equal(await page.evaluate(()=>JSON.stringify(testState.desk.items)),before);
     await page.evaluate(()=>suggest());await page.locator('#desk-review').waitFor();await drag(3,0.695);await adjust('end','ArrowRight');assert.deepEqual(await item(3,true),{start:'13:15',duration:30});await dismiss();assert.equal(await page.evaluate(()=>testState.desk.items.some(i=>i.id===3&&i.start)),false);await page.locator('#desk-decline').click();await page.locator('#desk-review').waitFor({state:'hidden'});
     // One clear button removes timing but keeps desk membership.

@@ -119,7 +119,7 @@ class DeskController {
     const timeline = this.$("desk-timeline");
     timeline.setAttribute("aria-label", `Upcoming desk tasks from ${this.formatMinute(start)} to ${this.formatMinute(end)}`);
     const now = this.$("desk-now");
-    now.title = this.formatMinute(start);
+    now.textContent = this.formatMinute(this.localMinute());
     const ticks = [];
     const pixelsPerHour = width * 60 / span;
     const interval = (pixelsPerHour >= 80 ? 1 : pixelsPerHour >= 38 ? 2 : 3) * 60;
@@ -130,8 +130,7 @@ class DeskController {
       label.style.left = `${x}px`;
       ticks.push(label);
     }
-    const last = Object.assign(document.createElement("span"), { textContent: this.formatMinute(end), className: "desk-range-end" });
-    this.$("desk-hours").replaceChildren(now, ...ticks, last);
+    this.$("desk-hours").replaceChildren(...ticks);
 
     const blocks = [];
     const previewIsCurrent = this.editing?.date === this.state.date &&
@@ -149,7 +148,7 @@ class DeskController {
       blocks.push({ item, left, size });
     }
 
-    // Use the drawn bounds, so even dots and very short tasks stay separately clickable.
+    // Use the drawn bounds, so even ticks and very short tasks stay separately clickable.
     const laneEnds = [];
     const markers = this.$("desk-markers");
     const focusedId = markers.contains(document.activeElement) ? document.activeElement.dataset.taskId : null;
@@ -165,7 +164,7 @@ class DeskController {
       marker.style.left = `${left}px`;
       marker.style.width = `${size}px`;
       marker.style.setProperty("--desk-lane", lane);
-      marker.title = `${task.title} · ${this.time(item.start)}${item.duration ? ` · ${item.duration} min` : ""}`;
+      marker.title = `${task.title} · ${this.time(item.start)}${item.duration ? `, ${item.duration} min` : ""}`;
       marker.setAttribute("aria-label", `Edit desk time: ${marker.title}`);
       if (size >= 92) {
         const title = Object.assign(document.createElement("span"), { textContent: task.title });
@@ -191,9 +190,9 @@ class DeskController {
     if (item.start) {
       const button = Object.assign(document.createElement("button"), { type: "button", className: "desk-time" });
       const time = Object.assign(document.createElement("span"), { textContent: this.time(item.start) });
-      const duration = Object.assign(document.createElement("span"), { className: "desk-duration", textContent: item.duration ? `${item.duration}m` : "" });
+      const duration = Object.assign(document.createElement("span"), { className: "desk-duration", textContent: item.duration ? `, ${item.duration}m` : "" });
       button.append(time, duration);
-      button.title = baseline?.start && li.dataset.change === "changed" ? `Previously ${this.time(baseline.start)}${baseline.duration ? ` · ${baseline.duration} min` : ""}` : "Edit desk time";
+      button.title = baseline?.start && li.dataset.change === "changed" ? `Previously ${this.time(baseline.start)}${baseline.duration ? `, ${baseline.duration} min` : ""}` : "Edit desk time";
       button.setAttribute("aria-label", `Edit desk time for ${task.title}: ${this.time(item.start)}${item.duration ? `, ${item.duration} minutes` : ""}`);
       button.onclick = event => { event.stopPropagation(); this.openTime(task, item, button); };
       li.querySelector(".sub").prepend(button);

@@ -161,6 +161,18 @@ function source(t, { icon = true, chat = true } = {}) {
   return el;
 }
 
+// Hover-only controls float left over the title without reserving metadata space.
+function setupRowHoverControls(li) {
+  li.classList.add('compact-row');
+  const status = li.querySelector('.row-status');
+  const controls = document.createElement('span'); controls.className = 'row-hover-controls';
+  for (const selector of ['.desk-membership', '.details-indicator']) {
+    const icon = status.querySelector(selector);
+    if (icon && !icon.hidden) controls.append(icon);
+  }
+  if (controls.children.length) status.prepend(controls);
+}
+
 function attributeControl(el, label, action) {
   el.setAttribute("role", "button");
   el.tabIndex = 0;
@@ -352,6 +364,7 @@ function row(t, parent = null, index = 0, deskItem = null) {
   }
   if (noteId === t.id) $("note-complete").replaceChildren(check);
   if (deskItem) desk.decorate(li, t, deskItem);
+  if (noteId == null) setupRowHoverControls(li);
   return li;
 }
 

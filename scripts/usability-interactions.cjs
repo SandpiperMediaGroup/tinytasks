@@ -38,32 +38,37 @@ module.exports = async (browser, installMock, url, errors) => {
     await page.waitForFunction(()=>testState.tasks[0].id===1);
     assert.equal(await row(2).locator('.desk-membership').count(),1);assert.equal(await row(1).locator('.desk-membership').count(),0);
     await page.mouse.move(0,0);await page.locator('#view').focus();
-    assert.equal(await row(2).locator('.desk-membership').evaluate(el=>getComputedStyle(el).opacity),'0');
-    assert.deepEqual(await row(2).locator('.row-status').evaluate(el=>[...el.children].filter(n=>!n.classList.contains('prio')).map(n=>['desk-membership','details-indicator','subtask-count','time','more'].find(c=>n.classList.contains(c)))),['desk-membership','details-indicator','subtask-count','time','more']);
+    assert.equal(await row(2).locator('.row-hover-controls').evaluate(el=>getComputedStyle(el).opacity),'0');
+    assert.deepEqual(await row(2).locator('.row-hover-controls').evaluate(el=>[...el.children].map(n=>n.classList.contains('desk-membership')?'lamp':'details')),['lamp','details']);
     const timeX=await row(2).locator('.time').evaluate(el=>el.getBoundingClientRect().x);
     const idleBounds=await line(2).boundingBox();await line(2).hover();
-    assert.equal(await row(2).locator('.desk-membership').evaluate(el=>getComputedStyle(el).opacity),'1');
+    assert.equal(await row(2).locator('.row-hover-controls').evaluate(el=>getComputedStyle(el).opacity),'1');
     assert.deepEqual(await line(2).boundingBox(),idleBounds);
     assert.equal(await row(2).locator('.time').evaluate(el=>el.getBoundingClientRect().x),timeX);
-    for (const width of [280, 360, 460]) {
+    for (const width of [280, 360, 460, 1000]) {
       await page.setViewportSize({width, height:760});
+      await page.waitForFunction(shown=>document.querySelector('#sidebar').hidden===!shown,width>=720);
+      await page.mouse.move(0,0);await page.locator('#view').focus();
+      const controls=row(2).locator('.row-hover-controls');
+      assert.equal(await controls.evaluate(el=>getComputedStyle(el).opacity),'0');
+      const before=await line(2).boundingBox(), titleBefore=await row(2).locator('.title').boundingBox();
       await line(2).hover();
-      const layout = await line(2).evaluate(el => {
-        const box = selector => el.querySelector(selector).getBoundingClientRect();
-        const controls = [...el.querySelector('.row-status').children].filter(n => getComputedStyle(n).display !== 'none');
-        return {checkTop:box('.check').top,titleTop:box('.title').top,textBottom:box('.title').bottom,sourceTop:box('.sub').top,sourceBottom:box('.sub').bottom,
-          textRight:box('.title').right,right:el.getBoundingClientRect().right-parseFloat(getComputedStyle(el).paddingRight),
-          controlsTop:box('.row-status').top,controlsBottom:box('.row-status').bottom,controlsRight:box('.row-status').right,
-          controls:controls.map(n=>{const b=n.getBoundingClientRect();return {x:b.x,right:b.right,y:b.y+b.height/2};})};
-      });
-      assert.ok(Math.abs(layout.checkTop-layout.titleTop)<=1, `Checkbox aligned with title at ${width}px`);
-      assert.ok(Math.abs(layout.textRight-layout.right)<=1, `Title uses full row width at ${width}px`);
-      assert.ok(layout.controlsTop>=layout.textBottom && layout.controlsRight<=layout.right+1, `Controls stay below text at ${width}px`);
-      assert.ok(layout.sourceTop<layout.controlsBottom && layout.sourceBottom>layout.controlsTop, `Source and controls share the second line at ${width}px`);
-      layout.controls.slice(1).forEach((control,i)=>{
-        assert.ok(Math.abs(control.y-layout.controls[0].y)<=1, `Controls share one line at ${width}px`);
-        assert.ok(control.x>=layout.controls[i].right, `Controls retain visual order at ${width}px`);
-      });
+      assert.equal(await controls.evaluate(el=>getComputedStyle(el).opacity),'1');
+      assert.deepEqual(await line(2).boundingBox(),before);
+      assert.deepEqual(await row(2).locator('.title').boundingBox(),titleBefore);
+      const placement=await row(2).evaluate(el=>({hover:el.querySelector('.row-hover-controls').getBoundingClientRect().right,status:el.querySelector('.row-status').getBoundingClientRect().left}));
+      assert.ok(placement.hover<placement.status, `Hover controls expand left over the title at ${width}px`);
+      await page.mouse.move(0,0);await line(2).focus();
+      assert.equal(await controls.evaluate(el=>getComputedStyle(el).opacity),'1');
+      assert.equal(await row(2).locator('.src .chat').innerText(),'Studio');
+      assert.equal(await row(2).locator('.time').innerText(),'1d');
+      assert.equal(await row(2).locator('.row-property').count(),0);
+      const geometry=await line(2).evaluate(el=>{const box=s=>el.querySelector(s).getBoundingClientRect();return {check:box('.check').top,title:box('.title').top,titleBottom:box('.title').bottom,status:box('.row-status').top,source:box('.sub').top};});
+      assert.ok(Math.abs(geometry.check-geometry.title)<=1);
+      assert.ok(Math.abs(geometry.status-geometry.title)<=1, 'Controls stay beside the title');
+      if(width<480) assert.ok(geometry.source>=geometry.titleBottom,'Display properties retain their second line');
+      else assert.ok(geometry.source<geometry.titleBottom,'Display properties remain inline in wide layouts');
+      assert.equal(await page.evaluate(()=>document.querySelector('#main').scrollWidth<=document.querySelector('#main').clientWidth),true);
     }
     await page.setViewportSize({width:1000,height:760});
     await open(1);assert.equal(await row(1).locator('.link-chip').count(),3);
@@ -96,7 +101,9 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(sends[0].args.submissionId,sends[1].args.submissionId);assert.deepEqual(sends[1].args.answer,{kind:'choices',option_ids:['b']});
     for(const width of [1200,360,280,900,320,1200,360]){
       await page.setViewportSize({width,height:760});
-      assert.equal(await page.evaluate(()=>document.querySelector('#main').scrollWidth<=document.querySelector('#main').clientWidth),true);
+      await page.waitForFunction(shown=>document.querySelector('#sidebar').hidden===!shown,width>=720);
+      const overflow=await page.evaluate(()=>{const main=document.querySelector('#main'),b=main.getBoundingClientRect();return {scroll:main.scrollWidth,width:main.clientWidth,items:[...main.querySelectorAll('*')].filter(el=>el.getBoundingClientRect().right>b.right+1).slice(0,12).map(el=>({class:el.className,right:el.getBoundingClientRect().right}))};});
+      assert.ok(overflow.scroll<=overflow.width, `${width}px overflow: ${JSON.stringify(overflow)}`);
       const fit=await row(1).evaluate(el=>{
         const details=el.querySelector(':scope > .details'), content=details.querySelector('.details-pad');
         return {outer:details.getBoundingClientRect().bottom,content:content.getBoundingClientRect().bottom,question:content.querySelector('.question-card').getBoundingClientRect().bottom,next:el.nextElementSibling?.getBoundingClientRect().top};
@@ -129,6 +136,16 @@ module.exports = async (browser, installMock, url, errors) => {
     fs.mkdirSync('artifacts/usability',{recursive:true});await page.screenshot({path:'artifacts/usability/my-desk.png'});
     await page.locator('#primary-nav button').filter({hasText:/^All/}).click();await open(1);
     await page.screenshot({path:'artifacts/usability/details-links-question.png'});
+    await page.evaluate(()=>localStorage.setItem('properties',JSON.stringify(Object.fromEntries(['id','agent','chat','priority','due','added','completed','subtasks','details'].map(k=>[k,false])))));
+    await page.reload();await row(1).waitFor();
+    for(const width of [280,360,1000]) {
+      await page.setViewportSize({width,height:760});
+      const geometry=await line(1).evaluate(el=>({height:el.getBoundingClientRect().height,titleHeight:el.querySelector('.title').getBoundingClientRect().height,sub:getComputedStyle(el.querySelector('.sub')).display}));
+      assert.equal(geometry.sub,'none');
+      assert.ok(geometry.height<=Math.max(geometry.titleHeight,20)+21, `No empty metadata row at ${width}px`);
+    }
+    fs.mkdirSync('artifacts/usability',{recursive:true});await page.setViewportSize({width:360,height:760});
+    await page.screenshot({path:'artifacts/usability/compact-no-properties.png'});
     console.log('PASS: usability, single branch, no sorting, link chips/delayed tooltips, questions/drafts/retry, cleanup, desk lamps/status and guide.');
   } finally {await context.close();}
 };

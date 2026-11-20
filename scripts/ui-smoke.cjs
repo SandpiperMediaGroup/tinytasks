@@ -206,7 +206,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
     // Text edits without opening details; row whitespace opens them normally.
     await first.locator('.title-text').click();
-    assert.equal(await first.getAttribute('class'), 'task editing');
+    assert.equal(await first.evaluate(el=>el.classList.contains('editing')),true);
     await first.locator('textarea').fill('Updated task title');
     await page.evaluate(() => { testState.tasks[0].details = 'Changed by an agent'; testState.emit(); });
     assert.equal(await first.locator('textarea').inputValue(), 'Updated task title');
@@ -352,8 +352,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     }));
     assert.equal(geometry.check, geometry.header);
     assert.equal(geometry.check - geometry.numberRight, 14);
-    assert.ok(geometry.height < 66);
-    assert.ok(geometry.controlsTop >= geometry.textBottom, 'Narrow subtask controls sit below the text');
+    assert.ok(geometry.height < 36);
+    assert.ok(geometry.controlsTop < geometry.textBottom, 'Compact subtask controls share the title line');
     // Opening the parent must not accidentally expand every nested details panel.
     assert.equal(await task(3).locator('.body').isVisible(), false);
     await task(4).locator(':scope > .line').focus();

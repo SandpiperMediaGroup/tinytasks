@@ -367,7 +367,7 @@ body:not(.desk-view):not(.sticky-note) #open > section > ul > .task::after {
 .parent-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview { color: var(--soft); font-size: 12px; margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .task-id { flex: none; }
-.sub:not(:has(.src:not(:empty), .due:not([hidden]), .task-id:not([hidden]), .time-sub:not(:empty), .desk-time)) { display: none; }
+.sub:not(:has(.src:not(:empty), .due:not([hidden]), .task-id:not([hidden]), .desk-time)) { display: none; }
 .sub {
   display: flex; align-items: center; gap: 6px; min-width: 0;
   color: var(--muted); font-size: 12px; line-height: 16px; margin-top: 2px;
@@ -613,20 +613,7 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
   .row-status { padding-right: 27px; }
   .row-status .more { opacity: 1; pointer-events: auto; }
 }
-@container (width < 480px) {
-  body:not(.sticky-note) .task > .line { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; position: relative; row-gap: 4px; }
-  body:not(.sticky-note) .task > .line > .check { grid-column: 1; grid-row: 1; align-self: start; }
-  body:not(.sticky-note) .task > .line > .text { display: contents; }
-  body:not(.sticky-note) .task > .line > .text > .title { grid-column: 2 / -1; grid-row: 1; }
-  body:not(.sticky-note) .task > .line > .text > .sub { grid-column: 2; grid-row: 2; flex-wrap: wrap; margin-top: 0; }
-  body:not(.sticky-note) .task > .line > .text > :is(.preview, .parent-context) { grid-column: 2 / -1; }
-  body:not(.sticky-note) .task > .line > .row-status { grid-column: 3; grid-row: 2; justify-self: end; min-width: 0; padding-right: 0; }
-  body:not(.sticky-note) .task > .line > .row-status .more { position: static; transform: none; flex: none; }
-  body:not(.sticky-note) .task.subtask > .line { grid-template-columns: 17px minmax(0, 1fr) auto; }
-  body:not(.sticky-note) .subtask-number { top: 16px; }
-  body:not(.sticky-note) .task:not(.desk-timed) > .line > .row-status .time:not(:empty) { display: inline; }
-  body:not(.sticky-note) .time-sub { display: none; }
-}
+
 #list-menu { width: 230px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
 #list-menu button { font-size: 12px; overflow-wrap: anywhere; gap: 8px; }
 #list-menu button:focus { background: var(--bg-hover); }
@@ -687,6 +674,19 @@ button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--a
 .row-status .desk-membership { width: 16px; height: 18px; color: var(--muted); flex: none; opacity: 0; pointer-events: none; }
 .line:hover > .row-status .desk-membership, .line:focus-within > .row-status .desk-membership { opacity: 1; }
 .desk-membership svg { width: 16px; height: 18px; }
+
+/* Preserve display properties; only the hover controls overlay the title. */
+.compact-row > .line { align-items: flex-start; }
+.compact-row > .line > .check { align-self: flex-start; }
+.compact-row .sub { flex-wrap: wrap; }
+.compact-row .time-sub { display: none; }
+.compact-row > .line > .row-status .time:not(:empty) { display: inline; }
+.compact-row.desk-timed > .line > .row-status .time { display: none; }
+.row-hover-controls { position: absolute; right: 100%; top: 0; margin-right: 8px; display: flex; align-items: center; gap: 8px; width: max-content; height: 20px; z-index: 2; isolation: isolate; opacity: 0; pointer-events: none; }
+.row-hover-controls::before { content: ''; position: absolute; inset: -3px -3px -3px -18px; z-index: -1; background: linear-gradient(90deg, transparent, var(--bg) 18px); pointer-events: none; }
+.row-status .row-hover-controls .details-indicator, .row-status .row-hover-controls .desk-membership { opacity: 1; pointer-events: inherit; }
+.line:hover > .row-status .row-hover-controls, .line:focus-within > .row-status .row-hover-controls { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .row-hover-controls { opacity: 1; pointer-events: auto; } }
 #desk-time-dialog .desk-arc-clear { position: static; display: block; width: auto; height: auto; margin: 4px auto 0; padding: 6px 12px; border-radius: 6px; font-size: 12px; }
 .task-dragging #main { overflow-anchor: none; }
 .task-dragging .task { transition: none; }

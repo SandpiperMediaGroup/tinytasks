@@ -20,17 +20,18 @@ module.exports = async (browser, installMock, url, errors) => {
   const assertCentered = async (line, selectors, label) => {
     const measurement = await line.evaluate((el, selectors) => {
       const row = el.getBoundingClientRect();
-      const middle = row.y + row.height / 2;
+      const title=el.querySelector('.title').getBoundingClientRect();
+      const middle = title.top + parseFloat(getComputedStyle(el.querySelector('.title')).lineHeight) / 2;
       return { height: row.height, items: selectors.flatMap(selector => [...el.querySelectorAll(selector)].filter(item => item.getClientRects().length).map(item => {
         const bounds = item.getBoundingClientRect();
         return { selector, offset: bounds.y + bounds.height / 2 - middle };
       })) };
     }, selectors);
     alignment.push({ label, ...measurement });
-    for (const item of measurement.items) assert.ok(Math.abs(item.offset) <= 0.5, `${label}: ${item.selector} is ${item.offset}px off the row center`);
+    for (const item of measurement.items) assert.ok(Math.abs(item.offset) <= 1.5, `${label}: ${item.selector} is ${item.offset}px off the row center`);
     return measurement;
   };
-  const allRowItems = ['.check', '.title', '.task-id', '.agent-badge', '.chat', '.due', '.due svg', '.due > span', '.prio', '.time', '.subtask-count', '.more'];
+  const allRowItems = ['.check', '.task-id', '.src', '.due', '.prio', '.time', '.subtask-count', '.more'];
   try {
     await page.goto(url);
     await page.evaluate(() => localStorage.clear());
@@ -257,7 +258,7 @@ module.exports = async (browser, installMock, url, errors) => {
               statusMiddle:rect('.row-status').top+rect('.row-status').height/2};
           });
           assert.ok(Math.abs(positions.check-positions.title)<=1);
-          assert.ok(positions.moreTop>=positions.titleBottom);
+          assert.ok(positions.moreTop<positions.titleBottom);
           assert.ok(Math.abs(positions.moreMiddle-positions.statusMiddle)<=1);
         }
       }

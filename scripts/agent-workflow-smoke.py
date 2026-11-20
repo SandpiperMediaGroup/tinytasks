@@ -50,6 +50,6 @@ with tempfile.TemporaryDirectory(prefix='tinytasks-agents-') as folder:
         plan=call('submit_desk_plan',dict(source=source,date=day,request_id='submit',run_id=run['run_id'],items=[dict(ref,start='10:00',duration=30)]))
         desk=call('get_desk',{});assert desk['items']==[] and desk['proposal']['id']==plan['proposal_id']
         assert desk['planning']['status']=='suggested'
-        print('PASS: real MCP discovery, complete pagination, list reuse, retry replay/conflicts, atomic rejected writes, source identity, optional question publication/withdrawal, and explicit planning → review.')
+        print('PASS: real MCP discovery, complete pagination, list reuse, retry replay/conflicts, atomic rejected writes, source identity, optional question publication/withdrawal, and explicit planning to review.')
     finally:
         proc.stdin.close();proc.wait(timeout=5)

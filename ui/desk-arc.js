@@ -55,9 +55,7 @@ class DeskArcPicker {
     }
     this.clear.onclick = () => {
       if (this.busy) return;
-      this.scheduled = false;
-      this.duration = null;
-      this.render();
+      this.pendingClear = true;
       this.handles.start.focus({ preventScroll: true });
       this.commit();
     };
@@ -80,7 +78,7 @@ class DeskArcPicker {
     this.onCommit = onCommit; this.baseline = { start: item.start, duration: item.duration };
     this.scheduled = item.start != null;
     this.start = this.scheduled ? Number(item.start.slice(0, 2)) * 60 + Number(item.start.slice(3)) : suggested;
-    this.duration = item.duration; this.busy = false;
+    this.duration = item.duration; this.busy = false; this.pendingClear = false;
     this.error.hidden = this.retry.hidden = true;
     this.render(); this.handles[focusPart].focus({ preventScroll: true });
   }
@@ -144,6 +142,7 @@ class DeskArcPicker {
     return onRing && along <= angle ? "move" : null;
   }
   apply(part, target, base, step = 15, direction = 0) {
+    this.pendingClear = false;
     const earliest = part === "end" ? base.start + 1 : 0;
     const latest = part === "end" ? 1440 : part === "start" && base.duration != null
       ? base.end - 1 : 1440 - (base.duration || 1);
@@ -198,12 +197,12 @@ class DeskArcPicker {
   }
   cancelDrag() { if (this.drag) this.endDrag({ pointerId: this.drag.pointer }, true); }
   async commit() {
-    const value = this.value();
+    const value = this.pendingClear ? { start: null, duration: null } : this.value();
     if (this.busy || this.equal(value, this.baseline)) return;
     const generation = this.generation; this.busy = true; this.error.hidden = this.retry.hidden = true; this.render();
     try {
       await this.onCommit(value);
-      if (generation === this.generation) { this.baseline = value; this.live.textContent = value.start ? `${this.time(this.start)}, ${value.duration == null ? "no duration" : `${value.duration} minutes`}` : "No desk time"; }
+      if (generation === this.generation) { if (this.pendingClear) { this.scheduled = false; this.duration = null; this.pendingClear = false; } this.baseline = value; this.live.textContent = value.start ? `${this.time(this.start)}, ${value.duration == null ? "no duration" : `${value.duration} minutes`}` : "No desk time"; }
     } catch (error) {
       if (generation === this.generation) {
         this.error.textContent = String(error); this.error.hidden = this.retry.hidden = false;

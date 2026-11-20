@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-binary = Path(__file__).resolve().parents[1] / 'target/debug/tinytasks'
+binary = Path(os.environ.get('TINYTASKS_SMOKE_BINARY', Path(__file__).resolve().parents[1] / 'target/debug/tinytasks'))
 with tempfile.TemporaryDirectory(prefix='tinytasks-mcp-') as folder:
     task_file = Path(folder) / 'tasks.md'
     env = dict(os.environ, TINYTASKS_DATA_DIR=folder, TINYTASKS_FILE=str(task_file), TINYTASKS_NO_LAUNCH='1')

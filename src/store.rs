@@ -23,6 +23,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, Serialize)]
 pub struct Task {
     pub id: i64,
+    pub uid: Option<String>,
     pub title: String,
     pub details: String,
     /// The agent harness, as its MCP client reports itself (e.g. "claude-code"). Empty: the user.
@@ -41,6 +42,7 @@ pub struct Task {
     /// One level of subtasks; each child remains a full task with its own ID and details.
     pub parent_id: Option<i64>,
     pub position: i64,
+    pub manual_order: Option<i64>,
     pub ordered: bool,
 }
 
@@ -171,6 +173,7 @@ pub fn change<R>(f: impl FnOnce(&mut List) -> Result<R, String>) -> Result<R, St
     let text = read_list(&p, chosen)?;
     let mut list = parse(&text);
     let r = f(&mut list)?;
+    crate::questions::reconcile(&mut list)?;
     let out = list.render();
     if out != text {
         write(&p, &out)?;
@@ -266,7 +269,7 @@ pub fn delete_chat(name: &str) -> Result<(), String> {
     recover_archive(&data_dir().join("archive-pending.json"))?;
     let (p, chosen) = location();
     let text = read_list(&p, chosen)?;
-    write(&p, &split_chat(&text, name)?.0)
+    write(&p, &reconcile_removed(&split_chat(&text, name)?.0)?)
 }
 
 #[derive(Deserialize, Serialize)]
@@ -297,6 +300,7 @@ fn recover_archive(journal: &Path) -> Result<(), String> {
 
 fn archive_chat_files(active: &Path, archive: &Path, journal: &Path, text: &str, name: &str) -> Result<(), String> {
     let (active_after, removed) = split_chat(text, name)?;
+    let active_after = reconcile_removed(&active_after)?;
     let archive_before = read(archive)?;
     let mut archive_after = archive_before.clone();
     if !archive_after.is_empty() {
@@ -304,6 +308,7 @@ fn archive_chat_files(active: &Path, archive: &Path, journal: &Path, text: &str,
         archive_after.push('\n');
     }
     archive_after.push_str(&removed);
+    archive_after = archive_sources(text, &removed, &archive_after)?;
     let pending = ArchiveMove { active: active.into(), archive: archive.into(), active_before: text.into(), active_after, archive_before, archive_after };
     write(journal, &serde_json::to_string(&pending).map_err(|e| e.to_string())?)?;
     recover_archive(journal)
@@ -340,17 +345,23 @@ fn read(p: &Path) -> Result<String, String> {
 }
 
 /// Write to a temporary file and swap it in, so nobody (Drive sync included) sees half a file.
-/// Some editors hold the file open in a way that blocks the swap; then write it in place.
+/// If replacement fails, retain the prior file and report the error; never truncate it in place.
 fn write(p: &Path, text: &str) -> Result<(), String> {
     if let Some(dir) = p.parent() {
         let _ = fs::create_dir_all(dir);
     }
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let tmp = p.with_file_name(format!(".{name}.tinytasks-tmp"));
-    let swapped = fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, p));
-    if swapped.is_err() {
+    use std::io::Write;
+    let swapped = (|| {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(text.as_bytes())?;
+        file.sync_all()?;
+        fs::rename(&tmp, p)
+    })();
+    if let Err(error) = swapped {
         let _ = fs::remove_file(&tmp);
-        fs::write(p, text).map_err(|e| write_error(e, p))?;
+        return Err(write_error(error, p));
     }
     Ok(())
 }
@@ -373,6 +384,22 @@ fn write_error(e: std::io::Error, p: &Path) -> String {
 
 /// Shown to anyone (any agent) who opens the raw file; markdown viewers hide it.
 const HEADER: &str = "<!-- TinyTasks: the user's to-do list. You may edit this file directly.
+- [ ] is an open task, - [x] a done one. A \"## Heading\" is a task list.
+Read all existing lists and tasks before adding anything; update or reuse a matching task first.
+Reuse an existing list, or Personal (no heading), unless a new continuing home is clearly needed.
+Conversation origin is attribution, not a reason to create a list. Preserve @uid and agent metadata.
+Use priority sparingly: omit it by default; set it only for clear urgency or an explicit user request.
+@priority(0-3): 0 is most urgent. @due(YYYY-MM-DD). @mydesk(YYYY-MM-DD): on the user's desk (their focus) that day only;
+write @mydesk(today) and TinyTasks fills in the date.
+@from(agent): who added it. @link(url): back to that chat. @added/@done(YYYY-MM-DD HH:MM).
+@id(n): unique, never change it. TinyTasks fills in @id and @added when you leave them out.
+Use subtasks for related steps toward one outcome; keep independent actions separate.
+Use numbered steps when sequence matters and a checklist otherwise.
+@parent(id) and @position(0-based): a subtask and its sibling order. Keep these as top-level task lines.
+@subtasks(ordered): show a parent's subtasks as numbered steps. One level of subtasks is supported.
+Details go on lines indented two spaces under the task. Leave everything else as it is. -->";
+
+const PREVIOUS_HEADER: &str = "<!-- TinyTasks: the user's to-do list. You may edit this file directly.
 - [ ] is an open task, - [x] a done one. A \"## Heading\" is the chat the tasks under it came from.
 Use the actual originating conversation title as its ## Heading whenever available; reuse it consistently.
 If unavailable, use a concise descriptive fallback.
@@ -401,6 +428,7 @@ Details go on lines indented two spaces under the task. Leave everything else as
 pub struct List {
     blocks: Vec<Block>,
     crlf: bool,
+    pub original: String,
 }
 
 enum Block {
@@ -536,7 +564,7 @@ pub fn parse(text: &str) -> List {
         blocks.push(Block::Task(entry));
         i = end;
     }
-    let mut list = List { blocks, crlf };
+    let mut list = List { blocks, crlf, original: text.to_string() };
     list.fill_in();
     list
 }
@@ -545,6 +573,7 @@ pub fn parse(text: &str) -> List {
 fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
     let mut task = Task {
         id: 0,
+        uid: None,
         title: String::new(),
         details: String::new(),
         agent: String::new(),
@@ -557,6 +586,7 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
         mydesk: false,
         parent_id: None,
         position: 0,
+        manual_order: None,
         ordered: false,
     };
     let mut extras = Vec::new();
@@ -596,8 +626,10 @@ fn parse_task(rest: &str, done: bool, chat: &str) -> Entry {
                     let raw = &rest[pos..chars[close].0 + 1];
                     match name {
                         "id" => task.id = value.parse().unwrap_or(0),
+                        "uid" => task.uid = Some(value.to_string()),
                         "parent" if value.parse::<i64>().is_ok_and(|v| v > 0) => task.parent_id = value.parse().ok(),
                         "position" if value.parse::<i64>().is_ok_and(|v| v >= 0) => task.position = value.parse().unwrap_or(0),
+                        "order" if value.parse::<i64>().is_ok_and(|v| v >= 0) => task.manual_order = value.parse().ok(),
                         "subtasks" if value == "ordered" => task.ordered = true,
                         "priority" => task.priority = value.parse().ok().filter(|p| valid_priority(*p)),
                         "due" if valid_due(value) => task.due = Some(value.to_string()),
@@ -667,6 +699,9 @@ impl Entry {
         if t.ordered {
             line += " @subtasks(ordered)";
         }
+        if let Some(order) = t.manual_order {
+            line += &format!(" @order({order})");
+        }
         if let Some(p) = t.priority {
             line += &format!(" @priority({p})");
         }
@@ -689,6 +724,7 @@ impl Entry {
         if let Some(d) = t.done_at {
             line += &format!(" @done({})", format_time(d));
         }
+        if let Some(uid) = &t.uid { line += &format!(" @uid({uid})"); }
         line += &format!(" @id({})", t.id);
         let mut out = vec![line];
         for l in t.details.trim_end().lines() {
@@ -702,6 +738,28 @@ impl Entry {
 }
 
 impl List {
+    pub fn agent_metadata(&self) -> Result<Option<&str>, String> {
+        let mut found = None;
+        for block in &self.blocks {
+            if let Block::Text(line) = block {
+                if line.starts_with("<!-- tinytasks-agent-state") {
+                    if found.is_some() { return Err(crate::agent_state::error("invalid_metadata", "Duplicate agent-state comments")); }
+                    found = Some(line.strip_prefix("<!-- tinytasks-agent-state ").and_then(|s| s.strip_suffix(" -->"))
+                        .ok_or_else(|| crate::agent_state::error("invalid_metadata", "Malformed agent-state comment"))?);
+                }
+            }
+        }
+        Ok(found)
+    }
+    pub fn set_agent_metadata(&mut self, json: &str) {
+        self.blocks.retain(|b| !matches!(b, Block::Text(t) if t.starts_with("<!-- tinytasks-agent-state ")));
+        self.blocks.insert(0, Block::Text(format!("<!-- tinytasks-agent-state {json} -->")));
+    }
+    pub fn assign_uid(&mut self, id: i64) -> Result<String, String> {
+        let e = self.entry_mut(id).ok_or("Task is gone")?;
+        if let Some(uid) = &e.task.uid { return Ok(uid.clone()); }
+        let uid = crate::agent_state::id(); e.task.uid = Some(uid.clone()); e.raw = None; Ok(uid)
+    }
     /// Shared desk metadata lives outside list sections, in a single hidden Markdown line.
     pub fn desk_metadata(&self) -> Option<&str> {
         self.blocks.iter().find_map(|block| match block {
@@ -861,9 +919,11 @@ impl List {
                 Block::Task(e) => lines.extend(e.lines()),
             }
         }
-        let legacy_len = LEGACY_HEADER.lines().count();
-        if lines.iter().take(legacy_len).map(String::as_str).eq(LEGACY_HEADER.lines()) {
-            lines.splice(..legacy_len, HEADER.lines().map(String::from));
+        for old in [LEGACY_HEADER, PREVIOUS_HEADER] {
+            let old_lines: Vec<_> = old.lines().collect();
+            if let Some(start) = lines.windows(old_lines.len()).position(|window| window.iter().map(String::as_str).eq(old_lines.iter().copied())) {
+                lines.splice(start..start+old_lines.len(), HEADER.lines().map(String::from));
+            }
         }
         if lines.is_empty() {
             return String::new();
@@ -939,6 +999,7 @@ impl List {
         let id = self.max_id() + 1;
         let task = Task {
             id,
+            uid: None,
             title: one_line(t.title),
             details: t.details.trim_end().to_string(),
             agent: one_line(t.agent),
@@ -951,6 +1012,7 @@ impl List {
             mydesk: t.mydesk,
             parent_id: None,
             position: 0,
+            manual_order: None,
             ordered: false,
         };
         let desk = t.mydesk.then(today);
@@ -1009,6 +1071,24 @@ impl List {
             if e.task.position != position as i64 {
                 e.task.position = position as i64;
                 e.raw = None;
+            }
+        }
+        Ok(())
+    }
+
+    /// Persist manual display order without moving task lines across list headings.
+    pub fn reorder_tasks(&mut self, ids: &[i64], expected_ids: &[i64]) -> Result<(), String> {
+        let current: Vec<i64> = for_ui(self).iter().filter(|t| t.parent_id.is_none()).map(|t| t.id).collect();
+        let requested: HashSet<i64> = ids.iter().copied().collect();
+        if current != expected_ids || requested.len() != ids.len()
+            || requested != current.iter().copied().collect() {
+            return Err("Tasks changed during dragging. Try again.".into());
+        }
+        for (order, id) in ids.iter().enumerate() {
+            let entry = self.entry_mut(*id).unwrap();
+            if entry.task.manual_order != Some(order as i64) {
+                entry.task.manual_order = Some(order as i64);
+                entry.raw = None;
             }
         }
         Ok(())
@@ -1110,7 +1190,7 @@ pub fn for_ui(list: &List) -> Vec<Task> {
     let cutoff = now() - 7 * DAY;
     let roots: HashSet<i64> = list.tasks().filter(|t| t.parent_id.is_none() && t.done_at.is_none_or(|d| d > cutoff)).map(|t| t.id).collect();
     let mut v: Vec<Task> = list.tasks().filter(|t| roots.contains(&t.id) || t.parent_id.is_some_and(|p| roots.contains(&p))).cloned().collect();
-    v.sort_by_key(|t| (t.done_at.is_some(), std::cmp::Reverse(t.done_at.unwrap_or(t.created_at))));
+    v.sort_by_key(|t| t.manual_order.unwrap_or(i64::MAX));
     v
 }
 
@@ -1256,6 +1336,28 @@ mod tests {
         assert!(out.contains("@repeat(weekly) #ops"));
         list.update(7, Changes { chat: Some("New chat"), ..Default::default() });
         assert_eq!(list.get(id).unwrap().chat, "New chat");
+    }
+
+    #[test]
+    fn manual_task_order_round_trips_without_moving_lists_or_children() {
+        let mut list = parse("## First\nNotes stay here.\n- [ ] A @id(1) @repeat(weekly)\n  Task details\n- [ ] Child @id(3) @parent(1) @position(0)\n## Second\n- [ ] B @id(2)\n");
+        list.reorder_tasks(&[2, 1], &[1, 2]).unwrap();
+        let saved = list.render();
+        let mut restored = parse(&saved);
+        assert_eq!(for_ui(&restored).iter().filter(|t| t.parent_id.is_none()).map(|t|t.id).collect::<Vec<_>>(), vec![2,1]);
+        assert_eq!(restored.get(1).unwrap().chat, "First");
+        assert_eq!(restored.get(2).unwrap().chat, "Second");
+        assert_eq!(restored.children(1)[0].id, 3);
+        assert_eq!(restored.get(1).unwrap().details, "Task details");
+        assert!(saved.contains("@repeat(weekly)"));
+        assert!(saved.contains("Notes stay here."));
+        for (ids, expected) in [(vec![1,2], vec![1,2]), (vec![1,1], vec![2,1]), (vec![3,1], vec![2,1]), (vec![1], vec![2,1])] {
+            assert!(restored.reorder_tasks(&ids, &expected).is_err());
+            assert_eq!(restored.render(), saved);
+        }
+        restored.add(new_task("New task"));
+        assert!(restored.reorder_tasks(&[1,2], &[2,1]).is_err());
+        assert_eq!(for_ui(&restored).iter().filter(|t| t.parent_id.is_none()).map(|t|t.id).collect::<Vec<_>>(), vec![2,1,4]);
     }
 
     #[test]
@@ -1473,5 +1575,110 @@ mod tests {
         assert_eq!(read(&active).unwrap(), "");
         assert!(!journal.exists());
         fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+/// Complete discovery, including intentionally empty sections and old completed children.
+pub fn list_inventory(list: &List) -> Vec<serde_json::Value> {
+    let raw=list.render(); let sections=sections(&raw); let mut names=vec![String::new()];
+    for s in &sections {if !names.contains(&s.name){names.push(s.name.clone());}}
+    names.into_iter().map(|name|{
+        let tasks:Vec<_>=list.tasks().filter(|t|t.chat==name).collect();
+        let open=tasks.iter().filter(|t|t.done_at.is_none()).count();
+        serde_json::json!({"name":name,"section_count":sections.iter().filter(|s|s.name==name).count(),"task_count":tasks.len(),"open_count":open,"completed_count":tasks.len()-open,"empty":tasks.is_empty()})
+    }).collect()
+}
+fn empty_names(text:&str)->Result<Vec<String>,String>{
+    // A broken checkbox must not let us archive apparent "notes" containing a task.
+    let (mut comment,mut fence)=(false,false);
+    for line in text.lines() {
+        let trimmed=line.trim_start();
+        let hidden=comment||fence||line.contains("<!--");
+        if !hidden && (trimmed.starts_with("- [")||trimmed.starts_with("* [")) && checkbox(line).is_none(){
+            return Err("A task-like line needs correction before empty lists can be archived.".into());
+        }
+        if !comment && trimmed.starts_with("```"){fence=!fence;}
+        if !fence {
+            if let Some(open)=line.rfind("<!--"){comment=!line[open..].contains("-->");}
+            else if line.contains("-->"){comment=false;}
+        }
+    }
+    Ok(list_inventory(&parse(text)).iter().filter(|v|v["empty"]==true&&v["name"]!="").filter_map(|v|v["name"].as_str().map(String::from)).collect())
+}
+pub fn empty_list_cleanup()->Result<serde_json::Value,String>{
+    let (p,chosen)=location();let names=empty_names(&read_list(&p,chosen)?)?;
+    Ok(serde_json::json!({"eligible_names":names,"eligible_count":names.len()}))
+}
+pub fn archive_empty_lists()->Result<serde_json::Value,String>{
+    let _lock=lock()?;let journal=data_dir().join("archive-pending.json");recover_archive(&journal)?;
+    let (p,chosen)=location();let text=read_list(&p,chosen)?;let names=empty_names(&text)?;
+    let p=if p.is_absolute(){p}else{std::env::current_dir().map_err(|e|e.to_string())?.join(p)};
+    let archive=p.with_file_name("archive.md");
+    if same_file(&p,&archive){return Err("Active file cannot be archive.md".into());}
+    if !names.is_empty(){
+        let mut active_after=String::new();let mut removed=String::new();let mut offset=0;
+        for s in sections(&text).into_iter().filter(|s|names.contains(&s.name)) {
+            active_after.push_str(&text[offset..s.start]);removed.push_str(&text[s.start..s.end]);offset=s.end;
+        }
+        active_after.push_str(&text[offset..]);
+        let archive_before=read(&archive)?;let mut archive_after=archive_before.clone();
+        if !archive_after.is_empty(){if !archive_after.ends_with('\n'){archive_after.push('\n');}archive_after.push('\n');}
+        archive_after.push_str(&removed);
+        let pending=ArchiveMove{active:p,archive:archive.clone(),active_before:text,active_after,archive_before,archive_after};
+        write(&journal,&serde_json::to_string(&pending).map_err(|e|e.to_string())?)?;recover_archive(&journal)?;
+    }
+    Ok(serde_json::json!({"archived_names":names,"archived_count":names.len(),"archive_path":archive}))
+}
+fn reconcile_removed(text:&str)->Result<String,String>{
+    let mut list=parse(text);let before=list.agent_metadata()?.map(String::from);
+    crate::questions::reconcile(&mut list)?;
+    let after=list.agent_metadata()?.map(String::from);
+    if before==after{return Ok(text.into());}
+    let Some(after)=after else{return Ok(text.into())};
+    let mut out=String::new();
+    for line in text.split_inclusive('\n'){
+        if line.starts_with("<!-- tinytasks-agent-state "){
+            out.push_str(&format!("<!-- tinytasks-agent-state {after} -->{}",if line.ends_with("\r\n"){"\r\n"}else{"\n"}));
+        }else{out.push_str(line);}
+    }Ok(out)
+}
+
+fn archive_sources(active: &str, removed: &str, archive: &str) -> Result<String,String> {
+    let source=crate::agent_state::load(&parse(active))?;
+    let uids:Vec<_>=parse(removed).tasks().filter_map(|t|t.uid.clone()).collect();
+    if uids.iter().all(|uid|source["task_sources"][uid].is_null()){return Ok(archive.into());}
+    let mut archived=parse(archive);let mut state=crate::agent_state::initialized(&archived)?;
+    for uid in uids {
+        let origin=&source["task_sources"][&uid];if origin.is_null(){continue;}
+        if !state["task_sources"][&uid].is_null() && state["task_sources"][&uid]!=*origin{return Err("Conflicting source identity in archive".into());}
+        state["task_sources"][&uid]=origin.clone();
+    }
+    crate::agent_state::save(&mut archived,&state)?;
+    let encoded=archived.agent_metadata()?.unwrap();
+    let nl=if archive.contains("\r\n"){"\r\n"}else{"\n"};
+    let metadata=format!("<!-- tinytasks-agent-state {encoded} -->{nl}");
+    if parse(archive).agent_metadata()?.is_none(){return Ok(format!("{metadata}{archive}"));}
+    Ok(archive.split_inclusive('\n').map(|line|if line.starts_with("<!-- tinytasks-agent-state "){metadata.as_str()}else{line}).collect())
+}
+
+#[cfg(test)]
+mod hygiene_tests {
+    use super::*;
+    #[test]
+    fn empty_means_no_tasks_in_any_duplicate_section_or_history() {
+        let text="Personal notes\n## Empty\nNotes\n## History\n- [x] Old @id(1) @done(2000-01-01 12:00)\n## Duplicate\nnotes\n## Duplicate\n- [ ] Real @id(2)\n## Examples\n```md\n  - [ ] fake task\n## fake heading\n```\n";
+        assert_eq!(empty_names(text).unwrap(),vec!["Empty","Examples"]);
+        assert!(empty_names("## Unsafe\n  - [ ] Maybe a task\n").is_err());
+        assert!(empty_names("## Unsafe\n- [z] malformed\n").is_err());
+    }
+    #[test]
+    fn archive_preserves_raw_tasks_and_copies_source() {
+        let mut list=parse("## Work\n- [ ] Real @id(1)\n  Notes\n");
+        let uid=list.assign_uid(1).unwrap();let mut state=crate::agent_state::initialized(&list).unwrap();
+        state["task_sources"][&uid]=serde_json::json!({"client_id":"test","conversation_id":"chat"});
+        crate::agent_state::save(&mut list,&state).unwrap();let text=list.render();
+        let (_,removed)=split_chat(&text,"Work").unwrap();let archived=archive_sources(&text,&removed,&removed).unwrap();
+        assert!(archived.ends_with(&removed));
+        assert_eq!(crate::agent_state::load(&parse(&archived)).unwrap()["task_sources"][&uid],state["task_sources"][&uid]);
     }
 }

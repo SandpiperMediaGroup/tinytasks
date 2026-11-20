@@ -96,3 +96,21 @@ The app's file watcher refreshes proposals from local MCP clients or a synced fo
 existing cloud-sync limitation still applies: the lock coordinates writers on one computer,
 not simultaneous edits on different computers. Keep unknown metadata and task IDs intact when
 editing Markdown directly, and prefer the MCP tools for desk suggestions.
+
+## Local review additions
+
+Open **TinyTasks basics…** in the view menu for a separate reference window covering desk times,
+agent requests, lists and task-row controls. It never shifts the task canvas. **Clear time** is a text action;
+it keeps the task on your desk, and a failed save retains the old schedule for retry.
+
+Agents can explicitly begin a planning run and report actual progress. **Building** appears in
+the sidebar and desk header. A run expires after five minutes without new progress and becomes
+**Interrupted**. A ready proposal still shows **Review**, even while a replacement is being built.
+Simply connecting an agent never implies planning. Only the user accepts a suggestion.
+
+In other lists, a small lamp appears on row hover or keyboard focus for tasks on the accepted desk. Pending-only suggestions do not
+receive the lamp. One task branch opens at a time; unsent question drafts survive collapsing it.
+
+Details support named link chips: write `[Scout preview](http://localhost:3000)` or paste a plain
+HTTPS URL. Chips open directly; hovering or focusing for 650ms shows the full destination. Edit
+the details text to change a chip's name or URL. The editor retains the original Markdown.

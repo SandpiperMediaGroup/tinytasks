@@ -33,9 +33,10 @@ pub fn run(background: bool) {
 
     builder
         .invoke_handler(tauri::generate_handler![
-            list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_note,
-            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, close_note, drag_note, open_about_link,
-            open_settings, close_settings, list_chats, create_list, rename_list, archive_list, delete_list,
+            get_empty_list_cleanup, archive_empty_lists, get_task_questions, submit_question_response,
+            list, add_task, edit_task, set_done, set_priority, set_due, set_desk, delete_task, open_link, open_detail_link, open_note,
+            location, pick_folder, open_file, list_note, add_subtask, set_subtask_mode, reorder_subtasks, reorder_tasks, close_note, drag_note, open_about_link,
+            open_settings, close_settings, open_basics, close_basics, list_chats, create_list, rename_list, archive_list, delete_list,
             ensure_sidebar_visible, app_info, check_for_updates, get_desk, review_desk, edit_desk_time, add_to_desk, set_work_hours, desk_haptic
         ])
         .setup(move |app| {
@@ -214,8 +215,13 @@ fn review_desk(app: AppHandle, date: String, proposal_id: String, accept: bool) 
 }
 
 #[tauri::command]
-fn edit_desk_time(app: AppHandle, date: String, item: desk::Item, proposal_id: Option<String>) -> Res<desk::Snapshot> {
+fn edit_desk_time(app: AppHandle, date: String, item: desk::Item, proposal_id: Option<String>, expected_item: Option<desk::Item>) -> Res<desk::Snapshot> {
     let state = store::change(|list| {
+        if let Some(expected)=&expected_item {
+            let snapshot=desk::snapshot(list)?;
+            let items=if let Some(id)=proposal_id.as_deref(){&snapshot.proposal.as_ref().filter(|p|p.id==id).ok_or("Suggestion changed")?.items}else{&snapshot.items};
+            if items.iter().find(|i|i.id==item.id)!=Some(expected){return Err("Desk time changed during dragging. Try again.".into());}
+        }
         desk::edit_time(list, &date, item, proposal_id.as_deref())?;
         desk::snapshot(list)
     })?;
@@ -273,8 +279,17 @@ fn set_subtask_mode(app: AppHandle, id: i64, ordered: bool) -> Res<Vec<Task>> {
 }
 
 #[tauri::command]
-fn reorder_subtasks(app: AppHandle, parent_id: i64, ids: Vec<i64>) -> Res<Vec<Task>> {
-    store::change(|l| l.reorder_subtasks(parent_id, &ids))?;
+fn reorder_tasks(app: AppHandle, ids: Vec<i64>, expected_ids: Vec<i64>) -> Res<Vec<Task>> {
+    store::change(|l| l.reorder_tasks(&ids, &expected_ids))?;
+    reply(&app)
+}
+
+#[tauri::command]
+fn reorder_subtasks(app: AppHandle, parent_id: i64, ids: Vec<i64>, expected_ids: Option<Vec<i64>>) -> Res<Vec<Task>> {
+    store::change(|l| {
+        if expected_ids.as_ref().is_some_and(|ids| *ids != l.children(parent_id).iter().map(|t|t.id).collect::<Vec<_>>()) {return Err("Subtasks changed. Try again.".into());}
+        l.reorder_subtasks(parent_id, &ids)
+    })?;
     reply(&app)
 }
 
@@ -296,7 +311,7 @@ fn add_task(app: AppHandle, title: String, mydesk: bool, chat: Option<String>, d
 
 /// The user rewording a task or its details (any task, agents' included).
 #[tauri::command]
-fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<String>, chat: Option<String>) -> Res<Vec<Task>> {
+fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<String>, chat: Option<String>, expected_source: Option<serde_json::Value>) -> Res<Vec<Task>> {
     let title = title.as_deref().map(str::trim);
     if title.is_some_and(str::is_empty) {
         return Err("A task needs a title.".into());
@@ -304,6 +319,11 @@ fn edit_task(app: AppHandle, id: i64, title: Option<String>, details: Option<Str
     let changes = store::Changes { title, details: details.as_deref(), chat: chat.as_deref(), ..Default::default() };
     store::change(|l| {
         if l.get(id).is_none() { return Err("That task is gone.".into()); }
+        if let Some(expected) = &expected_source {
+            let task=l.get(id).unwrap();
+            if expected["chat"]!=task.chat || expected["parent_id"]!=serde_json::json!(task.parent_id) || expected["done_at"]!=serde_json::json!(task.done_at) {return Err("Task changed during dragging. Try again.".into());}
+            if let Some(destination)=chat.as_deref(){crate::agent_state::resolve_list(l,destination)?;}
+        }
         if let Some(destination) = chat.as_deref() {
             let source = l.get(id).unwrap().chat.clone();
             l.preserve_chat(&source);
@@ -406,7 +426,7 @@ fn delete_task(app: AppHandle, id: i64) -> Res<Vec<Task>> {
 
 /// Links come from agents, which may have read untrusted content, so only web links and
 /// deep links into chat/editor apps are opened, never arbitrary protocol handlers or files.
-const LINK_SCHEMES: &[&str] = &[
+pub(crate) const LINK_SCHEMES: &[&str] = &[
     "https", "http", "mailto", "claude", "cursor", "vscode", "vscode-insiders", "windsurf",
     "zed", "slack", "linear", "notion", "figma", "obsidian", "msteams", "discord",
 ];
@@ -564,4 +584,45 @@ fn close_note(window: tauri::WebviewWindow) -> Res<()> {
 fn drag_note(window: tauri::WebviewWindow) -> Res<()> {
     if !window.label().starts_with("note-") { return Err("Only sticky notes can be moved here.".into()); }
     window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_empty_list_cleanup()->Res<serde_json::Value>{store::empty_list_cleanup()}
+#[tauri::command]
+fn archive_empty_lists(app:AppHandle)->Res<serde_json::Value>{let result=store::archive_empty_lists()?;reply(&app)?;Ok(result)}
+#[tauri::command]
+fn get_task_questions(store_uuid:Option<String>,task_refs:Vec<serde_json::Value>)->Res<serde_json::Value>{
+    let list=store::load()?;let state=crate::agent_state::load(&list)?;
+    if let Some(id)=store_uuid {if state["store_uuid"]!=id{return Err(crate::agent_state::error("store_changed","Store changed"));}}
+    crate::questions::for_tasks(&list,&task_refs)
+}
+#[tauri::command]
+fn submit_question_response(app:AppHandle,store_uuid:String,question_id:String,expected_revision_id:String,submission_id:String,outcome:String,answer:Option<serde_json::Value>)->Res<serde_json::Value>{
+    let args=serde_json::json!({"store_uuid":store_uuid,"question_id":question_id,"expected_revision_id":expected_revision_id,"submission_id":submission_id,"outcome":outcome,"answer":answer});
+    let response=store::change(|l|crate::questions::submit(l,&args))?;let _=app.emit("tasks-changed",());Ok(response)
+}
+
+#[tauri::command]
+fn open_detail_link(url:String)->Res<()>{
+    let scheme=url.split_once(':').map(|(s,_)|s.to_ascii_lowercase()).unwrap_or_default();
+    if !LINK_SCHEMES.contains(&scheme.as_str()) || url.chars().any(char::is_control) {return Err("Unsupported link".into());}
+    open::that_detached(&url).map_err(|e|e.to_string())
+}
+
+#[tauri::command]
+async fn open_basics(app: AppHandle) -> Res<()> {
+    if let Some(window) = app.get_webview_window("basics") {
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.show().map_err(|e| e.to_string())?;
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+    tauri::WebviewWindowBuilder::new(&app, "basics", tauri::WebviewUrl::App("basics.html".into()))
+        .title("TinyTasks basics").inner_size(440.0, 600.0).min_inner_size(320.0, 300.0)
+        .center().disable_drag_drop_handler().build().map_err(|e|e.to_string())?;
+    Ok(())
+}
+#[tauri::command]
+fn close_basics(window: tauri::WebviewWindow) -> Res<()> {
+    if window.label() != "basics" { return Err("Only Basics can be closed here.".into()); }
+    window.close().map_err(|e|e.to_string())
 }

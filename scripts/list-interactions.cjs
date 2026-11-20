@@ -247,8 +247,20 @@ module.exports = async (browser, installMock, url, errors) => {
       await page.waitForFunction(shown => document.querySelector('#sidebar').hidden === !shown, width >= 720);
       assert.equal(await page.evaluate(() => localStorage.getItem('sidebar')), '1');
       await assertNoOverflow();
-      await assertCentered(rootLine(1), ['.check', '.more'], `parent controls at ${width}px`);
-      await assertCentered(rootLine(20), ['.check', '.more'], `subtask controls at ${width}px`);
+      for (const id of [1,20]) {
+        if (width >= 480) await assertCentered(rootLine(id), ['.check', '.more'], `controls at ${width}px`);
+        else {
+          const positions=await rootLine(id).evaluate(el=>{
+            const rect=s=>el.querySelector(s).getBoundingClientRect();
+            return {check:rect('.check').top,title:rect('.title').top,titleBottom:rect('.title').bottom,
+              moreTop:rect('.more').top,moreMiddle:rect('.more').top+rect('.more').height/2,
+              statusMiddle:rect('.row-status').top+rect('.row-status').height/2};
+          });
+          assert.ok(Math.abs(positions.check-positions.title)<=1);
+          assert.ok(positions.moreTop>=positions.titleBottom);
+          assert.ok(Math.abs(positions.moreMiddle-positions.statusMiddle)<=1);
+        }
+      }
     }
     await page.setViewportSize({ width: 360, height: 780 });
     await page.screenshot({ path: path.join(dir, 'narrow-sidebar.png') });

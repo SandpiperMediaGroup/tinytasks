@@ -32,6 +32,7 @@
         <button id="change-folder" role="menuitem"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Change folder…</button>
         <button id="open-file" role="menuitem"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4"/></svg>Open tasks.md</button>
         <div class="menu-sep"></div>
+        <button id="basics-open" role="menuitem">TinyTasks basics…</button>
         <button id="settings-open" role="menuitem"><svg viewBox="0 0 24 24"><path d="m9 3-.6 2.4-2.1 1.2L4 6l-2 3.5 1.7 1.8v1.4L2 14.5 4 18l2.3-.6 2.1 1.2L9 21h6l.6-2.4 2.1-1.2 2.3.6 2-3.5-1.7-1.8v-1.4L22 9.5 20 6l-2.3.6-2.1-1.2L15 3z"/><circle cx="12" cy="12" r="3"/></svg>Settings</button>
       </div>
     </div>
@@ -85,14 +86,15 @@
     <aside id="sidebar" aria-label="Navigation" hidden>
       <nav id="primary-nav" aria-label="Views"></nav>
       <div class="menu-sep"></div>
-      <div class="sidebar-heading"><span>Lists &amp; Chats</span><button id="add-list" class="icon" aria-label="New list" title="New list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
+      <div class="sidebar-heading"><button id="lists-menu" aria-label="List actions" aria-haspopup="menu">Lists &amp; Chats</button><button id="add-list" class="icon" aria-label="New list" title="New list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
       <nav id="list-nav" aria-label="Lists &amp; Chats"></nav>
       <form id="new-list" hidden autocomplete="off"><input id="new-list-name" maxlength="200" placeholder="List name" aria-label="New list name"></form>
-      <div id="sidebar-space" title="Double-click to create a list"></div>
+      <div id="sidebar-space"></div>
     </aside>
     <div id="sidebar-resizer" role="separator" aria-label="Sidebar width" aria-orientation="vertical" aria-valuemin="140" aria-valuemax="400" aria-valuenow="220" tabindex="0" hidden></div>
   <main id="main">
     <div id="desk-head" hidden>
+      <span id="desk-planning-status" role="status"></span>
       <div id="desk-timeline" role="group" hidden>
         <span class="timeline-lamp desk-lamp" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="lamp-shade" d="M8 3h8l3.5 8h-15L8 3z"/><path d="M12 11v9M8 20h8"/></svg></span>
         <div id="desk-hours" aria-hidden="true"></div>
@@ -135,7 +137,7 @@
         <span class="desk-arc-duration" aria-hidden="true"></span>
       </div>
     </div>
-    <button type="button" class="desk-arc-clear" aria-label="Clear time" title="Clear time" hidden><svg viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+    <button type="button" class="desk-arc-clear" hidden>Clear time</button>
     <p id="desk-time-error" class="desk-arc-error" role="alert" hidden></p>
     <button type="button" class="desk-arc-retry" hidden>Retry</button>
     <span class="desk-arc-live desk-picker-heading" aria-live="polite"></span>
@@ -160,6 +162,7 @@
   </form>
   <div id="list-menu" class="menu floating" role="menu" aria-label="Move to list" hidden></div>
   <div id="sidebar-menu" class="menu floating" role="menu" aria-label="List actions" hidden>
+    <button data-list-action="new" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New list…</button>
     <button data-list-action="rename" role="menuitem">Rename…</button>
     <button data-list-action="icon" role="menuitem">Change icon…</button>
     <div class="menu-sep"></div>
@@ -168,6 +171,8 @@
     <div class="menu-sep"></div>
     <button data-list-action="archive" role="menuitem">Archive list</button>
     <button data-list-action="delete" class="delete" role="menuitem">Delete list…</button>
+    <div class="menu-sep"></div>
+    <button data-list-action="cleanup" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v12H4zM3 4h18v4H3zM10 12h4"/></svg>Archive empty lists</button>
   </div>
   <dialog id="list-dialog" aria-labelledby="list-dialog-title">
     <form id="list-dialog-form">
@@ -209,6 +214,8 @@
 
 
 
+
+
   <template id="row">
     <li class="task">
       <div class="line">
@@ -220,8 +227,9 @@
           <div class="sub"><span class="task-id" hidden></span><span class="src"></span><span class="due" hidden><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg><span></span></span><span class="time-sub"></span></div>
         </div>
         <div class="row-status">
-          <button class="subtask-count" hidden></button><span class="prio" hidden></span>
+          <span class="prio" hidden></span>
           <button class="icon details-indicator" aria-label="Task details" title="Task details" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7c4-4 12-4 11-1S4 12 5 14s13-6 14-3-9 6-7 8c1 1 4 0 7-1"/></svg></button>
+          <button class="subtask-count" hidden></button>
           <span class="time"></span>
           <button class="icon more" aria-label="Task actions" title="Task actions" aria-haspopup="menu" aria-controls="task-menu" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
         </div>
@@ -229,7 +237,9 @@
       <div class="details">
         <div class="details-inner">
           <div class="details-pad">
-            <p class="body" role="button" tabindex="0" aria-label="Edit task details"></p>
+            <div class="body" role="button" tabindex="0" aria-label="Edit task details"></div>
+            <div class="detail-links" hidden></div>
+            <div class="question-slot"></div>
             <div class="subtasks" hidden>
               <div class="subtasks-head">
                 <span>Subtasks</span>
@@ -249,6 +259,8 @@
   <script src="icons.js"></script>
   <script src="desk-arc.js"></script>
   <script src="desk.js"></script>
+  <script src="details-links.js"></script>
+  <script src="questions.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

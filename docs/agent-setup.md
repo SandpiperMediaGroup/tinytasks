@@ -90,11 +90,20 @@ Start a new chat or reload the client's tools after configuration. Verify that T
 are available and call `list_tasks`. Confirm it sees the intended existing list; a successful
 empty result alone does not establish that an existing shared list was found.
 
-For day planning, verify `get_desk` and `suggest_desk` are available too. Read the local date and
-current arrangement with `get_desk`, then submit existing open tasks with desk-only start times and
-optional durations. Suggestions wait for the user's whole-plan Accept/Decline in My Desk;
-never report a proposed arrangement as accepted. `set_desk` now creates an untimed suggestion
-for review. See [My Desk](my-desk.md) for the tool contract and an example.
+Modern agents should discover all pages of `list_lists` and `list_tasks_page` before writing.
+Reuse tasks and destinations; use Personal (`destination_list: ""`) for isolated actions.
+Keep source conversation identity separate from list membership. `create_list` needs an explicit
+purpose; `create_tasks` and `update_task_v2` carry source and retry-safe request IDs.
+
+For day planning, read `get_desk`, then `begin_desk_planning`. Only report actual work with
+`report_desk_planning`; the five-minute lease expires if work stops. `submit_desk_plan` submits
+existing task references for user review. Legacy `suggest_desk` / `set_desk` remain compatible.
+
+Questions are optional MCP publication: `publish_question`, `get_question`,
+`list_question_responses`, `acknowledge_question_response`, and `withdraw_question`.
+An agent chooses to publish a prompt/options; the user explicitly sends or declines in task
+ details. The agent polls and acknowledges. Nothing intercepts Claude Code, Codex, or OpenCode
+questions, installs hooks, or resumes a conversation automatically.
 
 ## 5. Save the usage instruction
 
@@ -126,3 +135,5 @@ Report the app location, task-file location, agents verified, and where the usag
 were saved. Identify any client that still needs a restart, user interaction, or write access.
 Setup is complete when the app and the requested agents agree on the same task list and the
 usage instruction is available in future chats.
+
+When the user manually reorders tasks in No sorting, TinyTasks saves optional `@order(n)` attributes on root tasks. Preserve these when editing tasks. They control ordinary-view manual order without changing list headings or subtask `@position` values; tasks without a rank follow ranked tasks in file order.

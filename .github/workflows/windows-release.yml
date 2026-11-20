@@ -95,16 +95,9 @@ jobs:
           $extracted = Join-Path $PWD 'portable-check/tinytasks.exe'
           if ((Get-FileHash $binary).Hash -ne (Get-FileHash $extracted).Hash) { throw 'Portable executable differs from the release build.' }
           $env:TINYTASKS_SMOKE_BINARY = $extracted
-          @'
-          import os
-          from pathlib import Path
-          test = Path('scripts/mcp-smoke.py')
-          source = test.read_text()
-          old = "binary = Path(__file__).resolve().parents[1] / 'target/debug/tinytasks'"
-          assert old in source
-          source = source.replace(old, "binary = Path(os.environ['TINYTASKS_SMOKE_BINARY'])")
-          exec(compile(source, str(test), 'exec'), {'__file__': str(test.resolve()), '__name__': '__main__'})
-          '@ | python -
+          python scripts/mcp-smoke.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/agent-workflow-smoke.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           @($installerName, $zipName) | ForEach-Object {
             $digest = (Get-FileHash "release-output/$_" -Algorithm SHA256).Hash.ToLowerInvariant()

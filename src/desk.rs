@@ -46,6 +46,8 @@ pub struct Snapshot {
     pub items: Vec<Item>,
     pub proposal: Option<Proposal>,
     pub proposal_error: Option<String>,
+    pub server_now_ms: i64,
+    pub planning: serde_json::Value,
 }
 
 pub fn minutes(time: &str) -> Option<u16> {
@@ -81,7 +83,13 @@ fn write(list: &mut List, saved: &Saved) -> Result<(), String> {
     // An agent/client name cannot end the HTML comment or add Markdown task lines.
     let json = serde_json::to_string(saved).map_err(|e| e.to_string())?
         .replace('<', "\\u003c").replace('>', "\\u003e").replace('&', "\\u0026");
+    let before = observation(list)?;
     list.set_desk_metadata(&json);
+    let mut state = crate::agent_state::load(list)?;
+    if state["planning"]["current"]["status"] == "building" && state["planning"]["current"]["observed_proposal"] == before {
+        state["planning"]["current"]["observed_proposal"] = observation(list)?;
+        crate::agent_state::save(list, &state)?;
+    }
     Ok(())
 }
 
@@ -131,7 +139,7 @@ pub fn snapshot(list: &List) -> Result<Snapshot, String> {
     let saved = saved(list, &store::today())?;
     let proposal_error = saved.proposal.as_ref().and_then(|p| validate(list, &p.items).err());
     Ok(Snapshot { date: saved.date.clone(), work_start: saved.work_start.clone(), work_end: saved.work_end.clone(),
-        items: current(list, &saved), proposal: saved.proposal, proposal_error })
+        items: current(list, &saved), proposal: saved.proposal, proposal_error, server_now_ms: now_ms(), planning: effective_planning(list, &crate::agent_state::load(list)?, now_ms())? })
 }
 
 fn revision() -> String {
@@ -341,5 +349,100 @@ mod tests {
         review(&mut list, &store::today(), &proposal.id, false).unwrap();
         assert!(snapshot(&list).unwrap().items.iter().any(|item| item.id == id));
         assert_eq!(list.get(id).unwrap().due, None);
+    }
+}
+
+// Explicit planning activity: a connection alone is never a heartbeat.
+fn now_ms()->i64{chrono::Utc::now().timestamp_millis()}
+fn observation(list:&List)->Result<serde_json::Value,String>{
+    let p=saved(list,&store::today())?.proposal;
+    Ok(p.map(|p|{let value=serde_json::to_value(&p).unwrap();serde_json::json!({"id":p.id,"content_sha256":crate::agent_state::hash(&value.to_string())})}).unwrap_or(serde_json::Value::Null))
+}
+fn effective_planning(list:&List,state:&serde_json::Value,now:i64)->Result<serde_json::Value,String>{
+    use serde_json::json;
+    let mut run=state["planning"]["current"].clone();
+    if run.is_null()||run["date"]!=store::today(){return Ok(serde_json::Value::Null);}
+    if run["status"]=="building" {
+        let reason=if run["observed_proposal"]!=observation(list)?{Some("proposal_changed")}
+            else if now+5000<run["updated_at_ms"].as_i64().unwrap_or(0){Some("clock_changed")}
+            else if now>=run["expires_at_ms"].as_i64().unwrap_or(0){Some("expired")}else{None};
+        if let Some(reason)=reason{run["status"]=json!("interrupted");run["failure_code"]=json!(reason);}
+    }
+    Ok(run)
+}
+pub fn plan_mutation(list:&mut List,op:&str,args:&serde_json::Value,client:&str)->Result<serde_json::Value,String>{
+    use crate::agent_state as a; use serde_json::json;
+    let allowed=match op {"begin_desk_planning"=>vec!["date","source","request_id","agent"],"report_desk_planning"=>vec!["date","source","request_id","run_id","status","message"],_=>vec!["date","source","request_id","run_id","items"]};
+    if args.as_object().is_none_or(|o|o.keys().any(|k|!allowed.contains(&k.as_str()))){return Err(a::error("invalid_request","Unknown planning argument"));}
+    let result=a::transaction(list,op,args,|list,state|{
+        let now=now_ms();if args["date"]!=store::today(){return Err(a::error("wrong_day","Read today's date from get_desk"));}
+        if state["planning"].is_null(){state["planning"]=json!({});}
+        if !state["planning"].is_object(){return Err(a::error("invalid_metadata","Invalid planning data"));}
+        if op=="begin_desk_planning"{
+            let run_id=a::id();let agent=args["agent"].as_str().unwrap_or(client).split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect::<String>();
+            state["planning"]["current"]=json!({"run_id":run_id,"source":args["source"],"agent":agent,"date":store::today(),"status":"building","started_at_ms":now,"updated_at_ms":now,"expires_at_ms":now+300000,"observed_proposal":observation(list)?});
+            return Ok(json!({"run_id":run_id,"date":store::today(),"started_at_ms":now,"expires_at_ms":now+300000}));
+        }
+        let run=effective_planning(list,state,now)?;
+        if run.is_null()||run["run_id"]!=args["run_id"]{return Err(a::error("run_not_current","A newer planning run owns this desk"));}
+        if !a::same_source(&run["source"],&args["source"]){return Err(a::error("source_mismatch","Run belongs to another source"));}
+        if run["status"]!="building"{return Err(a::error(run["failure_code"].as_str().unwrap_or("run_terminal"),"Planning stopped. Begin a new run."));}
+        if op=="report_desk_planning"{
+            let status=a::string(args,"status")?;
+            if !["working","failed"].contains(&status){return Err(a::error("invalid_request","Use working or failed"));}
+            if status=="working"&&args.get("message").is_some(){return Err(a::error("invalid_request","Working reports do not accept messages"));}
+            if args.get("message").is_some_and(|v|v.as_str().is_none_or(|s|s.chars().count()>240)){return Err(a::error("invalid_request","Failure message must be short text"));}
+            let current=&mut state["planning"]["current"];current["updated_at_ms"]=json!(now);
+            if status=="working"{current["expires_at_ms"]=json!(now+300000);}else{current["status"]=json!("failed");current["failure_code"]=json!("agent_failed");current["failure_message"]=args["message"].clone();}
+            return Ok(json!({"run_id":args["run_id"],"status":current["status"],"updated_at_ms":now,"expires_at_ms":current["expires_at_ms"]}));
+        }
+        let inputs=args["items"].as_array().filter(|a|a.len()<=200).ok_or_else(||a::error("invalid_request","Use at most 200 desk items"))?;
+        let mut items=vec![];
+        for input in inputs {a::task_ref(list,input)?;let mut item=input.clone();item.as_object_mut().unwrap().remove("uid");items.push(serde_json::from_value::<Item>(item).map_err(|e|a::error("invalid_request",&e.to_string()))?);}
+        let proposal=suggest(list,&store::today(),run["agent"].as_str().unwrap_or(client),items)?;
+        let current=&mut state["planning"]["current"];current["status"]=json!("suggested");current["updated_at_ms"]=json!(now);current["submitted_proposal_id"]=json!(proposal.id);current["observed_proposal"]=observation(list)?;
+        Ok(json!({"run_id":args["run_id"],"proposal_id":proposal.id,"status":"suggested"}))
+    })?;
+    let mut result=result;result["current"]=serde_json::to_value(snapshot(list)?).map_err(|e|e.to_string())?;Ok(result)
+}
+pub fn legacy_suggest(list:&mut List,day:&str,agent:&str,items:Vec<Item>)->Result<Proposal,String>{
+    let p=suggest(list,day,agent,items)?;let mut state=crate::agent_state::load(list)?;
+    if state["planning"].is_object(){state["planning"]["current"]=serde_json::Value::Null;crate::agent_state::save(list,&state)?;}Ok(p)
+}
+
+#[cfg(test)]
+mod planning_tests {
+    use super::*;
+    use crate::agent_state as a;
+    use serde_json::json;
+    #[test]
+    fn plans_have_expiring_source_owned_leases_and_review_stays_separate(){
+        let mut list=store::parse("- [ ] Do work @id(1)\n");let uid=list.assign_uid(1).unwrap();
+        let source=json!({"client_id":"test","conversation_id":"chat"});
+        let begin=json!({"date":store::today(),"source":source,"request_id":"begin"});
+        let run=plan_mutation(&mut list,"begin_desk_planning",&begin,"test").unwrap();
+        assert_eq!(snapshot(&list).unwrap().planning["status"],"building");assert!(snapshot(&list).unwrap().proposal.is_none());
+        let replay=plan_mutation(&mut list,"begin_desk_planning",&begin,"test").unwrap();assert_eq!(replay["run_id"],run["run_id"]);
+        let mut report=json!({"date":store::today(),"source":source,"request_id":"report","run_id":run["run_id"],"status":"working"});
+        report["source"]["conversation_id"]=json!("wrong");assert!(plan_mutation(&mut list,"report_desk_planning",&report,"test").unwrap_err().contains("source_mismatch"));
+        let state=a::load(&list).unwrap();let expiry=state["planning"]["current"]["expires_at_ms"].as_i64().unwrap();
+        assert_eq!(effective_planning(&list,&state,expiry).unwrap()["failure_code"],"expired");
+        assert_eq!(effective_planning(&list,&state,state["planning"]["current"]["updated_at_ms"].as_i64().unwrap()-6000).unwrap()["failure_code"],"clock_changed");
+        let submit=json!({"date":store::today(),"source":source,"request_id":"submit","run_id":run["run_id"],"items":[{"id":1,"uid":uid,"start":"09:00","duration":30}]});
+        let result=plan_mutation(&mut list,"submit_desk_plan",&submit,"test").unwrap();
+        assert_eq!(result["status"],"suggested");let snapshot=snapshot(&list).unwrap();assert!(snapshot.items.is_empty());assert!(snapshot.proposal.is_some());
+        assert_eq!(plan_mutation(&mut list,"submit_desk_plan",&submit,"test").unwrap()["proposal_id"],result["proposal_id"]);
+    }
+    #[test]
+    fn newer_runs_and_external_proposal_changes_fence_old_workers(){
+        let mut list=store::parse("- [ ] Do work @id(1)\n");
+        let mut args=json!({"date":store::today(),"source":{"client_id":"test","conversation_id":"chat"},"request_id":"first"});
+        let first=plan_mutation(&mut list,"begin_desk_planning",&args,"test").unwrap();args["request_id"]=json!("second");
+        plan_mutation(&mut list,"begin_desk_planning",&args,"test").unwrap();
+        let report=json!({"date":store::today(),"source":args["source"],"request_id":"report","run_id":first["run_id"],"status":"working"});
+        assert!(plan_mutation(&mut list,"report_desk_planning",&report,"test").unwrap_err().contains("run_not_current"));
+        let state=a::load(&list).unwrap();let mut tampered=state.clone();tampered["planning"]["current"]["observed_proposal"]=json!({"id":"different"});
+        assert_eq!(effective_planning(&list,&tampered,now_ms()).unwrap()["failure_code"],"proposal_changed");
+        legacy_suggest(&mut list,&store::today(),"legacy",vec![]).unwrap();assert!(snapshot(&list).unwrap().planning.is_null());
     }
 }

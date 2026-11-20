@@ -58,7 +58,8 @@ class DeskController {
     const sequence = ++this.sequence;
     const state = await this.invoke("get_desk");
     if (sequence !== this.sequence) return false;
-    const changed = JSON.stringify(state) !== this.renderedJson;
+    const comparable = { ...state }; delete comparable.server_now_ms; delete comparable.planning;
+    const changed = JSON.stringify(comparable) !== this.renderedJson;
     if (this.state?.proposal?.id !== state.proposal?.id) this.error = "";
     this.state = state;
     return changed;
@@ -83,7 +84,9 @@ class DeskController {
     this.tasks = tasks;
     document.body.classList.toggle("desk-view", active);
     this.hasTimes = this.entries(tasks).some(item => item.start);
-    this.renderedJson = JSON.stringify(this.state);
+    const comparable = { ...this.state }; delete comparable.server_now_ms; delete comparable.planning;
+    this.renderedJson = JSON.stringify(comparable);
+    this.renderStatus();
     this.$("desk-head").hidden = !active || !this.state;
     if (!active || !this.state) return;
     const state = this.state, proposal = state.proposal;
@@ -95,6 +98,18 @@ class DeskController {
     this.$("desk-error").textContent = this.error || state.proposal_error || "";
     this.$("desk-timeline").hidden = false;
     this.updateClock(true);
+  }
+  statusText() {
+    if (this.state?.proposal) return "Review";
+    const run = this.state?.planning;
+    return run?.status === "building" ? "Building" : ["interrupted", "failed"].includes(run?.status) ? "Interrupted" : "";
+  }
+  renderStatus() {
+    const run = this.state?.planning;
+    const text = run?.status === "building" ? (this.state?.proposal ? "Building a replacement…" : "Building your day…") : run?.status === "failed" ? "Planning stopped" : run?.status === "interrupted" ? "Planning interrupted" : "";
+    if (this.$("desk-planning-status")) this.$("desk-planning-status").textContent = text;
+    const badge = document.querySelector('#primary-nav .desk-lamp')?.parentElement?.querySelector('.n');
+    if (badge) { badge.textContent = this.statusText() || String(this.state?.items?.length || 0); badge.classList.toggle('desk-review-badge', !!this.statusText()); }
   }
   updateClock(force = false) {
     if (!this.active || !this.state) return;
@@ -254,7 +269,7 @@ class DeskController {
     if (duration && this.minutes(start) + duration > 1440) duration = null;
     const item = { id: drag.task.id, start, duration };
     try {
-      const result = await this.invoke("edit_desk_time", { date: drag.date, proposalId: drag.context.proposalId, item });
+      const result = await this.invoke("edit_desk_time", { date: drag.date, proposalId: drag.context.proposalId, item, expectedItem: drag.context.item });
       await this.refresh();
       this.endTimelineDrag();
       const marker = this.$("desk-markers").querySelector(`[data-task-id="${item.id}"]`);

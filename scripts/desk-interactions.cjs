@@ -172,8 +172,14 @@ module.exports = async (browser, installMock, url, errors) => {
     const clear = dialog.getByRole('button', { name: 'Clear time', exact: true });
     assert.equal(await dialog.locator('.desk-arc-clear').count(), 1);
     const clearBox = await clear.boundingBox(), dialogBox = await dialog.boundingBox();
-    assert.ok(clearBox.x - dialogBox.x < 16 && dialogBox.y + dialogBox.height - (clearBox.y + clearBox.height) < 16);
-    await clear.click();await saved();
+    assert.equal(await clear.textContent(), 'Clear time');
+    assert.ok(clearBox.x >= dialogBox.x && clearBox.x + clearBox.width <= dialogBox.x + dialogBox.width);
+    assert.equal(await clear.locator('svg').count(), 0, 'Clear is a text action, not a close icon');
+    const beforeClear = await item(2);
+    await page.evaluate(()=>testState.failDesk=true);await clear.click();
+    await dialog.locator('#desk-time-error').waitFor();assert.deepEqual(await item(2),beforeClear);
+    assert.equal(await clear.isVisible(),true,'A failed clear keeps the saved schedule visible');
+    await page.evaluate(()=>testState.failDesk=false);await dialog.locator('.desk-arc-retry').click();await saved();
     assert.deepEqual(await item(2),{start:null,duration:null});
     await dismiss();
     await page.locator('#desk-timeline').waitFor({state:'visible'});assert.equal(await page.locator('.desk-time').count(),0);

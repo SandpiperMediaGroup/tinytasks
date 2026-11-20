@@ -2,7 +2,7 @@
 //! and to see which ones the user has checked off. Writes go straight into the markdown
 //! file; the desktop app watches it and notifies the user.
 
-use crate::{desk, store};
+use crate::{desk, store, agent_state, questions};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 
@@ -36,17 +36,7 @@ pub fn run() {
                     "protocolVersion": params["protocolVersion"].as_str().unwrap_or("2025-06-18"),
                     "capabilities": { "tools": {} },
                     "serverInfo": { "name": "tinytasks", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": "TinyTasks is the user's desktop to-do list for things THEY must do. \
-                        Whenever you ask the user to do something you cannot do yourself, add it with add_tasks. \
-                        Use priority sparingly: omit it by default; set it only for clear urgency or an explicit user request. \
-                        Use the actual originating conversation title as chat whenever available, and reuse it consistently. \
-                        If the title is unavailable, use a concise descriptive fallback, not a made-up exact title. \
-                        Use subtasks for related steps toward one outcome; use ordered steps when sequence matters and a checklist otherwise. \
-                        Create the parent first, then use its returned ID as parent_id in add_tasks; keep unrelated actions separate. \
-                        Use list_tasks to see what they have checked off before relying on it. \
-                        When preparing the user's day, call get_desk for their local date and current arrangement, \
-                        then list_tasks and suggest_desk with existing open task IDs, start times and optional durations. \
-                        A suggestion waits for the user's Accept/Decline in My Desk; never report it as accepted or change due dates to schedule work."
+                    "instructions": "TinyTasks holds HUMAN actions, not your own execution plan. Discover existing lists with list_lists and tasks with list_tasks_page; reuse/update before creating. Prefer create_tasks with an existing destination_list (Personal by default). Create a list only for an intentional continuing home or explicit user request, with create_list and purpose. Keep source conversation identity separate from destination. Related steps belong as subtasks. Use priority sparingly. Modern writes require source and stable request_id for retries. For legacy tasks use ensure_task_identity with the discovery snapshot. For daily planning call get_desk, begin_desk_planning, report_desk_planning at meaningful working stages within five minutes, then submit_desk_plan; only the human accepts. Optional: publish_question on an existing task when you want the user to answer in TinyTasks; poll list_question_responses and acknowledge receipt. Defaults never submit. There are no native agent hooks or automatic wake-ups. Legacy add_tasks/list_tasks/update_task retain older behavior; prefer the modern tools."
                 }))
             }
             "ping" => Ok(json!({})),
@@ -68,10 +58,10 @@ fn reply(out: &mut impl Write, v: Value) {
 }
 
 fn tools() -> Value {
-    json!([
+    let mut tools = json!([
         {
             "name": "add_tasks",
-            "description": "Put action items for the USER (the human) on their TinyTasks desktop list. \
+            "description": "Legacy tool; prefer create_tasks to avoid accidental list creation. Put action items for the USER (the human) on their TinyTasks desktop list. \
                 Call this whenever you hand the user something they must do themselves (e.g. 'Approve the PR', \
                 'Add the STRIPE_KEY secret in Vercel'), so it doesn't get lost as the chat scrolls. \
                 Not for your own todo items. The user gets a desktop notification. \
@@ -216,7 +206,9 @@ fn tools() -> Value {
                 "required": ["ids"]
             }
         }
-    ])
+    ]);
+    tools.as_array_mut().unwrap().extend(modern_tools());
+    tools
 }
 
 fn text(s: impl Into<String>, is_error: bool) -> Value {
@@ -225,7 +217,18 @@ fn text(s: impl Into<String>, is_error: bool) -> Value {
 
 fn call(client: &str, params: &Value) -> Value {
     let args = &params["arguments"];
-    let res: Result<String, String> = match params["name"].as_str().unwrap_or("") {
+    let name = params["name"].as_str().unwrap_or("");
+    if modern_tools().iter().any(|t| t["name"] == name) {
+        let result = match name {
+            "list_lists" | "list_tasks_page" => store::load().and_then(|l| agent_state::discovery(&l,name,args)),
+            "get_question" | "list_question_responses" => store::load().and_then(|l| questions::read(&l,name,args)),
+            "publish_question" | "withdraw_question" | "acknowledge_question_response" => store::change(|l|questions::mutate(l,name,args)),
+            "begin_desk_planning" | "report_desk_planning" | "submit_desk_plan" => store::change(|l|desk::plan_mutation(l,name,args,client)),
+            _ => store::change(|l|agent_state::mutate(l,name,args,client)),
+        };
+        return match result { Ok(v) => { if !["list_lists","list_tasks_page","get_question","list_question_responses"].contains(&name) {crate::launch::ensure_app_running();} text(v.to_string(),false) }, Err(e) => text(if serde_json::from_str::<Value>(&e).is_ok(){e}else{agent_state::error("write_failed",&e)},true) };
+    }
+    let res: Result<String, String> = match name {
         "add_tasks" => add_tasks(client, args),
         "list_tasks" => store::load().and_then(|list| {
             let status = args["status"].as_str().unwrap_or("all");
@@ -370,7 +373,7 @@ fn suggest_desk(client: &str, args: &Value) -> Result<String, String> {
     let date = args["date"].as_str().ok_or("`date` must be the local date from get_desk")?;
     let items: Vec<desk::Item> = serde_json::from_value(args["items"].clone()).map_err(|e| format!("Invalid arrangement: {e}"))?;
     let agent = args["agent"].as_str().filter(|s| !s.trim().is_empty()).unwrap_or(client);
-    store::change(|list| desk::suggest(list, date, agent, items))?;
+    store::change(|list| desk::legacy_suggest(list, date, agent, items))?;
     crate::launch::ensure_app_running();
     Ok("Suggested an arrangement for today's My Desk. It is waiting for the user's Accept/Decline; the accepted desk and due dates are unchanged.".into())
 }
@@ -379,7 +382,7 @@ fn set_desk(client: &str, args: &Value) -> Result<String, String> {
     let items = args["ids"].as_array().ok_or("`ids` must be an array")?.iter()
         .map(|v| id_of(v).map(|id| desk::Item { id, start: None, duration: None }).ok_or("Every item in `ids` must be a task id"))
         .collect::<Result<Vec<_>, _>>()?;
-    store::change(|list| desk::suggest(list, &store::today(), client, items))?;
+    store::change(|list| desk::legacy_suggest(list, &store::today(), client, items))?;
     crate::launch::ensure_app_running();
     Ok("Suggested these tasks for today's My Desk. Waiting for the user's Accept/Decline.".into())
 }
@@ -393,4 +396,34 @@ fn for_ids(args: &Value, f: impl Fn(&mut store::List, i64) -> bool, verb: &str) 
     let ids: Vec<i64> = args["ids"].as_array().ok_or("`ids` must be an array")?.iter().filter_map(id_of).collect();
     let hit = store::change(|list| Ok(ids.iter().filter(|id| f(list, **id)).map(|id| format!("#{id}")).collect::<Vec<_>>()))?;
     Ok(if hit.is_empty() { "No matching tasks.".into() } else { format!("{verb}: {}", hit.join(", ")) })
+}
+
+fn modern_tools()->Vec<Value>{
+    let string=json!({"type":"string"});let reference=json!({"type":"object","properties":{"id":{"type":"integer"},"uid":{"type":"string"}},"required":["id","uid"]});
+    let source=json!({"type":"object","properties":{"client_id":{"type":"string","maxLength":200},"conversation_id":{"type":"string","maxLength":500},"title":{"type":"string","maxLength":500},"url":{"type":"string","maxLength":2048}},"required":["client_id","conversation_id"]});
+    let question=json!({"type":"object","properties":{"prompt":{"type":"string","maxLength":4000},"mode":{"enum":["single","multiple","text"]},"options":{"type":"array","maxItems":12,"items":{"type":"object","properties":{"id":string,"label":string,"description":string},"required":["id","label"]}},"min_selected":{"type":"integer","minimum":0},"max_selected":{"type":"integer","minimum":1},"allow_custom":{"type":"boolean"},"default_option_ids":{"type":"array","items":string},"recommended_option_id":string,"default_text":string},"required":["prompt","mode"]});
+    let task=json!({"type":"object","properties":{"title":string,"details":string,"link":string,"priority":{"type":["integer","null"],"enum":[0,1,2,3,null]},"due":{"type":["string","null"]},"mydesk":{"type":"boolean"}},"required":["title"]});
+    let mut result=vec![];
+    let mut add=|name:&str,description:&str,props:Value,required:Vec<&str>,write:bool|{
+        let mut props=props;let mut required=required;
+        if write {props["source"]=source.clone();props["request_id"]=string.clone();required.extend(["source","request_id"]);}
+        result.push(json!({"name":name,"description":description,"annotations":{"readOnlyHint":!write},"inputSchema":{"type":"object","properties":props,"required":required}}));
+    };
+    add("list_lists","Discover all lists including empty lists. Reuse an existing list; Personal has name empty string.",json!({"limit":{"type":"integer","minimum":1,"maximum":200},"cursor":string}),vec![],false);
+    add("list_tasks_page","Complete paginated discovery, including old completions. Exact list_name, stable UID and snapshot revision. Restart on stale_cursor.",json!({"status":{"enum":["all","open","done"]},"list_name":string,"parent_id":{"type":"integer"},"desk":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200},"cursor":string}),vec![],false);
+    add("ensure_task_identity","Allocate immutable identity for a legacy task using the current discovery snapshot. Reread discovery after writes.",json!({"task_id":{"type":"integer"},"expected_snapshot_revision":string}),vec!["task_id","expected_snapshot_revision"],true);
+    add("create_list","Explicitly create or reuse a list for a continuing purpose or user request. Do not make a list per conversation.",json!({"name":string,"purpose":string}),vec!["name","purpose"],true);
+    add("create_tasks","Create human actions in an existing destination list. Omit destination_list for Personal. Unknown list is an error. Related steps use parent_ref. Retry with identical request_id/input.",json!({"destination_list":string,"parent_ref":reference,"ordered":{"type":"boolean"},"tasks":{"type":"array","minItems":1,"maxItems":200,"items":task}}),vec!["tasks"],true);
+    let mut changes=task.clone();changes.as_object_mut().unwrap().remove("required");changes["properties"]["destination_list"]=string.clone();changes["properties"]["ordered"]=json!({"type":"boolean"});changes["properties"]["origin_source"]=json!({"anyOf":[source.clone(),{"type":"null"}]});
+    add("update_task_v2","Update a discovered task with UID and snapshot guard. Source attribution and list destination are separate. Prefer updating over duplicate tasks.",json!({"task_ref":reference,"expected_snapshot_revision":string,"changes":changes}),vec!["task_ref","expected_snapshot_revision","changes"],true);
+    add("begin_desk_planning","Explicitly start planning today. Shows Building for five minutes; does not change the accepted desk or pending suggestion.",json!({"date":string,"agent":string}),vec!["date"],true);
+    add("report_desk_planning","Report actual work or failure on the current run. New logical heartbeat needs a new request_id. No idle heartbeats.",json!({"date":string,"run_id":string,"status":{"enum":["working","failed"]},"message":{"type":"string","maxLength":240}}),vec!["date","run_id","status"],true);
+    let mut item=reference.clone();item["properties"]["start"]=json!({"type":["string","null"]});item["properties"]["duration"]=json!({"type":["integer","null"],"minimum":1,"maximum":1440});
+    add("submit_desk_plan","Submit a complete reviewable plan for the current run with stable task UIDs. Only the human accepts.",json!({"date":string,"run_id":string,"items":{"type":"array","maxItems":200,"items":item}}),vec!["date","run_id","items"],true);
+    add("publish_question","Optional: ask the human a question in an existing task's details. Single/multiple choice or text; defaults never submit. Poll responses later. No native host hooks or wake-up.",json!({"store_uuid":string,"task_ref":reference,"question":question,"question_id":string,"expected_revision_id":string}),vec!["store_uuid","task_ref","question"],true);
+    add("get_question","Read a question from its originating source. Does not acknowledge receipt.",json!({"store_uuid":string,"source":source,"question_id":string}),vec!["store_uuid","source","question_id"],false);
+    add("list_question_responses","Poll your source's saved human answers, unacknowledged by default. Fetching does not mark received. Retains answered prompt/options.",json!({"store_uuid":string,"source":source,"acknowledged":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":100},"cursor":string}),vec!["store_uuid","source"],false);
+    add("acknowledge_question_response","Acknowledge an exact response after consuming it. TinyTasks then shows Received by agent.",json!({"store_uuid":string,"question_id":string,"revision_id":string,"response_id":string}),vec!["store_uuid","question_id","revision_id","response_id"],true);
+    add("withdraw_question","Withdraw a pending question without deleting previous answer history.",json!({"store_uuid":string,"question_id":string,"expected_revision_id":string}),vec!["store_uuid","question_id","expected_revision_id"],true);
+    result
 }

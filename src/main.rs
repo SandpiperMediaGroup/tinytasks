@@ -3,6 +3,8 @@
 
 mod app;
 mod store;
+mod agent_state;
+mod questions;
 mod desk;
 mod launch;
 mod mcp;

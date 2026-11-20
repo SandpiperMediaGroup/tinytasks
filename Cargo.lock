@@ -4005,7 +4005,7 @@ dependencies = [
 
 [[package]]
 name = "tinytasks"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "dirs 6.0.0",
@@ -4015,12 +4015,14 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
  "tauri-winrt-notification",
+ "uuid",
  "windows",
  "winreg",
 ]

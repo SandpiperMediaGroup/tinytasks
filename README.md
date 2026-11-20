@@ -138,15 +138,15 @@ Drag the empty header space to move the window.
   first one; the Subtasks header appears once needed, with its own **+** for more. Click its
   text to edit, or the rest of its row to open its own details. Its **⋯** menu manages its priority, due date, and sticky note.
   Use the small **1 / •** chip to switch between numbered steps and a checklist.
+- **No sorting** preserves saved task order independently of grouping. Drag tasks before or after others in the same group to save a new order.
 - **Drag subtasks** to reorder them, or focus a subtask row and press Alt+Up/Down. Both modes
   remember the same order. Numbers stay muted; the parent's circle shows completion progress.
   Checking a parent completes its remaining subtasks. Checking a subtask leaves the parent
   open; reopening a child also reopens its parent. Deleting a parent deletes its subtasks.
-- **Hover controls**: group chevrons appear over their header; the subtask **+** and mode chip
-  appear over the Subtasks header. Keyboard focus reveals them too, and touch devices keep
-  them visible. Hover or focus a task row to reveal **⋯** in place of its priority/time badges.
+- **Hover controls**: group chevrons appear over their header; the subtask **+** appears over the Subtasks header, while the mode chip stays visible. Keyboard focus reveals them too, and touch devices keep
+  them visible. Hover or focus a task row to reveal its lamp, details indicator, and **⋯** controls. Counts and timestamps stay in place.
   Click it, right-click a row, or press Shift+F10 for the same custom menu with icons.
-  Expanded details contain only the description and subtasks; editing text keeps the standard text context menu.
+  Expanded details include the description, link chips, optional agent questions, and subtasks; editing text keeps the standard text context menu.
 
 Subtasks support one level of nesting. Completed steps stay under their parent, and list/tray
 counts count top-level tasks. My desk counts and shows the individual tasks and subtasks selected
@@ -200,19 +200,22 @@ to use it are separate steps.
 Save the following in each agent's supported persistent memory or instructions (for example,
 `CLAUDE.md` or `AGENTS.md`, at the scope where you want it to apply):
 
-> Use TinyTasks for action items I, the human, need to do. Check existing tasks first to avoid
-> duplicates. Keep your own agent work plan elsewhere. Use the actual originating conversation
-> title in `chat` whenever available and include a real conversation link if you have one.
-> Reuse that title consistently; if unavailable, use a concise descriptive fallback.
-> Use priority sparingly: omit it by default and set it only for clear urgency or my explicit request.
-> Use subtasks for related steps toward one outcome, ordered when sequence matters and a checklist
-> otherwise. Keep independent actions separate. Create the parent first, then add its steps with
-> `parent_id`. When resuming, use `list_tasks` to see what I've finished. Only mark tasks complete
-> when I say they're done or you have verified the outcome. When I ask what to focus on, use
-> `get_desk` for my local date and arrangement, then `suggest_desk` with existing open task IDs,
-> start times, and optional durations. Keep the plan realistic. I accept or decline the whole
-> arrangement in My Desk; a suggestion is not an accepted plan. Desk times are separate from
-> due dates, and the desk resets each day. Report a failed write rather than claiming success.
+> Use TinyTasks for actions I, the human, need to take. Keep your own agent plan elsewhere.
+> Read all pages of `list_lists` and `list_tasks_page`; update or reuse existing tasks first.
+> Put new tasks in a suitable existing list or Personal (`destination_list: ""`). Use
+> `create_list` only for a genuinely new continuing home or my explicit request. Conversation
+> titles are source attribution, not list names. Use `create_tasks` with a stable `source`
+> (client_id, conversation_id, optional real title/url), destination, and unique request_id.
+> Preserve request IDs on retries. Never invent a conversation URL. Use priority sparingly.
+> Use subtasks for steps toward one outcome, numbered when sequence matters.
+> For legacy tasks, discover the current snapshot and call `ensure_task_identity` before modern
+> updates. Only complete tasks when I say they are done or you have verified the outcome.
+> For day planning, read `get_desk`, begin_desk_planning, report meaningful progress, and
+> submit_desk_plan using existing open task references. The user accepts or declines proposals.
+> Desk times are separate from due dates; My Desk resets daily. Report failed writes honestly.
+> Optionally use `publish_question` to ask me something in task details. Poll
+> `list_question_responses` and acknowledge the exact response when received. No native agent
+> question hooks are installed, and TinyTasks does not automatically resume conversations.
 
 After connecting a client, start a new chat or reload its tools, then verify `list_tasks` works.
 See the [setup guide](docs/agent-setup.md) for cloud-file-only agents and a complete setup check.
@@ -272,7 +275,7 @@ parent link is recovered as an ordinary task so it cannot disappear from the lis
 
 `cargo test --offline` covers Markdown round trips, subtasks, daily desk expiry, and arrangement
 validation and review. After `cargo build`,
-run `python3 scripts/mcp-smoke.py` for the real agent protocol with temporary task/state folders.
+run `python3 scripts/mcp-smoke.py` and `python3 scripts/agent-workflow-smoke.py` for the real agent protocol with temporary task/state folders. Set `TINYTASKS_SMOKE_BINARY` to check an exact packaged executable.
 With Playwright installed, `node scripts/ui-smoke.cjs` exercises the UI with a mocked desktop
 bridge. `PLAYWRIGHT_MODULE` and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` may point to an existing install.
 `TINYTASKS_DATA_DIR` overrides the local settings/lock folder for isolated development checks.

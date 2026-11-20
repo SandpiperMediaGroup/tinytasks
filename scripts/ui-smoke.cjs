@@ -38,6 +38,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             const delay = testState.delayListOnce, snapshot = structuredClone(tasks); testState.delayListOnce = 0;
             await new Promise(resolve => setTimeout(resolve, delay)); return snapshot;
           }
+          if (cmd === 'get_task_questions') return {store_uuid:'fixture-store',questions:structuredClone(testState.questions || [])};
+          if (cmd === 'open_detail_link') return null;
+          if (cmd === 'get_empty_list_cleanup') return {eligible_count:testState.chats.filter(name=>!tasks.some(t=>t.chat===name)).length};
+          if (cmd === 'archive_empty_lists') {
+            if(testState.failLists) throw new Error('File unavailable');
+            const names=testState.chats.filter(name=>!tasks.some(t=>t.chat===name));
+            testState.chats=testState.chats.filter(name=>!names.includes(name));return {archived_names:names,archived_count:names.length};
+          }
+          if (cmd === 'submit_question_response') {
+            if(testState.failQuestion) throw new Error('File unavailable');
+            const view=testState.questions.find(q=>q.question_id===args.questionId);
+            if(view.revision.revision_id!==args.expectedRevisionId) throw new Error('stale_revision');
+            view.revision.disposition=args.outcome;view.response={answer:args.answer};
+            return {question:structuredClone(view)};
+          }
           if (cmd === 'get_desk') return deskState();
           if (['review_desk', 'edit_desk_time', 'add_to_desk', 'set_work_hours'].includes(cmd)) {
             if (testState.failDesk) throw new Error('File unavailable');
@@ -119,6 +134,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           }
           if (cmd === 'set_subtask_mode') t.ordered = args.ordered;
           if (cmd === 'reorder_subtasks') args.ids.forEach((id, position) => { tasks.find(t => t.id === id).position = position; });
+          if (cmd === 'reorder_tasks') {
+            if (window.testState.failSave) throw new Error('File unavailable');
+            const current=tasks.filter(t=>t.parent_id==null).map(t=>t.id);
+            if (JSON.stringify(current)!==JSON.stringify(args.expectedIds)) throw new Error('Tasks changed during dragging. Try again.');
+            const ordered=args.ids.map(id=>tasks.find(t=>t.id===id));
+            tasks.splice(0,tasks.length,...ordered,...tasks.filter(t=>t.parent_id!=null));
+          }
           return structuredClone(tasks);
         } },
       };
@@ -128,6 +150,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const url = pathToFileURL(path.resolve(__dirname, '../ui/index.html')).href;
+    if (process.env.USABILITY_INTERACTIONS_ONLY) {
+      await require('./usability-interactions.cjs')(browser, installMock, url, errors);
+      assert.deepEqual(errors, []); return;
+    }
     if (process.env.SCROLL_INTERACTIONS_ONLY) {
       await require('./scroll-interactions.cjs')(browser, installMock, url, errors);
       assert.deepEqual(errors, []);
@@ -308,7 +334,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await sub.keyboard.press('Escape');
     assert.equal(await sub.locator('#count').innerText(), '2');
     await sub.mouse.move(0, 0);
-    assert.equal(await opacity(head.locator('.mode-chip')), '0');
+    assert.equal(await opacity(head.locator('.mode-chip')), '1');
     await head.locator('.add-subtask').focus();
     assert.equal(await opacity(head.locator('.mode-chip')), '1');
     await head.locator('.add-subtask').press('Enter');
@@ -321,10 +347,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       numberRight: el.querySelector('.subtask-number').getBoundingClientRect().right,
       header: el.closest('.subtasks').querySelector('.subtasks-head > span').getBoundingClientRect().left,
       height: el.querySelector('.line').getBoundingClientRect().height,
+      textBottom: el.querySelector('.title').getBoundingClientRect().bottom,
+      controlsTop: el.querySelector('.row-status').getBoundingClientRect().top,
     }));
     assert.equal(geometry.check, geometry.header);
     assert.equal(geometry.check - geometry.numberRight, 14);
-    assert.ok(geometry.height < 36);
+    assert.ok(geometry.height < 66);
+    assert.ok(geometry.controlsTop >= geometry.textBottom, 'Narrow subtask controls sit below the text');
     // Opening the parent must not accidentally expand every nested details panel.
     assert.equal(await task(3).locator('.body').isVisible(), false);
     await task(4).locator(':scope > .line').focus();
@@ -349,6 +378,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await task(1).locator(':scope > .line').focus();
     await sub.keyboard.press('Enter');
     const parentPad = task(1).locator(':scope > .details > .details-inner > .details-pad');
+    await sub.waitForTimeout(200); // Wait for the one-branch collapse/open transition.
     const padBounds = await parentPad.boundingBox();
     await parentPad.click({ position: { x: 80, y: padBounds.height - 3 } });
     assert.equal(await task(1).locator(':scope > .line').getAttribute('aria-expanded'), 'false');
@@ -828,6 +858,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await appearance.locator('html').getAttribute('data-theme'), 'parchment');
     assert.equal(await appearance.locator('html').getAttribute('data-appearance'), 'auto');
     assert.equal(await appearance.evaluate(() => testState.calls.some(c => ['edit_task', 'set_done', 'set_priority', 'set_desk', 'delete_task'].includes(c.cmd))), false);
+    await require('./usability-interactions.cjs')(browser, installMock, url, errors);
     await require('./list-interactions.cjs')(browser, installMock, url, errors);
     await require('./sidebar-interactions.cjs')(browser, installMock, url, errors);
     await require('./desk-interactions.cjs')(browser, installMock, url, errors);

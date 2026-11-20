@@ -46,7 +46,7 @@ function listIcon(chat, agent = "") {
   return sourceAgent ? agentIcon(sourceAgent) : symbolIcon("star");
 }
 const groupLabels = { none: "No grouping", chat: "Lists & Chats", agent: "Agent", priority: "Priority", due: "Due date", time: "Date added", completed: "Date completed" };
-const orderLabels = { priority: "Priority", due: "Due date", added: "Date added", name: "Name", completed: "Date completed" };
+const orderLabels = { none: "No sorting", priority: "Priority", due: "Due date", added: "Date added", name: "Name", completed: "Date completed" };
 const legacyGroup = Object.hasOwn(groupLabels, store.get("groupBy", "time")) ? store.get("groupBy", "time") : "time";
 const layouts = {};
 let savedLayouts = {};
@@ -87,6 +87,7 @@ try {
 let tasks = [];
 let lastJson = "";
 const desk = new DeskController({ invoke, refresh: () => refresh(), place, finishEditing: async () => editingId == null || await finishEditing?.(true) });
+const questions = new QuestionController(invoke, notice);
 const childrenOf = (id) => tasks.filter(t => t.parent_id === id).sort((a, b) => a.position - b.position || a.id - b.id);
 let draggingSubtask = null;
 let draggingTask = null;
@@ -236,7 +237,15 @@ function row(t, parent = null, index = 0, deskItem = null) {
   const time = li.querySelector(".time");
   time.textContent = li.querySelector(".time-sub").textContent = !parent && properties[done ? "completed" : "added"] ? short(when) : "";
   time.title = li.querySelector(".time-sub").title = done ? `Done ${full(when)}\nAdded ${full(t.created_at)}` : `Added ${full(when)}`;
-  li.querySelector(".body").textContent = t.details || "Add details…";
+  const body = li.querySelector(".body");
+  if (t.details) body.replaceChildren(...DetailLinks.displayText(t.details).split(/\r?\n+/).filter(text => text.trim()).map(text => Object.assign(document.createElement('p'), {textContent:text})));
+  else body.textContent = "Add details…";
+  DetailLinks.render(li.querySelector(".detail-links"), t, invoke, e => notice(String(e)));
+  questions.mount(li.querySelector(".question-slot"), t.id);
+  if (noteId == null && !(view === "desk" && selectedChat == null) && t.mydesk && !done) {
+    const lamp = symbolIcon("desk"); lamp.classList.add("desk-membership"); lamp.removeAttribute("aria-hidden"); lamp.setAttribute("role","img"); lamp.setAttribute("aria-label","On My Desk");
+    li.querySelector(".row-status").insertBefore(lamp, li.querySelector(".details-indicator"));
+  }
   li.querySelector(".body").classList.toggle("placeholder", !t.details);
 
   const check = li.querySelector(".check");
@@ -274,13 +283,7 @@ function row(t, parent = null, index = 0, deskItem = null) {
   line.setAttribute("aria-controls", `task-details-${t.id}`);
   line.onclick = () => {
     if (noteId === t.id || suppressSubtaskClick) return;
-    const open = !expanded.has(t.id);
-    open ? expanded.add(t.id) : expanded.delete(t.id);
-    li.classList.toggle("open", open);
-    line.setAttribute("aria-expanded", open);
-    if (open) setTimeout(() => {
-      if (li.isConnected && li.classList.contains("open")) li.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-    }, 170);
+    requestExpansion(t.id, parent?.id ?? null);
   };
   li.querySelector(".details").onclick = async (e) => {
     // Only this task's blank gutter/footer: child rows, text, and controls handle their own clicks.
@@ -289,6 +292,7 @@ function row(t, parent = null, index = 0, deskItem = null) {
     e.stopPropagation();
     if (editingId != null && !await finishEditing?.(true)) return;
     expanded.delete(t.id);
+    for (const child of childrenOf(t.id)) expanded.delete(child.id);
     const current = document.querySelector(`.task[data-task-id="${t.id}"]`);
     current?.classList.remove("open");
     current?.querySelector(".line").setAttribute("aria-expanded", "false");
@@ -306,7 +310,7 @@ function row(t, parent = null, index = 0, deskItem = null) {
   detailsIndicator.hidden = !t.details?.trim() || noteId === t.id;
   detailsIndicator.onclick = e => { e.stopPropagation(); line.onclick(); };
   const more = li.querySelector(".more");
-  more.title = `Task actions\n${time.title}`;
+  more.removeAttribute("title");
   more.onpointerdown = e => { if (editingId != null && e.button === 0) e.preventDefault(); };
   more.onclick = e => {
     e.stopPropagation();
@@ -339,11 +343,11 @@ function row(t, parent = null, index = 0, deskItem = null) {
     section.querySelector(".subtask-list").append(...nestedChildren.map(({ child, i }) => row(child, t, i)));
   }
   if (parent) {
-    line.title = "Drag to reorder. Alt + ↑ / ↓ also moves this subtask.";
+    line.setAttribute("aria-description", "Drag to reorder. Alt + Up or Down also moves this subtask.");
     line.onpointerdown = (e) => beginSubtaskDrag(e, line, t.id, parent.id);
   }
   else if ((t.parent_id == null || deskItem) && noteId == null) {
-    line.title = deskItem ? "Drag onto the timeline to schedule in 15-minute increments." : "Drag to another list section or sidebar list.";
+
     line.onpointerdown = e => beginTaskDrag(e, line, t);
   }
   if (noteId === t.id) $("note-complete").replaceChildren(check);
@@ -374,9 +378,12 @@ let suppressSubtaskClick = false;
 function beginSubtaskDrag(event, line, id, parentId) {
   if (event.button !== 0 || editingId != null || event.target.closest("button, input, textarea")) return;
   const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
+  event.preventDefault();
+  const initialIds = childrenOf(parentId).map(t => t.id);
+  let finalized = false;
   let destination = null, preview = null;
   const move = (e) => {
-    if (e.pointerId !== start.pointer) return;
+    if (finalized || e.pointerId !== start.pointer) return;
     if (!line.isConnected) { end({ pointerId: start.pointer, type: "pointercancel" }); return; }
     if (!draggingSubtask && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5) return;
     e.preventDefault();
@@ -397,7 +404,9 @@ function beginSubtaskDrag(event, line, id, parentId) {
     else if (e.clientY < bounds.top + 24) main.scrollBy(0, -12);
   };
   const end = (e) => {
-    if (e.pointerId !== start.pointer) return;
+    if (finalized || e.pointerId !== start.pointer) return;
+    finalized = true; const restore = preserveViewport();
+    line.removeEventListener("lostpointercapture", lost);
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", end);
     document.removeEventListener("pointercancel", end);
@@ -411,11 +420,13 @@ function beginSubtaskDrag(event, line, id, parentId) {
     if (dragged) {
       suppressSubtaskClick = true;
       setTimeout(() => { suppressSubtaskClick = false; }, 0);
-      if (e.type === "pointerup" && destination != null && destination >= 0) moveSubtask(parentId, id, destination);
-      else render();
+      if (e.type === "pointerup" && destination != null && destination >= 0) moveSubtask(parentId, id, destination, false, initialIds).finally(restore);
+      else { render(); restore(); }
     }
   };
   const cancel = e => { if (e.type === "blur" || e.key === "Escape") { e.preventDefault(); end({ pointerId: start.pointer, type: "pointercancel" }); } };
+  const lost = () => end({ pointerId: start.pointer, type: "pointercancel" });
+  line.addEventListener("lostpointercapture", lost);
   document.addEventListener("pointermove", move, { passive: false });
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
@@ -423,15 +434,15 @@ function beginSubtaskDrag(event, line, id, parentId) {
   window.addEventListener("blur", cancel);
 }
 
-async function moveSubtask(parentId, id, position, focus = false) {
+async function moveSubtask(parentId, id, position, focus = false, expectedIds = childrenOf(parentId).map(t => t.id)) {
   const ids = childrenOf(parentId).map(t => t.id);
   const from = ids.indexOf(id);
   if (editingId != null) return;
   if (from < 0 || from === position) { render(); return; }
   ids.splice(from, 1);
   ids.splice(position, 0, id);
-  await act("reorder_subtasks", { parentId, ids });
-  if (focus) document.querySelector(`.task[data-task-id="${id}"] > .line`)?.focus();
+  await act("reorder_subtasks", { parentId, ids, expectedIds });
+  if (focus) document.querySelector(`.task[data-task-id="${id}"] > .line`)?.focus({ preventScroll: true });
 }
 
 function fitEntry(field) {
@@ -444,7 +455,7 @@ async function startNewSubtask(parentId) {
   if (editingId != null && !await finishEditing?.(true)) return;
   const parentRow = document.querySelector(`.task[data-task-id="${parentId}"]`);
   if (!parentRow) return;
-  expanded.add(parentId);
+  await requestExpansion(parentId, null, true);
   parentRow.classList.add("open");
   parentRow.querySelector(".subtasks").hidden = false;
   const draft = document.createElement("li");
@@ -495,6 +506,7 @@ async function startNewSubtask(parentId) {
 // ---- groups ----
 const compareText = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 function orderedTasks(items) {
+  if (orderBy === "none") return [...items];
   const value = t => ({ priority: t.priority, due: t.due, added: t.created_at, completed: t.done_at, name: t.title })[orderBy];
   return [...items].sort((a, b) => {
     const av = value(a), bv = value(b);
@@ -560,7 +572,7 @@ function render() {
   const groups = isDesk ? desk.sections(open, deskItems) : noteId != null ? [{ label: "", items: open }] : groupsOf(open);
   const completed = selectedChat != null && noteId == null && properties.completed
     ? tasks.filter(task => task.parent_id == null && task.chat === selectedChat && task.done_at != null)
-      .sort((a, b) => b.done_at - a.done_at) : [];
+      .sort((a, b) => orderBy === "none" ? 0 : b.done_at - a.done_at) : [];
   const headers = !isDesk && groupBy !== "none" && noteId == null && !(selectedChat != null && groupBy === "chat");
 
   $("open").replaceChildren(
@@ -637,11 +649,12 @@ function render() {
   for (const [id, field, reversed, grouping] of [["group-direction", groupBy, groupDescending, true], ["order-direction", orderBy, orderDescending, false]]) {
     const button = $(id);
     button.disabled = field === "none";
+    button.hidden = !grouping && field === "none";
     button.dataset.descending = String(reversed);
-    button.title = field === "none" ? "No grouping" : `${directionLabel(field, reversed, grouping)}. Click to reverse.`;
+    button.title = field === "none" ? (grouping ? "No grouping" : "No sorting") : `${directionLabel(field, reversed, grouping)}. Click to reverse.`;
     button.setAttribute("aria-label", `${grouping ? "Group" : "Task"} order: ${button.title}`);
   }
-  $("group").title = `Grouping: ${groupLabels[groupBy]}. Ordering: ${orderLabels[orderBy]}, ${directionLabel(orderBy, orderDescending).toLowerCase()}.`;
+  $("group").title = `Grouping: ${groupLabels[groupBy]}. Ordering: ${orderLabels[orderBy]}${orderBy === "none" ? "" : `, ${directionLabel(orderBy, orderDescending).toLowerCase()}`}.`;
   for (const b of document.querySelectorAll("[data-property]")) b.setAttribute("aria-pressed", properties[b.dataset.property]);
   renderSidebar();
 }
@@ -667,14 +680,14 @@ function renderSidebar() {
   };
   $("primary-nav").replaceChildren(...[["desk", "My Desk"], ["today", "Today"], ["upcoming", "Upcoming"], ["all", "All"], ["done", "Completed"]].map(([name, label]) => {
     const button = navButton(label, tasksForView(name).length, selectedChat == null && view === name, () => selectView(name));
-    if (name === "desk" && desk.state?.proposal) { button.querySelector(".n").textContent = "Review"; button.querySelector(".n").classList.add("desk-review-badge"); }
+    if (name === "desk" && desk.statusText()) { button.querySelector(".n").textContent = desk.statusText(); button.querySelector(".n").classList.add("desk-review-badge"); }
     button.prepend(symbolIcon(name));
     return button;
   }));
   $("list-nav").replaceChildren(...orderedChats().map(name => {
     const count = tasks.filter(t => t.chat === name && t.parent_id == null && t.done_at == null).length;
     const button = navButton(name || "Personal", count, selectedChat === name, () => selectView("all", name));
-    button.title = name || "Personal";
+    button.removeAttribute("title");
     const item = Object.assign(document.createElement("div"), { className: "sidebar-list" });
     item.dataset.chat = name;
     const icon = Object.assign(document.createElement("button"), { className: "list-icon", title: `Change icon for ${name || "Personal"}` });
@@ -703,6 +716,7 @@ sidebarWidth.addEventListener("change", () => {
 async function selectView(name, chat = null) {
   if (editingId != null && !await finishEditing?.(true)) return;
   if (!form.hidden) { if (input.value.trim() && !await saveNewTask()) return; closeNew(); }
+  expanded.clear();
   view = name; selectedChat = chat;
   store.set("view", view); store.set("selectedList", JSON.stringify(chat));
   useViewLayout(); setViewMenu(false); closeFloating(); render();
@@ -831,8 +845,12 @@ function beginListReorder(e, item, name) {
 }
 
 let sidebarMenuName = null, listDialogAction = null, listDialogName = null;
-function openSidebarMenu(name, anchor, point = null) {
+async function openSidebarMenu(name, anchor, point = null) {
   place($("sidebar-menu"), anchor); sidebarMenuName = name;
+  for (const b of $("sidebar-menu").querySelectorAll("[data-list-action]")) b.hidden = name == null && !["cleanup", "new"].includes(b.dataset.listAction);
+  for (const separator of $("sidebar-menu").querySelectorAll(".menu-sep")) separator.hidden = name == null;
+  const cleanup = $("sidebar-menu").querySelector('[data-list-action="cleanup"]'); cleanup.disabled = true;
+  invoke("get_empty_list_cleanup").then(result => { if (!$("sidebar-menu").hidden && sidebarMenuName === name) cleanup.disabled = result.eligible_count === 0;  }).catch(e => notice(String(e)));
   const names = orderedChats(), index = names.indexOf(name);
   $("sidebar-menu").querySelector('[data-list-action="up"]').disabled = index <= 0;
   $("sidebar-menu").querySelector('[data-list-action="down"]').disabled = index === names.length - 1;
@@ -841,7 +859,7 @@ function openSidebarMenu(name, anchor, point = null) {
     popup.style.left = `${Math.max(8, Math.min(innerWidth - popup.offsetWidth - 8, point.clientX))}px`;
     popup.style.top = `${Math.max(8, Math.min(innerHeight - popup.offsetHeight - 8, point.clientY))}px`;
   }
-  $("sidebar-menu").querySelector("button").focus();
+  $("sidebar-menu").querySelector("button:not([hidden])").focus({ preventScroll: true });
 }
 async function manageList(action, name, newName = null) {
   if (editingId != null && !await finishEditing?.(true)) throw new Error("Save your task edit first.");
@@ -874,8 +892,22 @@ function openListDialog(action, name) {
 }
 $("sidebar-menu").onclick = async e => {
   const action = e.target.closest("[data-list-action]")?.dataset.listAction, name = sidebarMenuName;
-  if (!action || name == null) return;
+  if (!action || name == null && !["cleanup", "new"].includes(action)) return;
   e.stopPropagation(); closeFloating();
+  if (action === "new") return startNewList();
+  if (action === "cleanup") {
+    if (editingId != null && !await finishEditing?.(true)) return;
+    if (!form.hidden && input.value.trim() && !await saveNewTask()) return;
+    if (!$("new-list").hidden && $("new-list-name").value.trim()) { notice("Finish the new list name before cleaning up."); return; }
+    try {
+      const result = await invoke("archive_empty_lists");
+      for (const name of result.archived_names) { delete listIcons[name]; listOrder = listOrder.filter(n => n !== name); if (selectedChat === name) { selectedChat = null; view = "all"; useViewLayout(); } }
+      store.set("listIcons", JSON.stringify(listIcons)); store.set("listOrder", JSON.stringify(listOrder)); store.set("selectedList", JSON.stringify(selectedChat)); store.set("view", view);
+      await refresh(); $("notice").hidden = true;
+      $("lists-menu").focus({ preventScroll: true });
+    } catch (e) { notice(`Couldn't archive empty lists: ${e}`); }
+    return;
+  }
   if (action === "up" || action === "down") return reorderChat(name, action === "up" ? -1 : 1);
   if (action === "icon") {
     const anchor = [...$("list-nav").children].find(el => el.dataset.chat === name)?.querySelector(".list-icon");
@@ -883,6 +915,9 @@ $("sidebar-menu").onclick = async e => {
   } else if (action === "rename" || action === "delete") openListDialog(action, name);
   else if (action === "archive") { try { await manageList(action, name); $("view").focus(); } catch (err) { notice(`Couldn't archive list: ${err}`); } }
 };
+$("lists-menu").onclick = e => { e.stopPropagation(); openSidebarMenu(null, $("lists-menu")); };
+$("lists-menu").onkeydown = e => { if (e.key === "ContextMenu" || e.shiftKey && e.key === "F10") { e.preventDefault(); openSidebarMenu(null, $("lists-menu")); } };
+$("sidebar").addEventListener("contextmenu", e => { if (!e.target.closest("[data-chat]")) { e.preventDefault(); e.stopPropagation(); openSidebarMenu(null, $("lists-menu"), e); } });
 $("sidebar-menu").onkeydown = e => {
   if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeFloating(); focusList(sidebarMenuName); }
   else menuKeys(e, $("sidebar-menu"));
@@ -905,10 +940,16 @@ $("list-dialog-form").onsubmit = async e => {
 function beginTaskDrag(event, line, task) {
   if (event.button !== 0 || editingId != null || event.target.closest('button, input, textarea, .sub, .row-status')) return;
   const start = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
-  let target = null, preview = null;
-  const clearTarget = () => document.querySelectorAll(".list-drop-target").forEach(el => el.classList.remove("list-drop-target"));
+  event.preventDefault();
+  let finalized = false;
+  const sourceGuard = { chat: task.chat, parent_id: task.parent_id ?? null, done_at: task.done_at ?? null };
+  const expectedIds = tasks.filter(t => t.parent_id == null).map(t => t.id);
+  const canReorder = orderBy === "none" && view !== "desk" && task.parent_id == null;
+  const siblings = line.parentElement.parentElement;
+  let target = null, reorder = null, preview = null;
+  const clearTarget = () => document.querySelectorAll(".list-drop-target, .task-drop-before, .task-drop-after").forEach(el => el.classList.remove("list-drop-target", "task-drop-before", "task-drop-after"));
   const move = e => {
-    if (e.pointerId !== start.pointer) return;
+    if (finalized || e.pointerId !== start.pointer) return;
     if (!line.isConnected) return end({ pointerId: start.pointer, type: "pointercancel" });
     if (!draggingTask && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5) return;
     e.preventDefault();
@@ -922,16 +963,26 @@ function beginTaskDrag(event, line, task) {
     preview.move(e);
     clearTarget();
     const timelineTime = desk.previewTimelineDrop(e);
-    target = timelineTime == null && task.parent_id == null ? document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-chat]") : null;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    target = timelineTime == null && task.parent_id == null ? under?.closest("[data-chat]") : null;
     if (target && target.dataset.chat !== task.chat) target.classList.add("list-drop-target");
     else target = null;
+    reorder = null;
+    const destination = under?.closest("#open > section > ul > .task");
+    if (canReorder && timelineTime == null && !target && destination?.parentElement === siblings && Number(destination.dataset.taskId) !== task.id) {
+      const bounds = destination.querySelector(':scope > .line').getBoundingClientRect();
+      reorder = { id: Number(destination.dataset.taskId), after: e.clientY >= bounds.top + bounds.height / 2 };
+      destination.classList.add(reorder.after ? 'task-drop-after' : 'task-drop-before');
+    }
     const scroller = e.clientX < $("main").getBoundingClientRect().left ? $("sidebar") : $("main");
     const bounds = scroller.getBoundingClientRect();
     if (e.clientY > bounds.bottom - 28) scroller.scrollBy(0, 12);
     else if (e.clientY < bounds.top + 28) scroller.scrollBy(0, -12);
   };
   const end = async e => {
-    if (e.pointerId !== start.pointer) return;
+    if (finalized || e.pointerId !== start.pointer) return;
+    finalized = true; const restore = preserveViewport();
+    line.removeEventListener("lostpointercapture", lost);
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", end);
     document.removeEventListener("pointercancel", end);
@@ -950,11 +1001,20 @@ function beginTaskDrag(event, line, task) {
     if (timelineTime != null && timelineDrag) await desk.scheduleDrop(timelineDrag, timelineTime);
     else {
       desk.endTimelineDrag();
-      if (e.type === "pointerup" && target) await act("edit_task", { id: task.id, chat: target.dataset.chat });
+      if (e.type === "pointerup" && target) await act("edit_task", { id: task.id, chat: target.dataset.chat, expectedSource: sourceGuard });
+      else if (e.type === "pointerup" && reorder) {
+        const ids = expectedIds.filter(id => id !== task.id);
+        ids.splice(ids.indexOf(reorder.id) + Number(reorder.after), 0, task.id);
+        if (ids.some((id, i) => id !== expectedIds[i])) await act("reorder_tasks", { ids, expectedIds });
+        else render();
+      }
       else render();
     }
+    restore();
   };
   const cancel = e => { if (e.type === "blur" || e.key === "Escape") { e.preventDefault(); end({ pointerId: start.pointer, type: "pointercancel" }); } };
+  const lost = () => end({ pointerId: start.pointer, type: "pointercancel" });
+  line.addEventListener("lostpointercapture", lost);
   document.addEventListener("pointermove", move, { passive: false });
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
@@ -983,11 +1043,12 @@ async function startEdit(li, t, field) {
   if (field === "title") input.maxLength = 300;
   input.setAttribute("aria-label", field === "title" ? "Task title" : "Task details");
   target.replaceChildren(input);
-  input.title = "Click away to save. Esc cancels.";
+  input.setAttribute("aria-description", "Click away to save. Escape cancels.");
   input.oninput = () => fitEntry(input);
   input.oninput();
   let saving = false;
-  const finish = async (save) => {
+  let savePromise = null;
+  const performFinish = async (save) => {
     if (saving || editingId !== t.id || finishEditing !== finish) return false;
     const value = field === "title" ? input.value.trim() : input.value.trimEnd();
     if (!save || value === t[field]) { editingId = null; render(); return true; }
@@ -1010,6 +1071,7 @@ async function startEdit(li, t, field) {
       return false;
     }
   };
+  const finish = save => savePromise || (savePromise = performFinish(save).finally(() => { savePromise = null; }));
   finishEditing = finish;
   input.onclick = (e) => e.stopPropagation();
   input.onkeydown = (e) => {
@@ -1027,10 +1089,17 @@ async function startEdit(li, t, field) {
 let problem = "";
 
 function update(list) {
+  const active = document.activeElement;
+  const questionFocus = active?.closest('.question-card') ? { control: active.dataset.control, start: active.selectionStart, end: active.selectionEnd } : null;
   tasks = list;
   lastJson = JSON.stringify(list);
   problem = "";
   if (editingId == null) render();
+  if (questionFocus?.control) {
+    const next=[...document.querySelectorAll('.question-card [data-control]')].find(el=>el.dataset.control===questionFocus.control);
+    next?.focus({preventScroll:true}); if (next?.setSelectionRange && questionFocus.start != null) next.setSelectionRange(questionFocus.start,questionFocus.end);
+  }
+  questions.load(list);
 }
 
 let refreshSequence = 0;
@@ -1043,10 +1112,11 @@ async function refresh() {
       noteId == null ? desk.load() : false,
     ]);
     if (sequence !== refreshSequence) return;
+    desk.renderStatus();
     const chatsChanged = names && JSON.stringify(names) !== JSON.stringify(chatNames);
     if (chatsChanged) chatNames = Array.isArray(names) ? names.filter(n => typeof n === "string") : [];
     if (problem || deskChanged || chatsChanged || JSON.stringify(list) !== lastJson) update(list);
-    else desk.updateClock();
+    else { desk.updateClock(); questions.load(list); }
   } catch (e) {
     if (sequence !== refreshSequence) return;
     problem = String(e);
@@ -1061,6 +1131,7 @@ async function act(cmd, args) {
   try {
     const list = await invoke(cmd, args);
     if (noteId == null) await desk.load();
+    $("notice").hidden = true;
     update(noteId != null ? await invoke("list_note", { id: noteId }) : list);
   } catch (e) {
     notice(String(e));
@@ -1380,6 +1451,10 @@ async function openSettings() {
   catch (err) { notice(String(err)); }
 }
 $("settings-open").onclick = openSettings;
+$("basics-open").onclick = async () => {
+  setViewMenu(false); closeFloating();
+  try { await invoke("open_basics"); } catch (e) { notice(String(e)); }
+};
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "," && noteId == null) { e.preventDefault(); openSettings(); }
 });
@@ -1649,7 +1724,7 @@ window.addEventListener("storage", (e) => {
 // Coming back to the window: fresh "2h" labels, and yesterday's desk cleared.
 window.addEventListener("focus", () => { if (editingId == null) { render(); refresh(); } });
 refresh();
-setInterval(() => { if (noteId == null && view === "desk" && !document.hidden) refresh(); }, 30000);
+setInterval(() => { if (noteId == null && !document.hidden) refresh(); }, 15000);
 
 // The native command shares a daily cache between windows. Background failures stay quiet.
 if (noteId == null) {
@@ -1663,4 +1738,32 @@ if (noteId == null) {
   checkRelease();
   setInterval(checkRelease, 60 * 60 * 1000);
   window.addEventListener("focus", checkRelease);
+}
+
+let expansionSequence = 0;
+async function requestExpansion(id, parentId = null, forceOpen = false) {
+  const sequence = ++expansionSequence;
+  if (editingId != null && !await finishEditing?.(true)) return false;
+  if (sequence !== expansionSequence || !tasks.some(t => t.id === id)) return false;
+  const open = forceOpen || !expanded.has(id);
+  if (parentId != null) {
+    expanded.clear(); expanded.add(parentId); if (open) expanded.add(id);
+  } else {
+    expanded.clear(); if (open) expanded.add(id);
+  }
+  document.querySelectorAll('.task').forEach(el => {
+    const id = Number(el.dataset.taskId), open = id === noteId || expanded.has(id);
+    el.classList.toggle('open', open); el.querySelector(':scope > .line')?.setAttribute('aria-expanded', String(open));
+  });
+  return true;
+}
+function preserveViewport() {
+  const main = $('main'), top = main.scrollTop, bounds = main.getBoundingClientRect();
+  const anchors = [...main.querySelectorAll('.task > .line')].filter(el => el.getBoundingClientRect().bottom > bounds.top && el.getBoundingClientRect().top < bounds.bottom)
+    .map(el => ({ id: el.parentElement.dataset.taskId, offset: el.getBoundingClientRect().top }));
+  return () => {
+    const anchor = anchors.find(a => document.querySelector(`.task[data-task-id="${a.id}"] > .line`));
+    if (anchor) main.scrollTop += document.querySelector(`.task[data-task-id="${anchor.id}"] > .line`).getBoundingClientRect().top - anchor.offset;
+    else main.scrollTop = top;
+  };
 }

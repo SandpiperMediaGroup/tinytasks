@@ -28,7 +28,7 @@ Share a versioned `tinytasks-agent-state` Markdown comment and `src/agent_state.
 
 **Performance Goals**: One authoritative parse per cleanup/read request, one section-selection pass per archive batch, pages of 1–200 items; prove complete discovery on a 250-task fixture. No silent cap or repeated per-list archive transactions.
 
-**Constraints**: No destructive cleanup, no completed-list cleanup, no review panel, no implicit new lists through modern task writes. No cross-computer locking guarantee. Mixed old/new binaries preserve syntax but old writers cannot enforce new metadata semantics.
+**Constraints**: No destructive cleanup, no review panel, no implicit new lists through modern task writes. No cross-computer locking guarantee. Mixed old/new binaries preserve syntax but old writers cannot enforce new metadata semantics.
 
 **Scale/Scope**: Three stories, FR-001–013; task/list storage, sidebar menu, MCP contracts and usage docs. Metadata growth is bounded by usage, not automatic receipt eviction in v1.
 
@@ -102,7 +102,7 @@ Legacy task records need no bulk rewrite. Missing source attribution remains abs
 
 ### 2. One cleanup transaction
 
-Compute eligibility from all stored tasks plus raw section names, without `for_ui` or `for_agents` filtering. A named list is eligible only when every exact-name section contains zero parsed tasks. Keep Personal (empty underlying list key) and built-in navigation views outside selection. Preserve notes-only sections and original section ordering in archive output.
+Compute eligibility from all stored tasks plus raw section names, without `for_ui` or `for_agents` filtering. A named list is eligible only when every exact-name section contains zero unfinished parsed tasks. Keep Personal (empty underlying list key) and built-in navigation views outside selection. Preserve notes-only sections and original section ordering in archive output.
 
 Recheck once under lock on apply, select all eligible spans, then compute complete `active_after` and `archive_after`. Journal both before/after images using the existing ArchiveMove shape; commit archive before removing active sections, and clear the journal only after both replacements succeed. Do not call archive_chat repeatedly: a single batch gives one recoverable result and avoids partial-success UI ambiguity. No eligible spans means no write and count zero.
 
@@ -112,7 +112,7 @@ Expose `get_empty_list_cleanup` for menu availability and `archive_empty_lists` 
 
 Use one global command path from blank sidebar space, Lists & Chats heading, and each list's context menu. Global action is separated from single-list Archive list and Delete list. Do not make right-clicking a child action bubble into a second menu. Keyboard users can focus the list-section trigger and open the menu with Shift+F10/ContextMenu.
 
-Before apply, reuse active task/list draft guards. A failed save aborts cleanup and keeps the draft. Disable the entry while preview/apply is pending; zero count disables it. Always recheck in the backend. Use concise status messages, e.g. “Archived 3 empty lists.” and “No empty lists.”
+Before apply, reuse active task/list draft guards. A failed save aborts cleanup and keeps the draft. Disable the entry while preview/apply is pending; zero count disables it. Always recheck in the backend. Keep success and no-op results silent; show actionable errors only.
 
 ### 4. Modern MCP contract and legacy compatibility
 
@@ -122,7 +122,7 @@ Leave `add_tasks`, `list_tasks`, and `update_task` behavior and result shapes co
 
 ### 5. Integration and documentation
 
-Maintain `Task.chat` as a compatibility list field; add a separate optional `source` projection for new read results and UI context. Keep `Task.link` for legacy links; explicit source URL is not inferred from arbitrary task links. Moving a parent preserves its descendants' source data. Archive/delete paths that operate on raw strings must run metadata lifecycle preparation before computing journalled after-images, including feature 004 question withdrawal. Ordinary nonempty archives copy relevant source records into the archive envelope while retaining request receipts in active data; cleanup of task-free sections leaves task namespaces unchanged.
+Maintain `Task.chat` as a compatibility list field; add a separate optional `source` projection for new read results and UI context. Keep `Task.link` for legacy links; explicit source URL is not inferred from arbitrary task links. Moving a parent preserves its descendants' source data. Archive/delete paths that operate on raw strings must run metadata lifecycle preparation before computing journalled after-images, including feature 004 question withdrawal. Ordinary nonempty archives copy relevant source records into the archive envelope while retaining request receipts in active data; cleanup of completed-only lists uses the same source-copy and question-reconciliation hooks; task-free sections leave task namespaces unchanged.
 
 Update built-in task-file guidance only when it exactly matches the known prior header; preserve user-customized guidance. Document new and legacy tools, source/list distinction, pagination restarts, receipt lifetime, and mixed-version limitations. Do not modify global agent configuration or memories.
 

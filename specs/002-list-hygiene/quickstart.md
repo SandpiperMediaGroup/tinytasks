@@ -30,19 +30,19 @@ and injected replacement-failure points rather than the user's folder.
 
 1. Include Personal, two empty named lists, a notes-only list, an open root, a completed root
    older than fourteen days, a child, duplicate headings with a task in one occurrence, a fenced
-   checkbox example, unknown comments, and CRLF lines. Preview/apply must select only the three
-   truly task-free named lists. Verify every moved byte and every unaffected active section.
-2. Add a task after preview, before apply. Apply must reread under lock and skip that list.
+   checkbox example, unknown comments, and CRLF lines. Preview/apply must select task-free and completed-only named lists,
+   while preserving every list with an unfinished root or child. Verify every moved byte and every unaffected active section.
+2. Add an unfinished task after preview, before apply. Apply must reread under lock and skip that list.
 3. Stop after journal write, after archive replacement, and after active replacement. Restart
    recovery must produce exactly one archival copy and the expected active file. A third-party
    file edit must retain journal and both files with a conflict error.
 4. Fail archive replacement, active replacement, and journal removal. No success count is
    returned before completion; no direct overwrite fallback truncates an existing file.
 5. Retry cleanup after completion/recovery: no new archive content, count zero. Confirm a
-   notes-only list's unknown content is preserved and old completed tasks protect their list.
+   notes-only list's unknown content is preserved and completed-only lists are archived while any unfinished root or child protects its list.
 6. For ordinary nonempty archiving, verify source metadata is copied appropriately and shared
    question history remains in active metadata; pending questions withdraw under feature 004's
-   hook. Empty cleanup must not touch any task-related metadata namespace.
+   hook. Completed-only cleanup uses the same metadata lifecycle; task-free cleanup preserves task namespaces.
 
 ## MCP round trip
 

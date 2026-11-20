@@ -45,7 +45,7 @@ The [Spec Kit upgrade comparison](spec-kit-upgrade.md) explains the installed to
 | --- | --- | --- |
 | Ability to turn sorting off independently of grouping | 001, story 1 | FR-001–003 |
 | Joyride-like introduction to My Desk | 003, story 3 | FR-009–013 |
-| Quickly clean up old lists, refined to sidebar magic eraser for empty lists only | 002, stories 1–2 | FR-001–006, FR-013 |
+| Quickly clean up old lists, refined to sidebar archive for lists with no unfinished tasks | 002, stories 1–2 | FR-001–006, FR-013 |
 | Better agent hygiene; avoid unnecessary lists | 002, story 3 | FR-007–013 |
 | Building/Working indicator while an agent prepares the day | 003, stories 1–2 | FR-001–008, FR-013 |
 | Answer optional agent-published questions in task details, with MCP polling and acknowledgment | 004, stories 1–3 | FR-001–014 |

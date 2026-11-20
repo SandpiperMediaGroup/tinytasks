@@ -31,7 +31,7 @@ Unknown root namespaces and fields within known records survive writes through J
 | section_count | nonnegative integer | Count all exact-name occurrences |
 | task_count | nonnegative integer | All parsed root/child tasks, open or complete, no age cutoff |
 | open_count / completed_count | nonnegative integer | Full-storage counts, not sidebar top-level counts |
-| empty | boolean | task_count is zero; Personal still ineligible for global cleanup |
+| empty | boolean | task_count is zero; cleanup eligibility uses open_count == 0 instead, with Personal excluded |
 
 A new named list uses existing 1–200 character, one-line name rules, trimmed at the input boundary. Match exact trimmed name first; otherwise accept only one case-insensitive existing match. Distinct hand-edited casing collisions are not merged. A new list's purpose is retained in its creation request receipt; it is not a new task or note.
 

@@ -12,7 +12,7 @@
 
 ### User Story 1 - Erase empty sidebar lists (Priority: P1)
 
-I can right-click the sidebar and archive every genuinely empty named list in one action.
+I can right-click the sidebar and archive every named list with no unfinished tasks in one action.
 
 **Why this priority**: Removes existing clutter through the exact lightweight interaction requested.
 
@@ -20,11 +20,11 @@ I can right-click the sidebar and archive every genuinely empty named list in on
 
 **Acceptance Scenarios**:
 
-1. **Given** empty named lists, **When** I right-click blank sidebar space or its Lists & Chats heading, **Then** the menu offers Archive empty lists with a small archive icon.
+1. **Given** empty named lists, **When** I right-click blank sidebar space or its Lists & Chats heading, **Then** the menu offers Archive empty lists with a small broom icon.
 2. **Given** I right-click an individual list, **When** its context menu opens, **Then** the same global Archive empty lists action appears separately from Archive list so its scope is clear.
 3. **Given** eligible empty lists, **When** I choose Archive empty lists, **Then** all eligible named lists are archived immediately and navigation updates quietly without a success banner or layout shift; no selection panel or confirmation dialog intervenes.
-4. **Given** a list contains completed tasks older than the normal completed-history window, **When** I run cleanup, **Then** it remains active because it is not empty.
-5. **Given** there are no eligible lists, **When** I open the menu, **Then** Archive empty lists is disabled; a stale enabled menu invocation safely reports No empty lists without modifying data.
+4. **Given** a list contains completed tasks older than the normal completed-history window, **When** I run cleanup, **Then** it is archived if all its tasks and subtasks are completed, preserving their history.
+5. **Given** there are no eligible lists, **When** I open the menu, **Then** Archive empty lists is disabled; a stale enabled menu invocation silently does nothing without modifying data.
 6. **Given** the selected list is archived, **When** cleanup finishes, **Then** All becomes the active view; unrelated list ordering, icons, and selection remain unchanged.
 
 ### User Story 2 - Preserve content when cleanup races or fails (Priority: P1)
@@ -37,7 +37,7 @@ Cleanup never hides active work or discards the notes in a list that has no task
 
 **Acceptance Scenarios**:
 
-1. **Given** an empty list gains a task before cleanup executes, **When** eligibility is checked, **Then** that list is skipped and the task remains active.
+1. **Given** an eligible list gains an unfinished task before cleanup executes, **When** eligibility is checked, **Then** that list is skipped and the task remains active.
 2. **Given** a task-free list contains notes or unfamiliar metadata, **When** it is archived, **Then** that content is preserved in the archive.
 3. **Given** archive writing is interrupted or fails, **When** cleanup reports the result or the app restarts, **Then** every affected section remains recoverable without duplicated archive sections or silent loss; errors report uncompleted moves without a false success notice.
 
@@ -62,11 +62,11 @@ Agents add human action items to existing homes and retain their source conversa
 ### Edge Cases
 
 - Personal is the fallback destination and is not removed by global empty-list cleanup; built-in views never qualify.
-- Emptiness means zero task records, whether open or complete, root or child; hidden groups and history cutoffs do not establish emptiness.
-- Multiple sections with the same list name are treated as one list; a task in any matching section makes it ineligible.
+- Emptiness means zero unfinished task records, including roots and children; hidden groups and history cutoffs do not establish emptiness.
+- Multiple sections with the same list name are treated as one list; an unfinished task in any matching section makes it ineligible.
 - Task-free sections with notes are eligible, but archive content must remain intact.
 - Whitespace and capitalization differences in requested existing destinations do not create duplicate lists; ambiguous matches return choices instead of guessing.
-- Completing all tasks does not make a list empty. Cleanup is not a completed-list or age-based archive feature.
+- Completing all tasks and subtasks makes a list eligible. Cleanup has no age cutoff.
 - A stale cleanup menu, an in-progress task draft, or a selected list disappearing must not discard typed text; finish saving first, and stop cleanup if that save fails.
 - Archived names may later be reused only through explicit new-list creation; cleanup does not create permanent name bans.
 
@@ -74,9 +74,9 @@ Agents add human action items to existing homes and retain their source conversa
 
 ### Functional Requirements
 
-- **FR-001**: Sidebar blank space, the list section heading, and list context menus MUST expose Archive empty lists with an archive icon and a keyboard-accessible equivalent (US1).
-- **FR-002**: Cleanup MUST target all named lists with zero task records in the complete current data, including all duplicate sections, and MUST exclude Personal and built-in views (US1–US2).
-- **FR-003**: Eligible sections MUST be archived with all original notes and unknown metadata preserved; no task-containing list may be archived by this action (US1–US2).
+- **FR-001**: Sidebar blank space, the list section heading, and list context menus MUST expose Archive empty lists with a broom icon and a keyboard-accessible equivalent (US1).
+- **FR-002**: Cleanup MUST target all named lists with zero unfinished task records in the complete current data, including all duplicate sections, and MUST exclude Personal and built-in views (US1–US2).
+- **FR-003**: Eligible sections MUST be archived with all original notes and unknown metadata preserved; completed tasks and their source metadata MUST be preserved; no list containing unfinished work may be archived by this action (US1–US2).
 - **FR-004**: Eligibility MUST be rechecked against current data when the action executes; repeated invocations MUST be safe and show accurate counts (US1–US2).
 - **FR-005**: Cleanup MUST be one action without a bulk selection panel or confirmation dialog; successful and no-op archives MUST remain silent without adding a banner or shifting layout, while failures MUST report actionable errors and preserve unsaved drafts (US1–US2).
 - **FR-006**: Interrupted archive moves MUST remain recoverable without duplicate archival or silent data loss; unaffected lists and their display preferences MUST be preserved (US2).
@@ -108,10 +108,10 @@ Agents add human action items to existing homes and retain their source conversa
 
 ## Assumptions
 
-- The user's archive-action refinement supersedes a cleanup management panel, automatic age-based archiving, and bulk cleanup of completed lists.
+- The user's archive-action refinement supersedes a cleanup management panel, automatic age-based archiving, but includes cleanup of lists containing only completed tasks.
 - No general archive browser, restore manager, or permanent deletion is added in this feature. Existing archive storage remains available; any future restore UI is separate scope.
 - List guidance improves agent behavior but cannot retroactively force unmodified older clients or direct file editors to follow the new contract; compatibility must be explicit.
 - Introducing separate attribution does not authorize reorganizing the user's current lists.
 - Global agent memories/configuration are not edited by this feature; setup documentation gives users the updated usage instruction.
 
-Final sidebar menu: blank-space/heading context contains New list and Archive empty lists with an archive-box icon and no empty separators. Named-list context retains Rename, Change icon, Move up/down, Archive list and Delete list. All successful archives remain silent.
+Final sidebar menu: blank-space/heading context contains New list and Archive empty lists with a broom icon and no empty separators. Named-list context retains Rename, Change icon, Move up/down, Archive list and Delete list. All successful archives remain silent.

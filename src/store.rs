@@ -1603,7 +1603,8 @@ fn empty_names(text:&str)->Result<Vec<String>,String>{
             else if line.contains("-->"){comment=false;}
         }
     }
-    Ok(list_inventory(&parse(text)).iter().filter(|v|v["empty"]==true&&v["name"]!="").filter_map(|v|v["name"].as_str().map(String::from)).collect())
+    // Cleanup means no unfinished work, including children and duplicate sections.
+    Ok(list_inventory(&parse(text)).iter().filter(|v|v["open_count"]==0&&v["name"]!="").filter_map(|v|v["name"].as_str().map(String::from)).collect())
 }
 pub fn empty_list_cleanup()->Result<serde_json::Value,String>{
     let (p,chosen)=location();let names=empty_names(&read_list(&p,chosen)?)?;
@@ -1611,9 +1612,14 @@ pub fn empty_list_cleanup()->Result<serde_json::Value,String>{
 }
 pub fn archive_empty_lists()->Result<serde_json::Value,String>{
     let _lock=lock()?;let journal=data_dir().join("archive-pending.json");recover_archive(&journal)?;
-    let (p,chosen)=location();let text=read_list(&p,chosen)?;let names=empty_names(&text)?;
+    let (p,chosen)=location();let text=read_list(&p,chosen)?;
     let p=if p.is_absolute(){p}else{std::env::current_dir().map_err(|e|e.to_string())?.join(p)};
     let archive=p.with_file_name("archive.md");
+    let names=archive_empty_list_files(&p,&archive,&journal,&text)?;
+    Ok(serde_json::json!({"archived_names":names,"archived_count":names.len(),"archive_path":archive}))
+}
+fn archive_empty_list_files(p:&Path,archive:&Path,journal:&Path,text:&str)->Result<Vec<String>,String>{
+    let names=empty_names(text)?;
     if same_file(&p,&archive){return Err("Active file cannot be archive.md".into());}
     if !names.is_empty(){
         let mut active_after=String::new();let mut removed=String::new();let mut offset=0;
@@ -1624,10 +1630,12 @@ pub fn archive_empty_lists()->Result<serde_json::Value,String>{
         let archive_before=read(&archive)?;let mut archive_after=archive_before.clone();
         if !archive_after.is_empty(){if !archive_after.ends_with('\n'){archive_after.push('\n');}archive_after.push('\n');}
         archive_after.push_str(&removed);
-        let pending=ArchiveMove{active:p,archive:archive.clone(),active_before:text,active_after,archive_before,archive_after};
+        let active_after=reconcile_removed(&active_after)?;
+        let archive_after=archive_sources(text,&removed,&archive_after)?;
+        let pending=ArchiveMove{active:p.into(),archive:archive.into(),active_before:text.into(),active_after,archive_before,archive_after};
         write(&journal,&serde_json::to_string(&pending).map_err(|e|e.to_string())?)?;recover_archive(&journal)?;
     }
-    Ok(serde_json::json!({"archived_names":names,"archived_count":names.len(),"archive_path":archive}))
+    Ok(names)
 }
 fn reconcile_removed(text:&str)->Result<String,String>{
     let mut list=parse(text);let before=list.agent_metadata()?.map(String::from);
@@ -1665,11 +1673,42 @@ fn archive_sources(active: &str, removed: &str, archive: &str) -> Result<String,
 mod hygiene_tests {
     use super::*;
     #[test]
-    fn empty_means_no_tasks_in_any_duplicate_section_or_history() {
+    fn cleanup_includes_completed_history_but_preserves_all_unfinished_work() {
         let text="Personal notes\n## Empty\nNotes\n## History\n- [x] Old @id(1) @done(2000-01-01 12:00)\n## Duplicate\nnotes\n## Duplicate\n- [ ] Real @id(2)\n## Examples\n```md\n  - [ ] fake task\n## fake heading\n```\n";
-        assert_eq!(empty_names(text).unwrap(),vec!["Empty","Examples"]);
+        assert_eq!(empty_names(text).unwrap(),vec!["Empty","History","Examples"]);
+        let families="- [x] Personal @id(1)\n## Done\n- [x] Parent @id(2)\n- [x] Child @id(3) @parent(2)\n## Mixed\n- [x] Parent @id(4)\n- [ ] Child @id(5) @parent(4)\n## Duplicate\n- [x] Done @id(6)\n## Duplicate\n- [ ] Open @id(7)\n## Child only\n- [ ] Orphan @id(8) @parent(999)\n";
+        assert_eq!(empty_names(families).unwrap(),vec!["Done"]);
         assert!(empty_names("## Unsafe\n  - [ ] Maybe a task\n").is_err());
         assert!(empty_names("## Unsafe\n- [z] malformed\n").is_err());
+    }
+    #[test]
+    fn cleanup_moves_completed_sections_with_sources_and_preserves_active_bytes() {
+        let dir=std::env::temp_dir().join(format!("tinytasks-cleanup-{}",uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let (active,archive,journal)=(dir.join("tasks.md"),dir.join("archive.md"),dir.join("pending.json"));
+        let mut list=parse("Personal notes\r\n## Done\r\n- [x] Old @id(1) @done(2000-01-01 12:00) @custom(keep)\r\n  Details\r\n## Keep\r\n- [ ] Work @id(2)\r\n## Empty\r\nNotes to keep\r\n## Done\r\nMore notes\r\n");
+        let uid=list.assign_uid(1).unwrap();let mut state=crate::agent_state::initialized(&list).unwrap();
+        state["task_sources"][&uid]=serde_json::json!({"client_id":"test","conversation_id":"chat"});
+        crate::agent_state::save(&mut list,&state).unwrap();let text=list.render();
+        let (without_done,done)=split_chat(&text,"Done").unwrap();
+        let (expected_active,empty)=split_chat(&without_done,"Empty").unwrap();
+        fs::write(&active,&text).unwrap();fs::write(&archive,"Existing archive\n").unwrap();
+        assert_eq!(archive_empty_list_files(&active,&archive,&journal,&text).unwrap(),vec!["Done","Empty"]);
+        assert_eq!(read(&active).unwrap(),expected_active);
+        let archived=read(&archive).unwrap();
+        for section in sections(&done){assert!(archived.contains(&done[section.start..section.end]));}
+        assert!(archived.contains(&empty));assert!(archived.contains("Existing archive\n"));
+        assert_eq!(crate::agent_state::load(&parse(&archived)).unwrap()["task_sources"][&uid],state["task_sources"][&uid]);
+        assert!(!journal.exists());
+        assert!(archive_empty_list_files(&active,&archive,&journal,&expected_active).unwrap().is_empty());
+        assert_eq!(read(&archive).unwrap(),archived);
+        // A list gaining unfinished work after preview must stay active.
+        assert_eq!(empty_names("## Race\n- [x] Done @id(3)\n").unwrap(),vec!["Race"]);
+        let changed="## Race\n- [x] Done @id(3)\n- [ ] New @id(4)\n";
+        fs::write(&active,changed).unwrap();
+        assert!(archive_empty_list_files(&active,&archive,&journal,changed).unwrap().is_empty());
+        assert_eq!(read(&active).unwrap(),changed);assert_eq!(read(&archive).unwrap(),archived);
+        fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn archive_preserves_raw_tasks_and_copies_source() {

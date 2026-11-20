@@ -112,6 +112,7 @@ module.exports = async (browser, installMock, url, errors) => {
       const details=await row(1).locator('.body').evaluate(el=>({line:parseFloat(getComputedStyle(el).lineHeight),font:parseFloat(getComputedStyle(el).fontSize)}));assert.ok(details.line/details.font>=1.55);
     }
     await page.setViewportSize({width:1000,height:760});
+    await page.evaluate(()=>{testState.chats.push('Finished');testState.tasks.push({...testState.tasks[0],id:99,chat:'Finished',done_at:'2000-01-01 12:00'});});
     const mainTopBeforeCleanup = await page.locator('#main').evaluate(el=>el.getBoundingClientRect().top);
     await page.locator('#lists-menu').click();
     assert.deepEqual(await page.locator('#sidebar-menu button:visible').allTextContents(),['New list…','Archive empty lists']);
@@ -121,6 +122,8 @@ module.exports = async (browser, installMock, url, errors) => {
     assert.equal(await page.locator('#notice').isVisible(), false);
     assert.equal(await page.locator('#main').evaluate(el=>el.getBoundingClientRect().top), mainTopBeforeCleanup);
     assert.equal(await page.evaluate(()=>testState.tasks.length),2);
+    assert.equal(await page.evaluate(()=>testState.chats.includes('Finished')),false);
+    assert.equal(await page.evaluate(()=>testState.archives.some(t=>t.id===99)),true);
     await page.evaluate(()=>{testState.desk.planning={status:'building',run_id:'run'};testState.emit();});
     await page.locator('#primary-nav .desk-review-badge').filter({hasText:'Building'}).waitFor();
     await page.locator('#primary-nav button').filter({hasText:'My Desk'}).click();await page.getByText('Building your day…',{exact:true}).waitFor();

@@ -40,11 +40,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           }
           if (cmd === 'get_task_questions') return {store_uuid:'fixture-store',questions:structuredClone(testState.questions || [])};
           if (cmd === 'open_detail_link') return null;
-          if (cmd === 'get_empty_list_cleanup') return {eligible_count:testState.chats.filter(name=>!tasks.some(t=>t.chat===name)).length};
+          if (cmd === 'get_empty_list_cleanup') return {eligible_count:testState.chats.filter(name=>!tasks.some(t=>t.chat===name && t.done_at == null)).length};
           if (cmd === 'archive_empty_lists') {
             if(testState.failLists) throw new Error('File unavailable');
-            const names=testState.chats.filter(name=>!tasks.some(t=>t.chat===name));
-            testState.chats=testState.chats.filter(name=>!names.includes(name));return {archived_names:names,archived_count:names.length};
+            const names=testState.chats.filter(name=>!tasks.some(t=>t.chat===name && t.done_at == null));
+            testState.chats=testState.chats.filter(name=>!names.includes(name));
+            testState.archives.push(...tasks.filter(t=>names.includes(t.chat)));
+            for(let i=tasks.length-1;i>=0;i--) if(names.includes(tasks[i].chat)) tasks.splice(i,1);
+            return {archived_names:names,archived_count:names.length};
           }
           if (cmd === 'submit_question_response') {
             if(testState.failQuestion) throw new Error('File unavailable');

@@ -191,6 +191,8 @@ body.resizing-sidebar, body.resizing-sidebar * { cursor: col-resize !important; 
 #new-list { padding: 6px 2px; }
 #new-list-name, #attribute-value { width: 100%; min-width: 0; color: var(--ink); background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; font: inherit; padding: 5px; }
 #sidebar-menu { min-width: 176px; }
+#sidebar-menu button { gap: 9px; }
+#sidebar-menu button svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
 #list-dialog { width: 340px; max-width: calc(100vw - 32px); padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-menu); color: var(--ink); box-shadow: var(--shadow); }
 #list-dialog::backdrop { background: #0005; }
 #list-dialog h2 { font-size: 16px; margin: 0 0 10px; }

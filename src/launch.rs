@@ -11,6 +11,37 @@ use std::path::PathBuf;
 
 const FRESH_SECS: i64 = 20;
 
+#[cfg(windows)]
+fn windows_install_exe(location: &str) -> Option<PathBuf> {
+    let directory = std::path::Path::new(location.trim().trim_matches('"'));
+    if !directory.is_absolute() {
+        return None;
+    }
+    let exe = directory.join("tinytasks.exe");
+    exe.is_file().then_some(exe)
+}
+
+#[cfg(windows)]
+fn installed_windows_exe() -> Option<PathBuf> {
+    use winreg::{enums::*, RegKey};
+
+    // Tauri's NSIS installer writes InstallLocation under the product name.
+    const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\TinyTasks";
+    for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
+            let root = RegKey::predef(hive);
+            if let Ok(location) = root.open_subkey_with_flags(UNINSTALL_KEY, KEY_READ | view)
+                .and_then(|key| key.get_value::<String, _>("InstallLocation"))
+            {
+                if let Some(exe) = windows_install_exe(&location) {
+                    return Some(exe);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn alive_file() -> PathBuf {
     store::data_dir().join("app.alive")
 }
@@ -53,7 +84,13 @@ pub fn ensure_app_running() {
     if std::env::var_os("TINYTASKS_NO_LAUNCH").is_some() || app_alive() {
         return;
     }
-    let Ok(exe) = std::env::current_exe() else { return };
+    // A source or portable MCP server can outlive an install. Let it launch the
+    // registered desktop app so its own executable cannot take over the tray.
+    #[cfg(windows)]
+    let exe = installed_windows_exe().or_else(|| std::env::current_exe().ok());
+    #[cfg(not(windows))]
+    let exe = std::env::current_exe().ok();
+    let Some(exe) = exe else { return };
     let quiet = |cmd: &mut std::process::Command| {
         cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -96,5 +133,26 @@ pub fn ensure_app_running() {
         if let Ok(mut child) = cmd.spawn() {
             std::thread::spawn(move || child.wait()); // reap it; no zombies
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_install_location_accepts_nsis_quotes_and_skips_invalid_paths() {
+        let directory = std::env::temp_dir().join(format!("tinytasks-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let executable = directory.join("tinytasks.exe");
+        let quoted_location = format!("\"{}\"", directory.display());
+
+        assert_eq!(windows_install_exe(&quoted_location), None);
+        assert_eq!(windows_install_exe("TinyTasks"), None);
+        std::fs::write(&executable, []).unwrap();
+        let result = windows_install_exe(&quoted_location);
+        std::fs::remove_file(&executable).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+        assert_eq!(result.as_deref(), Some(executable.as_path()));
     }
 }
